@@ -1,6 +1,7 @@
 tiktoken==0.7.0
 mcp==1.0.0
 gitignore_parser==0.1.11
-pydantic==2.5.0
+pydantic>=2.8.0
 aiofiles==23.2.0
 aiosqlite==0.19.0
+pytest>=8.0.0
