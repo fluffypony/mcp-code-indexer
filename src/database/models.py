@@ -1,0 +1,120 @@
+"""
+Data models for the MCP Code Indexer.
+
+This module defines Pydantic models for project tracking, file descriptions,
+and merge conflicts. These models provide validation and serialization for
+the database operations.
+"""
+
+from datetime import datetime
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+
+class Project(BaseModel):
+    """
+    Represents a tracked project/repository.
+    
+    Projects are identified by a combination of git remotes and local paths,
+    allowing tracking across forks, renames, and different local copies.
+    """
+    id: str = Field(..., description="Generated unique identifier")
+    name: str = Field(..., description="User-provided project name")
+    remote_origin: Optional[str] = Field(None, description="Git remote origin URL")
+    upstream_origin: Optional[str] = Field(None, description="Upstream repository URL for forks")
+    aliases: List[str] = Field(default_factory=list, description="Alternative identifiers")
+    created: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    last_accessed: datetime = Field(default_factory=datetime.utcnow, description="Last access timestamp")
+
+
+class FileDescription(BaseModel):
+    """
+    Represents a file description within a project branch.
+    
+    Stores detailed summaries of file contents including purpose, components,
+    and relationships to enable efficient codebase navigation.
+    """
+    project_id: str = Field(..., description="Reference to project")
+    branch: str = Field(..., description="Git branch name")
+    file_path: str = Field(..., description="Relative path from project root")
+    description: str = Field(..., description="Detailed content description")
+    file_hash: Optional[str] = Field(None, description="SHA-256 of file contents")
+    last_modified: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    version: int = Field(default=1, description="For optimistic concurrency control")
+    source_project_id: Optional[str] = Field(None, description="Source project if copied from upstream")
+
+
+class MergeConflict(BaseModel):
+    """
+    Represents a merge conflict between file descriptions.
+    
+    Used during branch merging when the same file has different descriptions
+    in source and target branches.
+    """
+    file_path: str = Field(..., description="Path to conflicted file")
+    source_branch: str = Field(..., description="Branch being merged from")
+    target_branch: str = Field(..., description="Branch being merged into")
+    source_description: str = Field(..., description="Description from source branch")
+    target_description: str = Field(..., description="Description from target branch")
+    resolution: Optional[str] = Field(None, description="AI-provided resolution")
+
+
+class CodebaseOverview(BaseModel):
+    """
+    Represents a complete codebase structure with file descriptions.
+    
+    Provides hierarchical view of project files with token count information
+    to help determine whether to use full overview or search-based approach.
+    """
+    project_name: str = Field(..., description="Project name")
+    branch: str = Field(..., description="Git branch")
+    total_files: int = Field(..., description="Total number of tracked files")
+    total_tokens: int = Field(..., description="Total token count for all descriptions")
+    is_large: bool = Field(..., description="True if exceeds configured token limit")
+    token_limit: int = Field(..., description="Current token limit setting")
+    structure: 'FolderNode' = Field(..., description="Hierarchical folder structure")
+
+
+class FolderNode(BaseModel):
+    """
+    Represents a folder in the codebase hierarchy.
+    """
+    name: str = Field(..., description="Folder name")
+    path: str = Field(..., description="Full path from project root")
+    files: List['FileNode'] = Field(default_factory=list, description="Files in this folder")
+    folders: List['FolderNode'] = Field(default_factory=list, description="Subfolders")
+
+
+class FileNode(BaseModel):
+    """
+    Represents a file in the codebase hierarchy.
+    """
+    name: str = Field(..., description="File name")
+    path: str = Field(..., description="Full path from project root")
+    description: str = Field(..., description="File description")
+
+
+class SearchResult(BaseModel):
+    """
+    Represents a search result with relevance scoring.
+    """
+    file_path: str = Field(..., description="Path to the matching file")
+    description: str = Field(..., description="File description")
+    relevance_score: float = Field(..., description="Search relevance score")
+    project_id: str = Field(..., description="Project identifier")
+    branch: str = Field(..., description="Git branch")
+
+
+class CodebaseSizeInfo(BaseModel):
+    """
+    Information about codebase size and token usage.
+    """
+    total_tokens: int = Field(..., description="Total token count")
+    is_large: bool = Field(..., description="Whether codebase exceeds token limit")
+    recommendation: str = Field(..., description="Recommended approach (use_search or use_overview)")
+    token_limit: int = Field(..., description="Configured token limit")
+
+
+# Enable forward references for recursive models
+FolderNode.model_rebuild()
+CodebaseOverview.model_rebuild()
