@@ -34,7 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Tools",
+    "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Framework :: AsyncIO",
@@ -71,10 +71,10 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/mcp-code-indexer"
-Repository = "https://github.com/your-username/mcp-code-indexer"
-Issues = "https://github.com/your-username/mcp-code-indexer/issues"
-Documentation = "https://github.com/your-username/mcp-code-indexer/blob/main/README.md"
+Homepage = "https://github.com/fluffypony/mcp-code-indexer"
+Repository = "https://github.com/fluffypony/mcp-code-indexer"
+Issues = "https://github.com/fluffypony/mcp-code-indexer/issues"
+Documentation = "https://github.com/fluffypony/mcp-code-indexer/blob/main/README.md"
 
 [project.scripts]
 mcp-code-indexer = "mcp_code_indexer.main:cli_main"
