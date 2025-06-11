@@ -124,7 +124,9 @@ def cli_main():
         pass
     except Exception as e:
         # Log critical errors to stderr, not stdout
+        import traceback
         print(f"Server failed to start: {e}", file=sys.stderr)
+        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
         sys.exit(1)
 
 

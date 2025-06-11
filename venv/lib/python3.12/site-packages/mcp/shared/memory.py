@@ -2,20 +2,28 @@
 In-memory transports
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import AsyncGenerator
+from typing import Any
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
-from mcp.client.session import ClientSession
+import mcp.types as types
+from mcp.client.session import (
+    ClientSession,
+    ListRootsFnT,
+    LoggingFnT,
+    MessageHandlerFnT,
+    SamplingFnT,
+)
 from mcp.server import Server
-from mcp.types import JSONRPCMessage
+from mcp.shared.message import SessionMessage
 
 MessageStream = tuple[
-    MemoryObjectReceiveStream[JSONRPCMessage | Exception],
-    MemoryObjectSendStream[JSONRPCMessage],
+    MemoryObjectReceiveStream[SessionMessage | Exception],
+    MemoryObjectSendStream[SessionMessage],
 ]
 
 
@@ -32,10 +40,10 @@ async def create_client_server_memory_streams() -> (
     """
     # Create streams for both directions
     server_to_client_send, server_to_client_receive = anyio.create_memory_object_stream[
-        JSONRPCMessage | Exception
+        SessionMessage | Exception
     ](1)
     client_to_server_send, client_to_server_receive = anyio.create_memory_object_stream[
-        JSONRPCMessage | Exception
+        SessionMessage | Exception
     ](1)
 
     client_streams = (server_to_client_receive, client_to_server_send)
@@ -52,8 +60,13 @@ async def create_client_server_memory_streams() -> (
 
 @asynccontextmanager
 async def create_connected_server_and_client_session(
-    server: Server,
+    server: Server[Any],
     read_timeout_seconds: timedelta | None = None,
+    sampling_callback: SamplingFnT | None = None,
+    list_roots_callback: ListRootsFnT | None = None,
+    logging_callback: LoggingFnT | None = None,
+    message_handler: MessageHandlerFnT | None = None,
+    client_info: types.Implementation | None = None,
     raise_exceptions: bool = False,
 ) -> AsyncGenerator[ClientSession, None]:
     """Creates a ClientSession that is connected to a running MCP server."""
@@ -80,6 +93,11 @@ async def create_connected_server_and_client_session(
                     read_stream=client_read,
                     write_stream=client_write,
                     read_timeout_seconds=read_timeout_seconds,
+                    sampling_callback=sampling_callback,
+                    list_roots_callback=list_roots_callback,
+                    logging_callback=logging_callback,
+                    message_handler=message_handler,
+                    client_info=client_info,
                 ) as client_session:
                     await client_session.initialize()
                     yield client_session

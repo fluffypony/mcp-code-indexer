@@ -75,6 +75,9 @@ class MCPCodeIndexServer:
         # Register handlers
         self._register_handlers()
         
+        # Add debug logging for server events
+        self.logger.debug("MCP server instance created and handlers registered")
+        
         self.logger.info(
             "MCP Code Index Server initialized", 
             extra={"structured_data": {"initialization": {"token_limit": token_limit}}}
@@ -650,16 +653,49 @@ class MCPCodeIndexServer:
     
     async def run(self) -> None:
         """Run the MCP server."""
+        logger.info("Starting server initialization...")
         await self.initialize()
+        logger.info("Server initialization completed, starting MCP protocol...")
         
         try:
             async with stdio_server() as (read_stream, write_stream):
+                logger.info("stdio_server context established")
                 initialization_options = self.server.create_initialization_options()
-                await self.server.run(
-                    read_stream,
-                    write_stream, 
-                    initialization_options
-                )
+                logger.debug(f"Initialization options: {initialization_options}")
+                
+                try:
+                    logger.info("Starting MCP server protocol session...")
+                    await self.server.run(
+                        read_stream,
+                        write_stream, 
+                        initialization_options
+                    )
+                    logger.info("MCP server session completed normally")
+                except Exception as e:
+                    # Log the error with full traceback for debugging
+                    import traceback
+                    logger.error(f"MCP server session error: {e}", extra={
+                        "structured_data": {
+                            "error_type": type(e).__name__, 
+                            "error_message": str(e),
+                            "traceback": traceback.format_exc()
+                        }
+                    })
+                    # Re-raise to let the MCP framework handle protocol-level errors
+                    raise
+                    
+        except KeyboardInterrupt:
+            logger.info("Server stopped by user interrupt")
+        except Exception as e:
+            import traceback
+            logger.error(f"Fatal server error: {e}", extra={
+                "structured_data": {
+                    "error_type": type(e).__name__, 
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+            })
+            raise
         finally:
             # Clean shutdown
             await self.shutdown()

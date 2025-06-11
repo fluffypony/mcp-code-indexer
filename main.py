@@ -114,11 +114,21 @@ async def main() -> None:
         raise
 
 
-if __name__ == "__main__":
+def cli_main():
+    """Console script entry point."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nServer stopped by user")
+        # For MCP servers, we should avoid stdout completely
+        # The server will log shutdown through stderr
+        pass
     except Exception as e:
-        print(f"Server failed to start: {e}")
+        # Log critical errors to stderr, not stdout
+        import traceback
+        print(f"Server failed to start: {e}", file=sys.stderr)
+        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    cli_main()
