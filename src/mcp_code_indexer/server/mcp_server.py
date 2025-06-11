@@ -165,22 +165,7 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="find_missing_descriptions",
-                    description="Scans the project folder to find files that don't have descriptions yet. This is stage 1 of a two-stage process for updating missing descriptions.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "projectName": {"type": "string", "description": "The name of the project"},
-                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
-                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"}
-                        },
-                        "required": ["projectName", "folderPath", "branch"]
-                    }
-                ),
-                types.Tool(
-                    name="update_missing_descriptions",
-                    description="Batch updates descriptions for multiple files at once. This is stage 2 after find_missing_descriptions.",
+                    description="Scans the project folder to find files that don't have descriptions yet. Use update_file_description to add descriptions for individual files.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -189,20 +174,9 @@ class MCPCodeIndexServer:
                             "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
-                            "descriptions": {
-                                "type": "array",
-                                "description": "Array of file paths and their descriptions",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "filePath": {"type": "string", "description": "Relative path to the file"},
-                                        "description": {"type": "string", "description": "Detailed description of the file"}
-                                    },
-                                    "required": ["filePath", "description"]
-                                }
-                            }
+                            "limit": {"type": "integer", "description": "Maximum number of missing files to return (optional)"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "descriptions"]
+                        "required": ["projectName", "folderPath", "branch"]
                     }
                 ),
                 types.Tool(
@@ -276,7 +250,6 @@ class MCPCodeIndexServer:
                 "update_file_description": self._handle_update_file_description,
                 "check_codebase_size": self._handle_check_codebase_size,
                 "find_missing_descriptions": self._handle_find_missing_descriptions,
-                "update_missing_descriptions": self._handle_update_missing_descriptions,
                 "search_descriptions": self._handle_search_descriptions,
                 "get_codebase_overview": self._handle_get_codebase_overview,
                 "merge_branch_descriptions": self._handle_merge_branch_descriptions,
@@ -445,43 +418,21 @@ class MCPCodeIndexServer:
         missing_files = scanner.find_missing_files(existing_paths)
         missing_paths = [scanner.get_relative_path(f) for f in missing_files]
         
+        # Apply limit if specified
+        limit = arguments.get("limit")
+        total_missing = len(missing_paths)
+        if limit is not None and isinstance(limit, int) and limit > 0:
+            missing_paths = missing_paths[:limit]
+        
         # Get project stats
         stats = scanner.get_project_stats()
         
         return {
             "missingFiles": missing_paths,
-            "totalMissing": len(missing_paths),
+            "totalMissing": total_missing,
+            "returnedCount": len(missing_paths),
             "existingDescriptions": len(existing_paths),
             "projectStats": stats
-        }
-    
-    async def _handle_update_missing_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle update_missing_descriptions tool calls."""
-        project_id = await self._get_or_create_project_id(arguments)
-        descriptions_data = arguments["descriptions"]
-        
-        # Create FileDescription objects
-        file_descriptions = []
-        for desc_data in descriptions_data:
-            file_desc = FileDescription(
-                project_id=project_id,
-                branch=arguments["branch"],
-                file_path=desc_data["filePath"],
-                description=desc_data["description"],
-                file_hash=None,  # Hash not provided in batch operations
-                last_modified=datetime.utcnow(),
-                version=1
-            )
-            file_descriptions.append(file_desc)
-        
-        # Batch create descriptions
-        await self.db_manager.batch_create_file_descriptions(file_descriptions)
-        
-        return {
-            "success": True,
-            "updatedFiles": len(file_descriptions),
-            "files": [desc["filePath"] for desc in descriptions_data],
-            "message": f"Successfully updated descriptions for {len(file_descriptions)} files"
         }
     
     async def _handle_search_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
