@@ -47,6 +47,60 @@ pip install -e .
 mcp-code-indexer --token-limit 32000
 ```
 
+## 🔧 Development Setup
+
+For development work, you **must** install the package in editable mode to ensure proper import resolution:
+
+```bash
+# Setup development environment
+git clone https://github.com/your-username/mcp-code-indexer.git
+cd mcp-code-indexer
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install package in editable mode (REQUIRED for development)
+pip install -e .
+
+# Install development dependencies
+pip install -e .[dev]
+
+# Verify installation
+python main.py --help
+mcp-code-indexer --version
+```
+
+### Why Editable Install is Required
+
+The project uses a proper PyPI package structure with absolute imports like `from mcp_code_indexer.database.database import DatabaseManager`. Without the editable installation (`pip install -e .`), Python cannot resolve these imports and you'll get `ModuleNotFoundError` exceptions.
+
+### Development Workflow
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Run the server directly
+python main.py --token-limit 32000
+
+# Or use the installed CLI command
+mcp-code-indexer --token-limit 32000
+
+# Run tests
+python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=html
+
+# Format code
+black src/ tests/
+isort src/ tests/
+
+# Type checking
+mypy src/
+```
+
 ## 🛠️ MCP Tools Available
 
 The server provides **8 powerful MCP tools** for intelligent codebase management:

@@ -33,16 +33,21 @@ cd mcp-code-indexer
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install dependencies (development)
-pip install -r requirements.txt
-pip install -r requirements-dev.txt  # If exists
+# Install package in editable mode (REQUIRED)
+pip install -e .
+
+# Install development dependencies
+pip install -e .[dev]
 
 # Install pre-commit hooks
 pre-commit install
 
 # Verify setup
+python main.py --help
 python -m pytest tests/ -v
 ```
+
+> **⚠️ Important:** The editable install (`pip install -e .`) is **required** for development. The project uses proper PyPI package structure with absolute imports like `from mcp_code_indexer.database.database import DatabaseManager`. Without editable installation, you'll get `ModuleNotFoundError` exceptions.
 
 ### Project Structure
 
