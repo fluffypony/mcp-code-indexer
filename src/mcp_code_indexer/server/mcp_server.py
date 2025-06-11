@@ -473,19 +473,28 @@ class MCPCodeIndexServer:
             await self.db_manager.update_project(project)
             logger.debug(f"Updated project metadata for {project.name}")
     
-    async def _find_best_branch(self, project_id: str, requested_branch: str) -> Optional[str]:
+    async def _resolve_branch(self, project_id: str, requested_branch: str) -> str:
         """
-        Find the best available branch for a project when the requested branch has no files.
-        Returns the branch with the most files, or None if no branches have files.
+        Resolve the actual branch to use for operations.
+        
+        For new projects or branches with no existing files, uses the requested branch.
+        For existing projects, tries to find a consistent branch to avoid data fragmentation.
+        
+        Returns the resolved branch name.
         """
         try:
             # Get all branches and their file counts for this project
             branch_counts = await self.db_manager.get_branch_file_counts(project_id)
             
+            # If no existing data, use the requested branch
             if not branch_counts:
-                return None
+                return requested_branch
             
-            # First try common branch name variations
+            # If requested branch has files, use it
+            if requested_branch in branch_counts and branch_counts[requested_branch] > 0:
+                return requested_branch
+            
+            # Try common branch name variations to find existing data
             common_variations = {
                 'main': ['master', 'develop', 'development', 'dev'],
                 'master': ['main', 'develop', 'development', 'dev'], 
@@ -498,23 +507,31 @@ class MCPCodeIndexServer:
             if requested_branch.lower() in common_variations:
                 for variation in common_variations[requested_branch.lower()]:
                     if variation in branch_counts and branch_counts[variation] > 0:
+                        logger.info(f"Resolved branch '{requested_branch}' to existing branch '{variation}' with {branch_counts[variation]} files")
                         return variation
             
-            # Fall back to the branch with the most files
+            # If no variations found, check if we should use the main data branch
+            # (to avoid fragmenting data across multiple branches)
             best_branch = max(branch_counts.items(), key=lambda x: x[1])
-            return best_branch[0] if best_branch[1] > 0 else None
+            if best_branch[1] > 10:  # Only if there's substantial existing data
+                logger.info(f"Using primary branch '{best_branch[0]}' instead of '{requested_branch}' to avoid data fragmentation")
+                return best_branch[0]
+            
+            # Fall back to requested branch for new/small projects
+            return requested_branch
             
         except Exception as e:
-            logger.warning(f"Error finding best branch: {e}")
-            return None
+            logger.warning(f"Error resolving branch: {e}")
+            return requested_branch
     
     async def _handle_get_file_description(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_file_description tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
         file_desc = await self.db_manager.get_file_description(
             project_id=project_id,
-            branch=arguments["branch"],
+            branch=resolved_branch,
             file_path=arguments["filePath"]
         )
         
@@ -535,10 +552,11 @@ class MCPCodeIndexServer:
     async def _handle_update_file_description(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle update_file_description tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
         file_desc = FileDescription(
             project_id=project_id,
-            branch=arguments["branch"],
+            branch=resolved_branch,
             file_path=arguments["filePath"],
             description=arguments["description"],
             file_hash=arguments.get("fileHash"),
@@ -558,23 +576,13 @@ class MCPCodeIndexServer:
     async def _handle_check_codebase_size(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle check_codebase_size tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        requested_branch = arguments["branch"]
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
         # Get file descriptions for this project/branch
         file_descriptions = await self.db_manager.get_all_file_descriptions(
             project_id=project_id,
-            branch=requested_branch
+            branch=resolved_branch
         )
-        
-        # If no files found for requested branch, try to find the best available branch
-        if not file_descriptions:
-            available_branch = await self._find_best_branch(project_id, requested_branch)
-            if available_branch and available_branch != requested_branch:
-                file_descriptions = await self.db_manager.get_all_file_descriptions(
-                    project_id=project_id,
-                    branch=available_branch
-                )
-                logger.info(f"No files found for branch '{requested_branch}', using '{available_branch}' instead")
         
         # Calculate total tokens
         total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
@@ -592,12 +600,13 @@ class MCPCodeIndexServer:
     async def _handle_find_missing_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle find_missing_descriptions tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         folder_path = Path(arguments["folderPath"])
         
         # Get existing file descriptions
         existing_descriptions = await self.db_manager.get_all_file_descriptions(
             project_id=project_id,
-            branch=arguments["branch"]
+            branch=resolved_branch
         )
         existing_paths = {desc.file_path for desc in existing_descriptions}
         
@@ -631,12 +640,13 @@ class MCPCodeIndexServer:
     async def _handle_search_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle search_descriptions tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         max_results = arguments.get("maxResults", 20)
         
         # Perform search
         search_results = await self.db_manager.search_file_descriptions(
             project_id=project_id,
-            branch=arguments["branch"],
+            branch=resolved_branch,
             query=arguments["query"],
             max_results=max_results
         )
@@ -660,11 +670,12 @@ class MCPCodeIndexServer:
     async def _handle_get_codebase_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_codebase_overview tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
         # Get all file descriptions
         file_descriptions = await self.db_manager.get_all_file_descriptions(
             project_id=project_id,
-            branch=arguments["branch"]
+            branch=resolved_branch
         )
         
         # Calculate total tokens
@@ -687,7 +698,8 @@ class MCPCodeIndexServer:
         
         return {
             "projectName": arguments["projectName"],
-            "branch": arguments["branch"],
+            "branch": resolved_branch,
+            "requestedBranch": arguments["branch"] if arguments["branch"] != resolved_branch else None,
             "totalFiles": len(file_descriptions),
             "totalTokens": total_tokens,
             "isLarge": is_large,
