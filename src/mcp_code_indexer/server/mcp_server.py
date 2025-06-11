@@ -284,8 +284,10 @@ class MCPCodeIndexServer:
         branch = arguments.get("branch", "main")
         
         # Create project ID from stable identifiers only (name + folder path)
-        # This ensures consistent project IDs regardless of whether remote_origin/upstream_origin are provided
-        id_source = f"{project_name}:{folder_path}"
+        # Normalize project name to lowercase for case-insensitive matching
+        # This ensures consistent project IDs regardless of case variations
+        normalized_name = project_name.lower()
+        id_source = f"{normalized_name}:{folder_path}"
         project_id = hashlib.sha256(id_source.encode()).hexdigest()[:16]
         
         # Check if project exists, create if not
@@ -293,7 +295,7 @@ class MCPCodeIndexServer:
         if not project:
             project = Project(
                 id=project_id,
-                name=project_name,
+                name=normalized_name,  # Store normalized name for consistency
                 remote_origin=remote_origin,
                 upstream_origin=upstream_origin,
                 aliases=[folder_path],
