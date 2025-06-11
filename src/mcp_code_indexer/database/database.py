@@ -234,6 +234,21 @@ class DatabaseManager:
             
             return projects
     
+    async def get_branch_file_counts(self, project_id: str) -> Dict[str, int]:
+        """Get file counts per branch for a project."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT branch, COUNT(*) as file_count 
+                FROM file_descriptions 
+                WHERE project_id = ? 
+                GROUP BY branch
+                """,
+                (project_id,)
+            )
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
+    
     # File description operations
     
     async def create_file_description(self, file_desc: FileDescription) -> None:
@@ -369,13 +384,13 @@ class DatabaseManager:
                     fd.branch,
                     fd.file_path,
                     fd.description,
-                    fts.rank
-                FROM file_descriptions_fts fts
-                JOIN file_descriptions fd ON fd.rowid = fts.rowid
-                WHERE fts MATCH ? 
+                    bm25(file_descriptions_fts) as rank
+                FROM file_descriptions_fts
+                JOIN file_descriptions fd ON fd.rowid = file_descriptions_fts.rowid
+                WHERE file_descriptions_fts MATCH ? 
                   AND fd.project_id = ? 
                   AND fd.branch = ?
-                ORDER BY fts.rank
+                ORDER BY bm25(file_descriptions_fts)
                 LIMIT ?
                 """,
                 (query, project_id, branch, max_results)

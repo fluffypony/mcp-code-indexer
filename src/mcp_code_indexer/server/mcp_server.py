@@ -473,6 +473,41 @@ class MCPCodeIndexServer:
             await self.db_manager.update_project(project)
             logger.debug(f"Updated project metadata for {project.name}")
     
+    async def _find_best_branch(self, project_id: str, requested_branch: str) -> Optional[str]:
+        """
+        Find the best available branch for a project when the requested branch has no files.
+        Returns the branch with the most files, or None if no branches have files.
+        """
+        try:
+            # Get all branches and their file counts for this project
+            branch_counts = await self.db_manager.get_branch_file_counts(project_id)
+            
+            if not branch_counts:
+                return None
+            
+            # First try common branch name variations
+            common_variations = {
+                'main': ['master', 'develop', 'development', 'dev'],
+                'master': ['main', 'develop', 'development', 'dev'], 
+                'develop': ['development', 'main', 'master', 'dev'],
+                'development': ['develop', 'main', 'master', 'dev'],
+                'dev': ['develop', 'development', 'main', 'master']
+            }
+            
+            # Try variations of the requested branch
+            if requested_branch.lower() in common_variations:
+                for variation in common_variations[requested_branch.lower()]:
+                    if variation in branch_counts and branch_counts[variation] > 0:
+                        return variation
+            
+            # Fall back to the branch with the most files
+            best_branch = max(branch_counts.items(), key=lambda x: x[1])
+            return best_branch[0] if best_branch[1] > 0 else None
+            
+        except Exception as e:
+            logger.warning(f"Error finding best branch: {e}")
+            return None
+    
     async def _handle_get_file_description(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_file_description tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
@@ -523,12 +558,23 @@ class MCPCodeIndexServer:
     async def _handle_check_codebase_size(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle check_codebase_size tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
+        requested_branch = arguments["branch"]
         
-        # Get all file descriptions for this project/branch
+        # Get file descriptions for this project/branch
         file_descriptions = await self.db_manager.get_all_file_descriptions(
             project_id=project_id,
-            branch=arguments["branch"]
+            branch=requested_branch
         )
+        
+        # If no files found for requested branch, try to find the best available branch
+        if not file_descriptions:
+            available_branch = await self._find_best_branch(project_id, requested_branch)
+            if available_branch and available_branch != requested_branch:
+                file_descriptions = await self.db_manager.get_all_file_descriptions(
+                    project_id=project_id,
+                    branch=available_branch
+                )
+                logger.info(f"No files found for branch '{requested_branch}', using '{available_branch}' instead")
         
         # Calculate total tokens
         total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
