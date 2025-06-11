@@ -265,6 +265,7 @@ class MCPCodeIndexServer:
         remote_origin = arguments.get("remoteOrigin")
         upstream_origin = arguments.get("upstreamOrigin")
         folder_path = arguments["folderPath"]
+        branch = arguments.get("branch", "main")
         
         # Create project ID from identifiers
         id_source = f"{project_name}:{remote_origin}:{upstream_origin}:{folder_path}"
@@ -283,9 +284,27 @@ class MCPCodeIndexServer:
                 last_accessed=datetime.utcnow()
             )
             await self.db_manager.create_project(project)
+            
+            # Auto-inherit from upstream if needed
+            if upstream_origin:
+                try:
+                    inherited_count = await self.db_manager.inherit_from_upstream(project, branch)
+                    if inherited_count > 0:
+                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {project_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to inherit from upstream: {e}")
         else:
             # Update last accessed time
             await self.db_manager.update_project_access_time(project_id)
+            
+            # Check if upstream inheritance is needed for existing project
+            if upstream_origin and await self.db_manager.check_upstream_inheritance_needed(project):
+                try:
+                    inherited_count = await self.db_manager.inherit_from_upstream(project, branch)
+                    if inherited_count > 0:
+                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {project_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to inherit from upstream: {e}")
         
         return project_id
     
