@@ -1,0 +1,47 @@
+"""Setup configuration for MCP Code Indexer."""
+
+from setuptools import setup, find_packages
+from pathlib import Path
+
+# Read the README file
+this_directory = Path(__file__).parent
+long_description = (this_directory / "README.md").read_text()
+
+setup(
+    name="mcp-code-indexer",
+    version="1.0.0",
+    description="MCP server that tracks file descriptions across codebases",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    author="MCP Code Indexer Team",
+    packages=find_packages(),
+    python_requires=">=3.9",
+    install_requires=[
+        "tiktoken==0.7.0",
+        "mcp==1.0.0", 
+        "gitignore_parser==0.1.11",
+        "pydantic==2.5.0",
+        "aiofiles==23.2.0",
+        "aiosqlite==0.19.0",
+    ],
+    entry_points={
+        "console_scripts": [
+            "mcp-code-index=main:main",
+        ],
+    },
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+    ],
+    keywords="mcp model-context-protocol code-indexer file-tracking",
+    project_urls={
+        "Bug Reports": "https://github.com/fluffypony/mcp-code-indexer/issues",
+        "Source": "https://github.com/fluffypony/mcp-code-indexer",
+    },
+)
