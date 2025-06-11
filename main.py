@@ -12,19 +12,8 @@ import logging
 import sys
 from pathlib import Path
 
-# Import will be added once server module is implemented
-# from src.server import MCPCodeIndexServer
-
-
-def setup_logging(log_level: str = "INFO") -> None:
-    """Configure logging for the application."""
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stderr)
-        ]
-    )
+from src.logging_config import setup_logging
+from src.error_handler import setup_error_handling
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -69,9 +58,16 @@ async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
     
-    # Setup logging to stderr (stdout is used for MCP communication)
-    setup_logging(args.log_level)
-    logger = logging.getLogger(__name__)
+    # Setup structured logging
+    log_file = Path(args.cache_dir).expanduser() / "server.log" if args.cache_dir else None
+    logger = setup_logging(
+        log_level=args.log_level,
+        log_file=log_file,
+        enable_file_logging=True
+    )
+    
+    # Setup error handling
+    error_handler = setup_error_handling(logger)
     
     # Expand user paths
     db_path = Path(args.db_path).expanduser()
@@ -81,22 +77,33 @@ async def main() -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
     
-    # Log to stderr to avoid interfering with MCP communication
-    logger.info(f"Starting MCP Code Index Server")
-    logger.info(f"Token limit: {args.token_limit}")
-    logger.info(f"Database path: {db_path}")
-    logger.info(f"Cache directory: {cache_dir}")
+    # Log startup information
+    logger.info("Starting MCP Code Index Server", extra={
+        "structured_data": {
+            "startup": {
+                "token_limit": args.token_limit,
+                "db_path": str(db_path),
+                "cache_dir": str(cache_dir),
+                "log_level": args.log_level
+            }
+        }
+    })
     
-    # Import and run the MCP server
-    from src.server.mcp_server import MCPCodeIndexServer
-    
-    server = MCPCodeIndexServer(
-        token_limit=args.token_limit,
-        db_path=db_path,
-        cache_dir=cache_dir
-    )
-    
-    await server.run()
+    try:
+        # Import and run the MCP server
+        from src.server.mcp_server import MCPCodeIndexServer
+        
+        server = MCPCodeIndexServer(
+            token_limit=args.token_limit,
+            db_path=db_path,
+            cache_dir=cache_dir
+        )
+        
+        await server.run()
+        
+    except Exception as e:
+        error_handler.log_error(e, context={"phase": "startup"})
+        raise
 
 
 if __name__ == "__main__":

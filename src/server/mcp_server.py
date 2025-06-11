@@ -24,6 +24,9 @@ from ..database.models import (
     Project, FileDescription, CodebaseOverview, SearchResult,
     CodebaseSizeInfo, FolderNode, FileNode
 )
+from ..error_handler import setup_error_handling, ErrorHandler
+from ..middleware.error_middleware import create_tool_middleware, AsyncTaskManager
+from ..logging_config import get_logger
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +61,22 @@ class MCPCodeIndexServer:
         self.db_manager = DatabaseManager(self.db_path)
         self.token_counter = TokenCounter(token_limit)
         
+        # Setup error handling
+        self.logger = get_logger(__name__)
+        self.error_handler = setup_error_handling(self.logger)
+        self.middleware = create_tool_middleware(self.error_handler)
+        self.task_manager = AsyncTaskManager(self.error_handler)
+        
         # Create MCP server
         self.server = Server("mcp-code-indexer")
         
         # Register handlers
         self._register_handlers()
         
-        logger.info(f"MCP Code Index Server initialized with token limit: {token_limit}")
+        self.logger.info(
+            "MCP Code Index Server initialized", 
+            extra={"structured_data": {"initialization": {"token_limit": token_limit}}}
+        )
     
     async def initialize(self) -> None:
         """Initialize database and other resources."""
@@ -223,41 +235,37 @@ class MCPCodeIndexServer:
         
         @self.server.call_tool()
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
-            """Handle tool calls."""
-            try:
-                if name == "get_file_description":
-                    result = await self._handle_get_file_description(arguments)
-                elif name == "update_file_description":
-                    result = await self._handle_update_file_description(arguments)
-                elif name == "check_codebase_size":
-                    result = await self._handle_check_codebase_size(arguments)
-                elif name == "find_missing_descriptions":
-                    result = await self._handle_find_missing_descriptions(arguments)
-                elif name == "update_missing_descriptions":
-                    result = await self._handle_update_missing_descriptions(arguments)
-                elif name == "search_descriptions":
-                    result = await self._handle_search_descriptions(arguments)
-                elif name == "get_codebase_overview":
-                    result = await self._handle_get_codebase_overview(arguments)
-                else:
-                    raise ValueError(f"Unknown tool: {name}")
-                
-                return [types.TextContent(
-                    type="text",
-                    text=json.dumps(result, indent=2, default=str)
-                )]
-                
-            except Exception as e:
-                logger.error(f"Error handling tool {name}: {e}")
-                error_result = {
-                    "error": str(e),
-                    "tool": name,
-                    "arguments": arguments
-                }
-                return [types.TextContent(
-                    type="text", 
-                    text=json.dumps(error_result, indent=2)
-                )]
+            """Handle tool calls with middleware."""
+            # Map tool names to handler methods
+            tool_handlers = {
+                "get_file_description": self._handle_get_file_description,
+                "update_file_description": self._handle_update_file_description,
+                "check_codebase_size": self._handle_check_codebase_size,
+                "find_missing_descriptions": self._handle_find_missing_descriptions,
+                "update_missing_descriptions": self._handle_update_missing_descriptions,
+                "search_descriptions": self._handle_search_descriptions,
+                "get_codebase_overview": self._handle_get_codebase_overview,
+            }
+            
+            if name not in tool_handlers:
+                from ..error_handler import ValidationError
+                raise ValidationError(f"Unknown tool: {name}")
+            
+            # Wrap handler with middleware
+            wrapped_handler = self.middleware.wrap_tool_handler(name)(
+                lambda args: self._execute_tool_handler(tool_handlers[name], args)
+            )
+            
+            return await wrapped_handler(arguments)
+    
+    async def _execute_tool_handler(self, handler, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        """Execute a tool handler and format the result."""
+        result = await handler(arguments)
+        
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, default=str)
+        )]
     
     async def _get_or_create_project_id(self, arguments: Dict[str, Any]) -> str:
         """Get or create a project ID from tool arguments."""
@@ -564,10 +572,16 @@ class MCPCodeIndexServer:
     async def shutdown(self) -> None:
         """Clean shutdown of server resources."""
         try:
+            # Cancel any running tasks
+            self.task_manager.cancel_all()
+            
+            # Close database connections
             await self.db_manager.close_pool()
-            logger.info("Database connections closed")
+            
+            self.logger.info("Server shutdown completed successfully")
+            
         except Exception as e:
-            logger.error(f"Error during shutdown: {e}")
+            self.error_handler.log_error(e, context={"phase": "shutdown"})
 
 
 async def main():
