@@ -338,7 +338,7 @@ class FileScanner:
         Get statistics about the project directory.
         
         Returns:
-            Dictionary with project statistics
+            Dictionary with project statistics for trackable files only
         """
         stats = {
             'total_files': 0,
@@ -349,8 +349,17 @@ class FileScanner:
         }
         
         try:
+            all_files_count = 0
             for file_path in self._walk_directory():
-                stats['total_files'] += 1
+                all_files_count += 1
+                
+                # Check if trackable first
+                if self.should_ignore_file(file_path):
+                    stats['ignored_files'] += 1
+                    continue
+                
+                # Only process trackable files for detailed stats
+                stats['trackable_files'] += 1
                 
                 # Track file size
                 try:
@@ -359,15 +368,12 @@ class FileScanner:
                 except OSError:
                     pass
                 
-                # Track extensions
+                # Track extensions for trackable files only
                 ext = file_path.suffix.lower()
                 stats['file_extensions'][ext] = stats['file_extensions'].get(ext, 0) + 1
-                
-                # Check if trackable
-                if self.should_ignore_file(file_path):
-                    stats['ignored_files'] += 1
-                else:
-                    stats['trackable_files'] += 1
+            
+            # Total files is just trackable files
+            stats['total_files'] = stats['trackable_files']
         
         except Exception as e:
             logger.error(f"Error getting project stats: {e}")
