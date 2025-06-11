@@ -132,6 +132,7 @@ The server provides **8 powerful MCP tools** for intelligent codebase management
 ### Production Ready
 - **Comprehensive error handling** with structured JSON logging
 - **Async-first design** with proper resource cleanup
+- **MCP protocol compliant** with clean stdio streams
 - **Upstream inheritance** for fork workflows
 - **Git integration** with .gitignore support
 

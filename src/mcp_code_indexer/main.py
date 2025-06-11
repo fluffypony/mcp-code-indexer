@@ -84,7 +84,7 @@ async def main() -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
     
-    # Log startup information
+    # Log startup information to stderr (stdout reserved for MCP JSON-RPC)
     logger.info("Starting MCP Code Index Server", extra={
         "structured_data": {
             "startup": {
@@ -119,9 +119,12 @@ def cli_main():
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nServer stopped by user")
+        # For MCP servers, we should avoid stdout completely
+        # The server will log shutdown through stderr
+        pass
     except Exception as e:
-        print(f"Server failed to start: {e}")
+        # Log critical errors to stderr, not stdout
+        print(f"Server failed to start: {e}", file=sys.stderr)
         sys.exit(1)
 
 
