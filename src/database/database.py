@@ -31,41 +31,85 @@ class DatabaseManager:
     and caching with proper transaction management and error handling.
     """
     
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, pool_size: int = 5):
         """Initialize database manager with path to SQLite database."""
         self.db_path = db_path
+        self.pool_size = pool_size
         self._connection_pool: List[aiosqlite.Connection] = []
+        self._pool_lock = None  # Will be initialized in async context
         
     async def initialize(self) -> None:
         """Initialize database schema and configuration."""
+        import asyncio
+        
+        # Initialize pool lock
+        self._pool_lock = asyncio.Lock()
+        
         # Ensure database directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Read and execute migration SQL
-        migration_path = Path(__file__).parent.parent.parent / "migrations" / "001_initial.sql"
+        # Apply migrations in order
+        migrations_dir = Path(__file__).parent.parent.parent / "migrations"
+        migration_files = sorted(migrations_dir.glob("*.sql"))
         
         async with aiosqlite.connect(self.db_path) as db:
             # Enable row factory for easier data access
             db.row_factory = aiosqlite.Row
             
-            # Execute migration
-            with open(migration_path, 'r') as f:
-                migration_sql = f.read()
+            # Apply each migration
+            for migration_file in migration_files:
+                logger.info(f"Applying migration: {migration_file.name}")
+                with open(migration_file, 'r') as f:
+                    migration_sql = f.read()
+                
+                await db.executescript(migration_sql)
+                await db.commit()
             
-            await db.executescript(migration_sql)
-            await db.commit()
-            
-        logger.info(f"Database initialized at {self.db_path}")
+        logger.info(f"Database initialized at {self.db_path} with {len(migration_files)} migrations")
     
     @asynccontextmanager
     async def get_connection(self) -> AsyncIterator[aiosqlite.Connection]:
-        """Get a database connection with proper resource management."""
-        conn = await aiosqlite.connect(self.db_path)
-        conn.row_factory = aiosqlite.Row
+        """Get a database connection from pool or create new one."""
+        conn = None
+        
+        # Try to get from pool
+        if self._pool_lock:
+            async with self._pool_lock:
+                if self._connection_pool:
+                    conn = self._connection_pool.pop()
+        
+        # Create new connection if none available
+        if conn is None:
+            conn = await aiosqlite.connect(self.db_path)
+            conn.row_factory = aiosqlite.Row
+            
+            # Apply performance settings to new connections
+            await conn.execute("PRAGMA busy_timeout = 30000")  # 30 second timeout
+            await conn.execute("PRAGMA synchronous = NORMAL")   # Balanced durability/performance
+            await conn.execute("PRAGMA cache_size = -64000")    # 64MB cache
+            await conn.execute("PRAGMA temp_store = MEMORY")    # Use memory for temp tables
+        
         try:
             yield conn
         finally:
-            await conn.close()
+            # Return to pool if pool not full, otherwise close
+            returned_to_pool = False
+            if self._pool_lock and len(self._connection_pool) < self.pool_size:
+                async with self._pool_lock:
+                    if len(self._connection_pool) < self.pool_size:
+                        self._connection_pool.append(conn)
+                        returned_to_pool = True
+            
+            if not returned_to_pool:
+                await conn.close()
+    
+    async def close_pool(self) -> None:
+        """Close all connections in the pool."""
+        if self._pool_lock:
+            async with self._pool_lock:
+                for conn in self._connection_pool:
+                    await conn.close()
+                self._connection_pool.clear()
     
     # Project operations
     

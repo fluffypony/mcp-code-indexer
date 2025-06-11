@@ -549,13 +549,25 @@ class MCPCodeIndexServer:
         """Run the MCP server."""
         await self.initialize()
         
-        async with stdio_server() as (read_stream, write_stream):
-            initialization_options = self.server.create_initialization_options()
-            await self.server.run(
-                read_stream,
-                write_stream, 
-                initialization_options
-            )
+        try:
+            async with stdio_server() as (read_stream, write_stream):
+                initialization_options = self.server.create_initialization_options()
+                await self.server.run(
+                    read_stream,
+                    write_stream, 
+                    initialization_options
+                )
+        finally:
+            # Clean shutdown
+            await self.shutdown()
+    
+    async def shutdown(self) -> None:
+        """Clean shutdown of server resources."""
+        try:
+            await self.db_manager.close_pool()
+            logger.info("Database connections closed")
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
 
 
 async def main():
