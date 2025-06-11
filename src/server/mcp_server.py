@@ -27,6 +27,7 @@ from ..database.models import (
 from ..error_handler import setup_error_handling, ErrorHandler
 from ..middleware.error_middleware import create_tool_middleware, AsyncTaskManager
 from ..logging_config import get_logger
+from ..merge_handler import MergeHandler
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class MCPCodeIndexServer:
         # Initialize components
         self.db_manager = DatabaseManager(self.db_path)
         self.token_counter = TokenCounter(token_limit)
+        self.merge_handler = MergeHandler(self.db_manager)
         
         # Setup error handling
         self.logger = get_logger(__name__)
@@ -230,6 +232,34 @@ class MCPCodeIndexServer:
                         },
                         "required": ["projectName", "folderPath", "branch"]
                     }
+                ),
+                types.Tool(
+                    name="merge_branch_descriptions",
+                    description="Merges file descriptions from one branch to another. This is a two-stage process: first call without resolutions returns conflicts where the same file has different descriptions in each branch. Second call with resolutions completes the merge.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder"},
+                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL"},
+                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "sourceBranch": {"type": "string", "description": "Branch to merge from (e.g., 'feature/new-ui')"},
+                            "targetBranch": {"type": "string", "description": "Branch to merge into (e.g., 'main')"},
+                            "conflictResolutions": {
+                                "type": ["array", "null"],
+                                "description": "Array of resolved conflicts (only for second stage)",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "conflictId": {"type": "string", "description": "ID of the conflict to resolve"},
+                                        "resolvedDescription": {"type": "string", "description": "Final description to use after merge"}
+                                    },
+                                    "required": ["conflictId", "resolvedDescription"]
+                                }
+                            }
+                        },
+                        "required": ["projectName", "folderPath", "sourceBranch", "targetBranch"]
+                    }
                 )
             ]
         
@@ -245,6 +275,7 @@ class MCPCodeIndexServer:
                 "update_missing_descriptions": self._handle_update_missing_descriptions,
                 "search_descriptions": self._handle_search_descriptions,
                 "get_codebase_overview": self._handle_get_codebase_overview,
+                "merge_branch_descriptions": self._handle_merge_branch_descriptions,
             }
             
             if name not in tool_handlers:
@@ -552,6 +583,70 @@ class MCPCodeIndexServer:
             }
         
         return convert_structure(root)
+    
+    async def _handle_merge_branch_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle merge_branch_descriptions tool calls."""
+        project_id = await self._get_or_create_project_id(arguments)
+        source_branch = arguments["sourceBranch"]
+        target_branch = arguments["targetBranch"]
+        conflict_resolutions = arguments.get("conflictResolutions")
+        
+        if conflict_resolutions is None:
+            # Phase 1: Detect conflicts
+            session = await self.merge_handler.start_merge_phase1(
+                project_id, source_branch, target_branch
+            )
+            
+            if session.get_conflict_count() == 0:
+                # No conflicts, can merge immediately
+                return {
+                    "phase": "completed",
+                    "conflicts": [],
+                    "message": f"No conflicts detected. Merge from {source_branch} to {target_branch} can proceed automatically.",
+                    "sourceBranch": source_branch,
+                    "targetBranch": target_branch,
+                    "conflictCount": 0
+                }
+            else:
+                # Return conflicts for resolution
+                return {
+                    "phase": "conflicts_detected",
+                    "sessionId": session.session_id,
+                    "conflicts": [conflict.to_dict() for conflict in session.conflicts],
+                    "conflictCount": session.get_conflict_count(),
+                    "sourceBranch": source_branch,
+                    "targetBranch": target_branch,
+                    "message": f"Found {session.get_conflict_count()} conflicts that need resolution."
+                }
+        else:
+            # Phase 2: Apply resolutions
+            # Find the session ID from conflict resolutions
+            if not conflict_resolutions:
+                from ..error_handler import ValidationError
+                raise ValidationError("Conflict resolutions required for phase 2")
+            
+            # For simplicity, create a new session and resolve immediately
+            # In a production system, you'd want to track session IDs properly
+            session = await self.merge_handler.start_merge_phase1(
+                project_id, source_branch, target_branch
+            )
+            
+            if session.get_conflict_count() == 0:
+                return {
+                    "phase": "completed",
+                    "message": "No conflicts to resolve",
+                    "sourceBranch": source_branch,
+                    "targetBranch": target_branch
+                }
+            
+            result = await self.merge_handler.complete_merge_phase2(
+                session.session_id, conflict_resolutions
+            )
+            
+            return {
+                "phase": "completed",
+                **result
+            }
     
     async def run(self) -> None:
         """Run the MCP server."""

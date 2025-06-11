@@ -51,12 +51,15 @@ class MergeConflict(BaseModel):
     Used during branch merging when the same file has different descriptions
     in source and target branches.
     """
+    id: Optional[int] = Field(None, description="Database ID")
+    project_id: str = Field(..., description="Project identifier")
     file_path: str = Field(..., description="Path to conflicted file")
     source_branch: str = Field(..., description="Branch being merged from")
     target_branch: str = Field(..., description="Branch being merged into")
     source_description: str = Field(..., description="Description from source branch")
     target_description: str = Field(..., description="Description from target branch")
     resolution: Optional[str] = Field(None, description="AI-provided resolution")
+    created: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
 
 
 class CodebaseOverview(BaseModel):
