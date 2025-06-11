@@ -310,8 +310,10 @@ class MCPCodeIndexServer:
         folder_path = arguments["folderPath"]
         branch = arguments.get("branch", "main")
         
-        # Create project ID from identifiers
-        id_source = f"{project_name}:{remote_origin}:{upstream_origin}:{folder_path}"
+        # Create project ID from identifiers (normalize None values for consistent hashing)
+        remote_key = remote_origin or ""
+        upstream_key = upstream_origin or ""
+        id_source = f"{project_name}:{remote_key}:{upstream_key}:{folder_path}"
         project_id = hashlib.sha256(id_source.encode()).hexdigest()[:16]
         
         # Check if project exists, create if not
