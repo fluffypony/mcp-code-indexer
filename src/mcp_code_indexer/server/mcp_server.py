@@ -9,9 +9,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from mcp import types
 from mcp.server import Server
@@ -276,26 +277,48 @@ class MCPCodeIndexServer:
         )]
     
     async def _get_or_create_project_id(self, arguments: Dict[str, Any]) -> str:
-        """Get or create a project ID from tool arguments."""
+        """
+        Get or create a project ID using intelligent matching.
+        
+        Matches projects based on 2+ out of 4 identification factors:
+        1. Project name (normalized, case-insensitive)
+        2. Remote origin URL
+        3. Upstream origin URL  
+        4. Any folder path in aliases
+        
+        If only 1 factor matches, uses file similarity to determine if it's the same project.
+        """
         project_name = arguments["projectName"]
         remote_origin = arguments.get("remoteOrigin")
         upstream_origin = arguments.get("upstreamOrigin")
         folder_path = arguments["folderPath"]
         branch = arguments.get("branch", "main")
         
-        # Create project ID from stable identifiers only (name + folder path)
-        # Normalize project name to lowercase for case-insensitive matching
-        # This ensures consistent project IDs regardless of case variations
+        # Normalize project name for case-insensitive matching
         normalized_name = project_name.lower()
-        id_source = f"{normalized_name}:{folder_path}"
-        project_id = hashlib.sha256(id_source.encode()).hexdigest()[:16]
         
-        # Check if project exists, create if not
-        project = await self.db_manager.get_project(project_id)
-        if not project:
+        # Find potential project matches
+        project = await self._find_matching_project(
+            normalized_name, remote_origin, upstream_origin, folder_path
+        )
+        if project:
+            # Update project metadata and aliases
+            await self._update_existing_project(project, normalized_name, remote_origin, upstream_origin, folder_path)
+            
+            # Check if upstream inheritance is needed
+            if upstream_origin and await self.db_manager.check_upstream_inheritance_needed(project):
+                try:
+                    inherited_count = await self.db_manager.inherit_from_upstream(project, branch)
+                    if inherited_count > 0:
+                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {normalized_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to inherit from upstream: {e}")
+        else:
+            # Create new project with UUID
+            project_id = str(uuid.uuid4())
             project = Project(
                 id=project_id,
-                name=normalized_name,  # Store normalized name for consistency
+                name=normalized_name,
                 remote_origin=remote_origin,
                 upstream_origin=upstream_origin,
                 aliases=[folder_path],
@@ -303,42 +326,152 @@ class MCPCodeIndexServer:
                 last_accessed=datetime.utcnow()
             )
             await self.db_manager.create_project(project)
+            logger.info(f"Created new project: {normalized_name} ({project_id})")
             
             # Auto-inherit from upstream if needed
             if upstream_origin:
                 try:
                     inherited_count = await self.db_manager.inherit_from_upstream(project, branch)
                     if inherited_count > 0:
-                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {project_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to inherit from upstream: {e}")
-        else:
-            # Update last accessed time
-            await self.db_manager.update_project_access_time(project_id)
-            
-            # Update remote/upstream origins if provided and different from existing
-            should_update = False
-            if remote_origin and project.remote_origin != remote_origin:
-                project.remote_origin = remote_origin
-                should_update = True
-            if upstream_origin and project.upstream_origin != upstream_origin:
-                project.upstream_origin = upstream_origin
-                should_update = True
-            
-            if should_update:
-                await self.db_manager.update_project(project)
-                logger.debug(f"Updated project metadata for {project_name}")
-            
-            # Check if upstream inheritance is needed for existing project
-            if upstream_origin and await self.db_manager.check_upstream_inheritance_needed(project):
-                try:
-                    inherited_count = await self.db_manager.inherit_from_upstream(project, branch)
-                    if inherited_count > 0:
-                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {project_name}")
+                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {normalized_name}")
                 except Exception as e:
                     logger.warning(f"Failed to inherit from upstream: {e}")
         
-        return project_id
+        return project.id
+    
+    async def _find_matching_project(
+        self, 
+        normalized_name: str, 
+        remote_origin: Optional[str], 
+        upstream_origin: Optional[str], 
+        folder_path: str
+    ) -> Optional[Project]:
+        """
+        Find a matching project using intelligent 2-out-of-4 matching logic.
+        
+        Returns the best matching project or None if no sufficient match is found.
+        """
+        all_projects = await self.db_manager.get_all_projects()
+        
+        best_match = None
+        best_score = 0
+        
+        for project in all_projects:
+            score = 0
+            match_factors = []
+            
+            # Factor 1: Project name match
+            if project.name.lower() == normalized_name:
+                score += 1
+                match_factors.append("name")
+            
+            # Factor 2: Remote origin match
+            if remote_origin and project.remote_origin == remote_origin:
+                score += 1
+                match_factors.append("remote_origin")
+                
+            # Factor 3: Upstream origin match  
+            if upstream_origin and project.upstream_origin == upstream_origin:
+                score += 1
+                match_factors.append("upstream_origin")
+                
+            # Factor 4: Folder path in aliases
+            project_aliases = json.loads(project.aliases) if isinstance(project.aliases, str) else project.aliases
+            if folder_path in project_aliases:
+                score += 1
+                match_factors.append("folder_path")
+            
+            # If we have 2+ matches, this is a strong candidate
+            if score >= 2:
+                if score > best_score:
+                    best_score = score
+                    best_match = project
+                    logger.info(f"Strong match for project {project.name} (score: {score}, factors: {match_factors})")
+            
+            # If only 1 match, check file similarity for potential matches
+            elif score == 1:
+                if await self._check_file_similarity(project, folder_path):
+                    logger.info(f"File similarity match for project {project.name} (factor: {match_factors[0]})")
+                    if score > best_score:
+                        best_score = score
+                        best_match = project
+        
+        return best_match
+    
+    async def _check_file_similarity(self, project: Project, folder_path: str) -> bool:
+        """
+        Check if the files in the folder are similar to files already indexed for this project.
+        Returns True if 80%+ of files match.
+        """
+        try:
+            # Get files currently in the folder
+            scanner = FileScanner(Path(folder_path))
+            if not scanner.is_valid_project_directory():
+                return False
+            
+            current_files = scanner.scan_files()
+            current_basenames = {Path(f).name for f in current_files}
+            
+            if not current_basenames:
+                return False
+            
+            # Get files already indexed for this project
+            indexed_files = await self.db_manager.get_all_file_descriptions(project.id, "main")
+            indexed_basenames = {Path(fd.file_path).name for fd in indexed_files}
+            
+            if not indexed_basenames:
+                return False
+            
+            # Calculate similarity
+            intersection = current_basenames & indexed_basenames
+            similarity = len(intersection) / len(current_basenames)
+            
+            logger.debug(f"File similarity for {project.name}: {similarity:.2%} ({len(intersection)}/{len(current_basenames)} files match)")
+            
+            return similarity >= 0.8
+        except Exception as e:
+            logger.warning(f"Error checking file similarity: {e}")
+            return False
+    
+    async def _update_existing_project(
+        self, 
+        project: Project, 
+        normalized_name: str,
+        remote_origin: Optional[str], 
+        upstream_origin: Optional[str], 
+        folder_path: str
+    ) -> None:
+        """Update an existing project with new metadata and folder alias."""
+        # Update last accessed time
+        await self.db_manager.update_project_access_time(project.id)
+        
+        should_update = False
+        
+        # Update name if different
+        if project.name != normalized_name:
+            project.name = normalized_name
+            should_update = True
+            
+        # Update remote/upstream origins if provided and different
+        if remote_origin and project.remote_origin != remote_origin:
+            project.remote_origin = remote_origin
+            should_update = True
+            
+        if upstream_origin and project.upstream_origin != upstream_origin:
+            project.upstream_origin = upstream_origin
+            should_update = True
+        
+        # Add folder path to aliases if not already present
+        project_aliases = json.loads(project.aliases) if isinstance(project.aliases, str) else project.aliases
+        if folder_path not in project_aliases:
+            project_aliases.append(folder_path)
+            project.aliases = project_aliases
+            should_update = True
+            logger.info(f"Added new folder alias to project {project.name}: {folder_path}")
+        
+        if should_update:
+            await self.db_manager.update_project(project)
+            logger.debug(f"Updated project metadata for {project.name}")
     
     async def _handle_get_file_description(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_file_description tool calls."""

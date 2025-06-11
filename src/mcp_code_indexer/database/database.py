@@ -210,6 +210,30 @@ class DatabaseManager:
             await db.commit()
             logger.debug(f"Updated project: {project.id}")
     
+    async def get_all_projects(self) -> List[Project]:
+        """Get all projects in the database."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT id, name, remote_origin, upstream_origin, aliases, created, last_accessed FROM projects"
+            )
+            rows = await cursor.fetchall()
+            
+            projects = []
+            for row in rows:
+                aliases = json.loads(row[4]) if row[4] else []
+                project = Project(
+                    id=row[0],
+                    name=row[1],
+                    remote_origin=row[2],
+                    upstream_origin=row[3],
+                    aliases=aliases,
+                    created=row[5],
+                    last_accessed=row[6]
+                )
+                projects.append(project)
+            
+            return projects
+    
     # File description operations
     
     async def create_file_description(self, file_desc: FileDescription) -> None:
