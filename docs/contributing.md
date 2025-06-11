@@ -641,9 +641,8 @@ def sanitize_error_for_client(error: Exception) -> str:
 **Contributors are recognized through**:
 - GitHub contributors list
 - Release notes acknowledgments
-- Discord community highlights
-- Optional LinkedIn recommendations for significant contributions
+- Project documentation mentions
 
-**Questions?** Join our **[Discord community](https://discord.gg/mcp-tools)** for development discussions and support!
+**Questions?** Open an issue on GitHub for development discussions and support!
 
 Thank you for contributing to the MCP Code Indexer! Your help makes this tool better for the entire AI development community. 🚀

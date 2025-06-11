@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Any, Tuple, AsyncIterator
 
 import aiosqlite
 
-from .models import (
+from mcp_code_indexer.database.models import (
     Project, FileDescription, MergeConflict, SearchResult,
     CodebaseSizeInfo
 )

@@ -1,5 +1,9 @@
 # MCP Code Indexer 🚀
 
+[![PyPI version](https://badge.fury.io/py/mcp-code-indexer.svg)](https://badge.fury.io/py/mcp-code-indexer)
+[![Python](https://img.shields.io/pypi/pyversions/mcp-code-indexer.svg)](https://pypi.org/project/mcp-code-indexer/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 A production-ready **Model Context Protocol (MCP) server** that provides intelligent codebase navigation for AI agents through searchable file descriptions, token-aware overviews, and advanced merge capabilities.
 
 ## 🎯 What It Does
@@ -16,20 +20,31 @@ Perfect for AI-powered code review, refactoring tools, documentation generation,
 
 ## ⚡ Quick Start
 
+### Install from PyPI
+
+```bash
+# Install the package
+pip install mcp-code-indexer
+
+# Run the server
+mcp-code-indexer --token-limit 32000
+
+# Check version
+mcp-code-indexer --version
+```
+
+### Install from Source
+
 ```bash
 # Clone and setup
 git clone https://github.com/your-username/mcp-code-indexer.git
 cd mcp-code-indexer
 
-# Install dependencies
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+# Install in development mode
+pip install -e .
 
 # Run the server
-python main.py --token-limit 32000
-
-# The server is now ready to accept MCP tool calls!
+mcp-code-indexer --token-limit 32000
 ```
 
 ## 🛠️ MCP Tools Available
@@ -98,7 +113,7 @@ Tested with codebases up to **10,000 files**:
 
 ```bash
 # Production setup with custom limits
-python main.py \
+mcp-code-indexer \
   --token-limit 50000 \
   --db-path /data/mcp-index.db \
   --cache-dir /tmp/mcp-cache \
@@ -106,7 +121,7 @@ python main.py \
 
 # Enable structured logging
 export MCP_LOG_FORMAT=json
-python main.py
+mcp-code-indexer
 ```
 
 ## 🤝 Integration Examples
@@ -167,6 +182,9 @@ async def analyze_codebase(project_path):
 ## 🧪 Testing
 
 ```bash
+# Install with test dependencies
+pip install mcp-code-indexer[test]
+
 # Run full test suite
 python -m pytest tests/ -v
 
@@ -209,8 +227,8 @@ The server provides structured JSON logs for monitoring:
 ## 🚀 Next Steps
 
 1. **[Read the API docs](docs/api-reference.md)** to understand available tools
-2. **[Check the examples](examples/)** for integration patterns
-3. **[Join our Discord](https://discord.gg/mcp-tools)** for community support
+2. **[Check the configuration guide](docs/configuration.md)** for advanced setup
+3. **[Review the architecture](docs/architecture.md)** for technical details  
 4. **[Contribute](docs/contributing.md)** to help improve the project
 
 ## 🤝 Contributing
@@ -234,4 +252,4 @@ MIT License - see **[LICENSE](LICENSE)** for details.
 
 ---
 
-**Ready to supercharge your AI agents with intelligent codebase navigation?** 🚀 [Get started now](#-quick-start) or [explore the API docs](docs/api-reference.md)!
+**Ready to supercharge your AI agents with intelligent codebase navigation?** 🚀 [Install from PyPI](#install-from-pypi) or [explore the API docs](docs/api-reference.md)!

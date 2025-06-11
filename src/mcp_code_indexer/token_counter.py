@@ -14,7 +14,7 @@ from typing import List, Optional
 
 import tiktoken
 
-from .database.models import FileDescription, FolderNode
+from mcp_code_indexer.database.models import FileDescription, FolderNode
 
 logger = logging.getLogger(__name__)
 

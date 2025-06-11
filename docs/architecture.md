@@ -570,4 +570,4 @@ class MCPCodeIndexServer:
 - Check [Configuration Guide](configuration.md) for deployment options
 - Review [Contributing Guide](contributing.md) for development practices
 
-Questions about the architecture? Join our **[Discord community](https://discord.gg/mcp-tools)** for technical discussions! 🚀
+Questions about the architecture? Check the [Configuration Guide](configuration.md) for deployment options or the [Contributing Guide](contributing.md) for development practices! 🚀

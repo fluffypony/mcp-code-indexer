@@ -12,8 +12,8 @@ from typing import Any, Callable, Dict, List
 
 from mcp import types
 
-from ..error_handler import ErrorHandler, MCPError
-from ..logging_config import get_logger, log_tool_usage, log_performance_metrics
+from mcp_code_indexer.error_handler import ErrorHandler, MCPError
+from mcp_code_indexer.logging_config import get_logger, log_tool_usage, log_performance_metrics
 
 logger = get_logger(__name__)
 

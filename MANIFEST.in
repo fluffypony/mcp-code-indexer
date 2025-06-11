@@ -1,0 +1,12 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include requirements.txt
+recursive-include src/mcp_code_indexer/tiktoken_cache *
+recursive-include migrations *.sql
+recursive-include docs *.md
+recursive-exclude tests *
+recursive-exclude venv *
+recursive-exclude .git *
+global-exclude *.pyc
+global-exclude __pycache__

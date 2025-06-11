@@ -17,7 +17,7 @@ Complete guide to configuring and tuning the MCP Code Indexer for optimal perfor
 The server accepts several command-line arguments for basic configuration:
 
 ```bash
-python main.py [OPTIONS]
+mcp-code-indexer [OPTIONS]
 ```
 
 ### Available Options
@@ -33,17 +33,17 @@ python main.py [OPTIONS]
 
 ```bash
 # Development setup with debug logging
-python main.py --log-level DEBUG --token-limit 10000
+mcp-code-indexer --log-level DEBUG --token-limit 10000
 
 # Production setup with custom paths
-python main.py \
+mcp-code-indexer \
   --token-limit 50000 \
   --db-path /data/mcp-indexer/database.db \
   --cache-dir /tmp/mcp-cache \
   --log-level WARNING
 
 # High-capacity server for large enterprises
-python main.py \
+mcp-code-indexer \
   --token-limit 100000 \
   --db-path /mnt/ssd/mcp-database.db \
   --cache-dir /mnt/fast-cache/mcp
@@ -357,7 +357,7 @@ User=mcp-indexer
 Group=mcp-indexer
 WorkingDirectory=/opt/mcp-code-indexer
 Environment=PYTHONPATH=/opt/mcp-code-indexer
-ExecStart=/opt/mcp-code-indexer/venv/bin/python main.py \
+ExecStart=/opt/mcp-code-indexer/venv/bin/mcp-code-indexer \
   --token-limit 50000 \
   --db-path /data/mcp-indexer/database.db \
   --cache-dir /var/cache/mcp-indexer \
@@ -420,7 +420,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD python -c "import asyncio; from src.database.database import DatabaseManager; asyncio.run(DatabaseManager('/data/database.db').initialize())"
 
 # Run the application
-CMD ["python", "main.py", "--token-limit", "50000", "--db-path", "/data/database.db"]
+CMD ["mcp-code-indexer", "--token-limit", "50000", "--db-path", "/data/database.db"]
 ```
 
 ### Docker Compose
@@ -559,4 +559,4 @@ done
 - Review [API Reference](api-reference.md) for tool usage patterns
 - Explore [Contributing Guide](contributing.md) for development setup
 
-Need help with configuration? Join our **[Discord community](https://discord.gg/mcp-tools)** for support! 🚀
+Need help with configuration? Check the [API Reference](api-reference.md) for tool-specific details or review the [Architecture Overview](architecture.md) for system design! 🚀

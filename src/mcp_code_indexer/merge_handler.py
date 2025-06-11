@@ -10,10 +10,10 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from .database.database import DatabaseManager
-from .database.models import FileDescription
-from .error_handler import ValidationError, DatabaseError
-from .logging_config import get_logger
+from mcp_code_indexer.database.database import DatabaseManager
+from mcp_code_indexer.database.models import FileDescription
+from mcp_code_indexer.error_handler import ValidationError, DatabaseError
+from mcp_code_indexer.logging_config import get_logger
 
 logger = get_logger(__name__)
 

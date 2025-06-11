@@ -17,17 +17,17 @@ from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from ..database.database import DatabaseManager
-from ..file_scanner import FileScanner
-from ..token_counter import TokenCounter
-from ..database.models import (
+from mcp_code_indexer.database.database import DatabaseManager
+from mcp_code_indexer.file_scanner import FileScanner
+from mcp_code_indexer.token_counter import TokenCounter
+from mcp_code_indexer.database.models import (
     Project, FileDescription, CodebaseOverview, SearchResult,
     CodebaseSizeInfo, FolderNode, FileNode
 )
-from ..error_handler import setup_error_handling, ErrorHandler
-from ..middleware.error_middleware import create_tool_middleware, AsyncTaskManager
-from ..logging_config import get_logger
-from ..merge_handler import MergeHandler
+from mcp_code_indexer.error_handler import setup_error_handling, ErrorHandler
+from mcp_code_indexer.middleware.error_middleware import create_tool_middleware, AsyncTaskManager
+from mcp_code_indexer.logging_config import get_logger
+from mcp_code_indexer.merge_handler import MergeHandler
 
 logger = logging.getLogger(__name__)
 

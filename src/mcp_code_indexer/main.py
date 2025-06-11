@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-MCP Code Indexer Server Entry Point
+MCP Code Indexer Package Main Module
 
-This script initializes and runs the MCP code indexer server with configurable
-options for token limits, database paths, and cache directories.
+Entry point for the mcp-code-indexer package when installed via pip.
 """
 
 import argparse
@@ -12,9 +11,9 @@ import logging
 import sys
 from pathlib import Path
 
-from src.mcp_code_indexer import __version__
-from src.mcp_code_indexer.logging_config import setup_logging
-from src.mcp_code_indexer.error_handler import setup_error_handling
+from . import __version__
+from .logging_config import setup_logging
+from .error_handler import setup_error_handling
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -89,6 +88,7 @@ async def main() -> None:
     logger.info("Starting MCP Code Index Server", extra={
         "structured_data": {
             "startup": {
+                "version": __version__,
                 "token_limit": args.token_limit,
                 "db_path": str(db_path),
                 "cache_dir": str(cache_dir),
@@ -99,7 +99,7 @@ async def main() -> None:
     
     try:
         # Import and run the MCP server
-        from src.mcp_code_indexer.server.mcp_server import MCPCodeIndexServer
+        from .server.mcp_server import MCPCodeIndexServer
         
         server = MCPCodeIndexServer(
             token_limit=args.token_limit,
@@ -114,7 +114,8 @@ async def main() -> None:
         raise
 
 
-if __name__ == "__main__":
+def cli_main():
+    """Console script entry point."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
@@ -122,3 +123,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Server failed to start: {e}")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    cli_main()

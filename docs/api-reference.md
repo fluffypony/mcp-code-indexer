@@ -713,4 +713,4 @@ interface ErrorResponse {
 
 ---
 
-**Next Steps**: Check out the [Configuration Guide](configuration.md) for advanced server tuning options, or explore [integration examples](../examples/) to see these tools in action! 🚀
+**Next Steps**: Check out the [Configuration Guide](configuration.md) for advanced server tuning options, or review the [Architecture Overview](architecture.md) for technical implementation details! 🚀
