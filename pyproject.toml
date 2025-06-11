@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-code-indexer"
-version = "1.0.0"
+version = "1.0.1"
 description = "MCP server that tracks file descriptions across codebases, enabling AI agents to efficiently navigate and understand code through searchable summaries and token-aware overviews."
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,7 +29,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -41,9 +41,9 @@ classifiers = [
     "Environment :: Console",
     "Typing :: Typed"
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
-    "tiktoken==0.7.0",
+    "tiktoken>=0.9.0",
     "mcp==1.0.0", 
     "gitignore_parser==0.1.11",
     "pydantic>=2.8.0",
@@ -57,11 +57,11 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.0.0",
-    "black>=23.0.0",
+    "black>=24.0.0",
     "isort>=5.12.0",
-    "flake8>=6.0.0",
-    "mypy>=1.0.0",
-    "pre-commit>=3.0.0"
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.5.0"
 ]
 test = [
     "pytest>=8.0.0",
@@ -91,7 +91,7 @@ mcp_code_indexer = ["tiktoken_cache/*", "*.sql"]
 # Black configuration
 [tool.black]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -118,7 +118,7 @@ known_first_party = ["src", "mcp_code_indexer"]
 
 # MyPy configuration
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
