@@ -189,6 +189,27 @@ class DatabaseManager:
             )
             await db.commit()
     
+    async def update_project(self, project: Project) -> None:
+        """Update an existing project record."""
+        async with self.get_connection() as db:
+            await db.execute(
+                """
+                UPDATE projects 
+                SET name = ?, remote_origin = ?, upstream_origin = ?, aliases = ?, last_accessed = ?
+                WHERE id = ?
+                """,
+                (
+                    project.name,
+                    project.remote_origin,
+                    project.upstream_origin,
+                    json.dumps(project.aliases),
+                    project.last_accessed,
+                    project.id
+                )
+            )
+            await db.commit()
+            logger.debug(f"Updated project: {project.id}")
+    
     # File description operations
     
     async def create_file_description(self, file_desc: FileDescription) -> None:

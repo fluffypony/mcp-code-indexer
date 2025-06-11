@@ -283,10 +283,9 @@ class MCPCodeIndexServer:
         folder_path = arguments["folderPath"]
         branch = arguments.get("branch", "main")
         
-        # Create project ID from identifiers (normalize None values for consistent hashing)
-        remote_key = remote_origin or ""
-        upstream_key = upstream_origin or ""
-        id_source = f"{project_name}:{remote_key}:{upstream_key}:{folder_path}"
+        # Create project ID from stable identifiers only (name + folder path)
+        # This ensures consistent project IDs regardless of whether remote_origin/upstream_origin are provided
+        id_source = f"{project_name}:{folder_path}"
         project_id = hashlib.sha256(id_source.encode()).hexdigest()[:16]
         
         # Check if project exists, create if not
@@ -314,6 +313,19 @@ class MCPCodeIndexServer:
         else:
             # Update last accessed time
             await self.db_manager.update_project_access_time(project_id)
+            
+            # Update remote/upstream origins if provided and different from existing
+            should_update = False
+            if remote_origin and project.remote_origin != remote_origin:
+                project.remote_origin = remote_origin
+                should_update = True
+            if upstream_origin and project.upstream_origin != upstream_origin:
+                project.upstream_origin = upstream_origin
+                should_update = True
+            
+            if should_update:
+                await self.db_manager.update_project(project)
+                logger.debug(f"Updated project metadata for {project_name}")
             
             # Check if upstream inheritance is needed for existing project
             if upstream_origin and await self.db_manager.check_upstream_inheritance_needed(project):
