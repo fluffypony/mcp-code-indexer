@@ -22,7 +22,7 @@ def setup_logging(log_level: str = "INFO") -> None:
         level=getattr(logging, log_level.upper()),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.StreamHandler(sys.stdout)
+            logging.StreamHandler(sys.stderr)
         ]
     )
 
@@ -69,7 +69,7 @@ async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
     
-    # Setup logging
+    # Setup logging to stderr (stdout is used for MCP communication)
     setup_logging(args.log_level)
     logger = logging.getLogger(__name__)
     
@@ -81,20 +81,22 @@ async def main() -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
     
+    # Log to stderr to avoid interfering with MCP communication
     logger.info(f"Starting MCP Code Index Server")
     logger.info(f"Token limit: {args.token_limit}")
     logger.info(f"Database path: {db_path}")
     logger.info(f"Cache directory: {cache_dir}")
     
-    # TODO: Initialize and run server once implemented
-    # server = MCPCodeIndexServer(
-    #     token_limit=args.token_limit,
-    #     db_path=db_path,
-    #     cache_dir=cache_dir
-    # )
-    # await server.run()
+    # Import and run the MCP server
+    from src.server.mcp_server import MCPCodeIndexServer
     
-    logger.info("Server initialization placeholder - implementation needed")
+    server = MCPCodeIndexServer(
+        token_limit=args.token_limit,
+        db_path=db_path,
+        cache_dir=cache_dir
+    )
+    
+    await server.run()
 
 
 if __name__ == "__main__":
