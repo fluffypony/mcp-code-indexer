@@ -159,6 +159,65 @@ class MCPCodeIndexServer:
                         },
                         "required": ["projectName", "folderPath", "branch"]
                     }
+                ),
+                types.Tool(
+                    name="update_missing_descriptions",
+                    description="Batch updates descriptions for multiple files at once. This is stage 2 after find_missing_descriptions.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
+                            "branch": {"type": "string", "description": "Git branch name"},
+                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "descriptions": {
+                                "type": "array",
+                                "description": "Array of file paths and their descriptions",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "filePath": {"type": "string", "description": "Relative path to the file"},
+                                        "description": {"type": "string", "description": "Detailed description of the file"}
+                                    },
+                                    "required": ["filePath", "description"]
+                                }
+                            }
+                        },
+                        "required": ["projectName", "folderPath", "branch", "descriptions"]
+                    }
+                ),
+                types.Tool(
+                    name="search_descriptions",
+                    description="Searches through all file descriptions in a project to find files related to specific functionality. Use this for large codebases instead of loading the entire structure.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
+                            "branch": {"type": "string", "description": "Git branch to search in"},
+                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "query": {"type": "string", "description": "Search query (e.g., 'authentication middleware', 'database models')"},
+                            "maxResults": {"type": "integer", "default": 20, "description": "Maximum number of results to return"}
+                        },
+                        "required": ["projectName", "folderPath", "branch", "query"]
+                    }
+                ),
+                types.Tool(
+                    name="get_codebase_overview",
+                    description="Returns the complete file and folder structure of a codebase with all descriptions. For large codebases, this will recommend using search_descriptions instead.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
+                            "branch": {"type": "string", "description": "Git branch name"},
+                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"}
+                        },
+                        "required": ["projectName", "folderPath", "branch"]
+                    }
                 )
             ]
         
@@ -174,6 +233,12 @@ class MCPCodeIndexServer:
                     result = await self._handle_check_codebase_size(arguments)
                 elif name == "find_missing_descriptions":
                     result = await self._handle_find_missing_descriptions(arguments)
+                elif name == "update_missing_descriptions":
+                    result = await self._handle_update_missing_descriptions(arguments)
+                elif name == "search_descriptions":
+                    result = await self._handle_search_descriptions(arguments)
+                elif name == "get_codebase_overview":
+                    result = await self._handle_get_codebase_overview(arguments)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
                 
@@ -325,6 +390,141 @@ class MCPCodeIndexServer:
             "existingDescriptions": len(existing_paths),
             "projectStats": stats
         }
+    
+    async def _handle_update_missing_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle update_missing_descriptions tool calls."""
+        project_id = await self._get_or_create_project_id(arguments)
+        descriptions_data = arguments["descriptions"]
+        
+        # Create FileDescription objects
+        file_descriptions = []
+        for desc_data in descriptions_data:
+            file_desc = FileDescription(
+                project_id=project_id,
+                branch=arguments["branch"],
+                file_path=desc_data["filePath"],
+                description=desc_data["description"],
+                file_hash=None,  # Hash not provided in batch operations
+                last_modified=datetime.utcnow(),
+                version=1
+            )
+            file_descriptions.append(file_desc)
+        
+        # Batch create descriptions
+        await self.db_manager.batch_create_file_descriptions(file_descriptions)
+        
+        return {
+            "success": True,
+            "updatedFiles": len(file_descriptions),
+            "files": [desc["filePath"] for desc in descriptions_data],
+            "message": f"Successfully updated descriptions for {len(file_descriptions)} files"
+        }
+    
+    async def _handle_search_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle search_descriptions tool calls."""
+        project_id = await self._get_or_create_project_id(arguments)
+        max_results = arguments.get("maxResults", 20)
+        
+        # Perform search
+        search_results = await self.db_manager.search_file_descriptions(
+            project_id=project_id,
+            branch=arguments["branch"],
+            query=arguments["query"],
+            max_results=max_results
+        )
+        
+        # Format results
+        formatted_results = []
+        for result in search_results:
+            formatted_results.append({
+                "filePath": result.file_path,
+                "description": result.description,
+                "relevanceScore": result.relevance_score
+            })
+        
+        return {
+            "results": formatted_results,
+            "totalResults": len(formatted_results),
+            "query": arguments["query"],
+            "maxResults": max_results
+        }
+    
+    async def _handle_get_codebase_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle get_codebase_overview tool calls."""
+        project_id = await self._get_or_create_project_id(arguments)
+        
+        # Get all file descriptions
+        file_descriptions = await self.db_manager.get_all_file_descriptions(
+            project_id=project_id,
+            branch=arguments["branch"]
+        )
+        
+        # Calculate total tokens
+        total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
+        is_large = self.token_counter.is_large_codebase(total_tokens)
+        
+        # If large, recommend search instead
+        if is_large:
+            return {
+                "isLarge": True,
+                "totalTokens": total_tokens,
+                "tokenLimit": self.token_counter.token_limit,
+                "totalFiles": len(file_descriptions),
+                "recommendation": "use_search",
+                "message": f"Codebase has {total_tokens} tokens (limit: {self.token_counter.token_limit}). Use search_descriptions instead for better performance."
+            }
+        
+        # Build folder structure
+        structure = self._build_folder_structure(file_descriptions)
+        
+        return {
+            "projectName": arguments["projectName"],
+            "branch": arguments["branch"],
+            "totalFiles": len(file_descriptions),
+            "totalTokens": total_tokens,
+            "isLarge": is_large,
+            "tokenLimit": self.token_counter.token_limit,
+            "structure": structure
+        }
+    
+    def _build_folder_structure(self, file_descriptions: List[FileDescription]) -> Dict[str, Any]:
+        """Build hierarchical folder structure from file descriptions."""
+        root = {"name": "", "path": "", "files": [], "folders": {}}
+        
+        for file_desc in file_descriptions:
+            path_parts = Path(file_desc.file_path).parts
+            current = root
+            
+            # Navigate/create folder structure
+            for i, part in enumerate(path_parts[:-1]):
+                folder_path = "/".join(path_parts[:i+1])
+                if part not in current["folders"]:
+                    current["folders"][part] = {
+                        "name": part,
+                        "path": folder_path,
+                        "files": [],
+                        "folders": {}
+                    }
+                current = current["folders"][part]
+            
+            # Add file to current folder
+            if path_parts:  # Handle empty paths
+                current["files"].append({
+                    "name": path_parts[-1],
+                    "path": file_desc.file_path,
+                    "description": file_desc.description
+                })
+        
+        # Convert nested dict structure to list format
+        def convert_structure(node):
+            return {
+                "name": node["name"],
+                "path": node["path"],
+                "files": node["files"],
+                "folders": [convert_structure(folder) for folder in node["folders"].values()]
+            }
+        
+        return convert_structure(root)
     
     async def run(self) -> None:
         """Run the MCP server."""
