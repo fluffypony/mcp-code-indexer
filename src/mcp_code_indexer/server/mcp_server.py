@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from pydantic import ValidationError
 
 from mcp_code_indexer.database.database import DatabaseManager
 from mcp_code_indexer.file_scanner import FileScanner
@@ -651,29 +652,70 @@ class MCPCodeIndexServer:
                 **result
             }
     
-    async def run(self) -> None:
-        """Run the MCP server."""
-        logger.info("Starting server initialization...")
-        await self.initialize()
-        logger.info("Server initialization completed, starting MCP protocol...")
+    async def _run_session_with_retry(self, read_stream, write_stream, initialization_options) -> None:
+        """Run a single MCP session with error handling and retry logic."""
+        max_retries = 3
+        base_delay = 1.0  # seconds
         
-        try:
-            async with stdio_server() as (read_stream, write_stream):
-                logger.info("stdio_server context established")
-                initialization_options = self.server.create_initialization_options()
-                logger.debug(f"Initialization options: {initialization_options}")
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(f"Starting MCP server protocol session (attempt {attempt + 1})...")
+                await self.server.run(
+                    read_stream,
+                    write_stream, 
+                    initialization_options
+                )
+                logger.info("MCP server session completed normally")
+                return  # Success, exit retry loop
                 
-                try:
-                    logger.info("Starting MCP server protocol session...")
-                    await self.server.run(
-                        read_stream,
-                        write_stream, 
-                        initialization_options
-                    )
-                    logger.info("MCP server session completed normally")
-                except Exception as e:
-                    # Log the error with full traceback for debugging
-                    import traceback
+            except ValidationError as e:
+                # Handle malformed requests gracefully
+                logger.warning(f"Received malformed request (attempt {attempt + 1}): {e}", extra={
+                    "structured_data": {
+                        "error_type": "ValidationError",
+                        "validation_errors": e.errors() if hasattr(e, 'errors') else str(e),
+                        "attempt": attempt + 1,
+                        "max_retries": max_retries
+                    }
+                })
+                
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    logger.info(f"Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("Max retries exceeded for validation errors. Server will continue but this session failed.")
+                    return
+                    
+            except (ConnectionError, BrokenPipeError, EOFError) as e:
+                # Handle client disconnection gracefully
+                logger.info(f"Client disconnected: {e}")
+                return
+                
+            except Exception as e:
+                # Handle other exceptions with full logging
+                import traceback
+                if "unhandled errors in a TaskGroup" in str(e) and "ValidationError" in str(e):
+                    # This is likely a ValidationError wrapped in a TaskGroup exception
+                    logger.warning(f"Detected wrapped validation error (attempt {attempt + 1}): {e}", extra={
+                        "structured_data": {
+                            "error_type": type(e).__name__, 
+                            "error_message": str(e),
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "likely_validation_error": True
+                        }
+                    })
+                    
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** attempt)
+                        logger.info(f"Retrying in {delay} seconds...")
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error("Max retries exceeded for validation errors. Server will continue but this session failed.")
+                        return
+                else:
+                    # This is a genuine error, log and re-raise
                     logger.error(f"MCP server session error: {e}", extra={
                         "structured_data": {
                             "error_type": type(e).__name__, 
@@ -681,24 +723,75 @@ class MCPCodeIndexServer:
                             "traceback": traceback.format_exc()
                         }
                     })
-                    # Re-raise to let the MCP framework handle protocol-level errors
                     raise
+
+    async def run(self) -> None:
+        """Run the MCP server with robust error handling."""
+        logger.info("Starting server initialization...")
+        await self.initialize()
+        logger.info("Server initialization completed, starting MCP protocol...")
+        
+        max_retries = 5
+        base_delay = 2.0  # seconds
+        
+        for attempt in range(max_retries + 1):
+            try:
+                async with stdio_server() as (read_stream, write_stream):
+                    logger.info(f"stdio_server context established (attempt {attempt + 1})")
+                    initialization_options = self.server.create_initialization_options()
+                    logger.debug(f"Initialization options: {initialization_options}")
                     
-        except KeyboardInterrupt:
-            logger.info("Server stopped by user interrupt")
-        except Exception as e:
-            import traceback
-            logger.error(f"Fatal server error: {e}", extra={
-                "structured_data": {
-                    "error_type": type(e).__name__, 
-                    "error_message": str(e),
-                    "traceback": traceback.format_exc()
-                }
-            })
-            raise
-        finally:
-            # Clean shutdown
-            await self.shutdown()
+                    await self._run_session_with_retry(read_stream, write_stream, initialization_options)
+                    return  # Success, exit retry loop
+                        
+            except KeyboardInterrupt:
+                logger.info("Server stopped by user interrupt")
+                return
+                
+            except Exception as e:
+                import traceback
+                
+                # Check if this is a wrapped validation error
+                error_str = str(e)
+                is_validation_error = (
+                    "ValidationError" in error_str or 
+                    "Field required" in error_str or 
+                    "Input should be" in error_str or
+                    "pydantic_core._pydantic_core.ValidationError" in error_str
+                )
+                
+                if is_validation_error:
+                    logger.warning(f"Detected validation error in session (attempt {attempt + 1}): Malformed client request", extra={
+                        "structured_data": {
+                            "error_type": "ValidationError", 
+                            "error_message": "Client sent malformed request (likely missing clientInfo)",
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "will_retry": attempt < max_retries
+                        }
+                    })
+                    
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** min(attempt, 3))  # Cap exponential growth
+                        logger.info(f"Retrying server in {delay} seconds...")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        logger.warning("Max retries exceeded for validation errors. Server is robust against malformed requests.")
+                        return
+                else:
+                    # This is a genuine fatal error
+                    logger.error(f"Fatal server error: {e}", extra={
+                        "structured_data": {
+                            "error_type": type(e).__name__, 
+                            "error_message": str(e),
+                            "traceback": traceback.format_exc()
+                        }
+                    })
+                    raise
+        
+        # Clean shutdown
+        await self.shutdown()
     
     async def shutdown(self) -> None:
         """Clean shutdown of server resources."""
