@@ -159,7 +159,8 @@ class MCPCodeIndexServer:
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
                             "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"}
+                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "tokenLimit": {"type": "integer", "description": "Optional token limit override (defaults to server configuration)"}
                         },
                         "required": ["projectName", "folderPath", "branch"]
                     }
@@ -584,16 +585,19 @@ class MCPCodeIndexServer:
             branch=resolved_branch
         )
         
+        # Use provided token limit or fall back to server default
+        token_limit = arguments.get("tokenLimit", self.token_limit)
+        
         # Calculate total tokens
         total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
-        is_large = self.token_counter.is_large_codebase(total_tokens)
-        recommendation = self.token_counter.get_recommendation(total_tokens)
+        is_large = total_tokens > token_limit
+        recommendation = "use_search" if is_large else "use_overview"
         
         return {
             "totalTokens": total_tokens,
             "isLarge": is_large,
             "recommendation": recommendation,
-            "tokenLimit": self.token_counter.token_limit,
+            "tokenLimit": token_limit,
             "totalFiles": len(file_descriptions)
         }
     
