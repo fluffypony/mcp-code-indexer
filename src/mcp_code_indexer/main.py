@@ -743,9 +743,6 @@ def generate_project_markdown(project, branch, overview, files, logger):
                 file_name = PathLib(file_desc.file_path).name
                 # Escape pipe characters in descriptions for markdown table
                 description = file_desc.description.replace("|", "\\|").replace("\n", " ").strip()
-                # Truncate very long descriptions
-                if len(description) > 200:
-                    description = description[:197] + "..."
                 markdown_lines.append(f"| `{file_name}` | {description} |")
             
             markdown_lines.append("")
