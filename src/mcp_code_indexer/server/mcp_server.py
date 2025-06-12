@@ -787,18 +787,7 @@ class MCPCodeIndexServer:
         total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
         is_large = self.token_counter.is_large_codebase(total_tokens)
         
-        # If large, recommend search instead
-        if is_large:
-            return {
-                "isLarge": True,
-                "totalTokens": total_tokens,
-                "tokenLimit": self.token_counter.token_limit,
-                "totalFiles": len(file_descriptions),
-                "recommendation": "use_search",
-                "message": f"Codebase has {total_tokens} tokens (limit: {self.token_counter.token_limit}). Use search_descriptions instead for better performance."
-            }
-        
-        # Build folder structure
+        # Always build and return the folder structure - if the AI called this tool, it wants the overview
         structure = self._build_folder_structure(file_descriptions)
         
         return {

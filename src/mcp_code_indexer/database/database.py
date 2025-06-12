@@ -17,7 +17,7 @@ import aiosqlite
 
 from mcp_code_indexer.database.models import (
     Project, FileDescription, MergeConflict, SearchResult,
-    CodebaseSizeInfo
+    CodebaseSizeInfo, ProjectOverview, WordFrequencyResult, WordFrequencyTerm
 )
 
 logger = logging.getLogger(__name__)
@@ -538,3 +538,157 @@ class DatabaseManager:
         # Check if project has any descriptions
         file_count = await self.get_file_count(project.id, "main")
         return file_count == 0
+    
+    # Project Overview operations
+    
+    async def create_project_overview(self, overview: ProjectOverview) -> None:
+        """Create or update a project overview."""
+        async with self.get_connection() as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO project_overviews 
+                (project_id, branch, overview, last_modified, total_files, total_tokens)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    overview.project_id,
+                    overview.branch,
+                    overview.overview,
+                    overview.last_modified,
+                    overview.total_files,
+                    overview.total_tokens
+                )
+            )
+            await db.commit()
+            logger.debug(f"Created/updated overview for project {overview.project_id}, branch {overview.branch}")
+    
+    async def get_project_overview(self, project_id: str, branch: str) -> Optional[ProjectOverview]:
+        """Get project overview by ID and branch."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT * FROM project_overviews WHERE project_id = ? AND branch = ?",
+                (project_id, branch)
+            )
+            row = await cursor.fetchone()
+            
+            if row:
+                return ProjectOverview(
+                    project_id=row['project_id'],
+                    branch=row['branch'],
+                    overview=row['overview'],
+                    last_modified=datetime.fromisoformat(row['last_modified']),
+                    total_files=row['total_files'],
+                    total_tokens=row['total_tokens']
+                )
+            return None
+    
+    async def cleanup_missing_files(self, project_id: str, branch: str, project_root: Path) -> List[str]:
+        """
+        Remove descriptions for files that no longer exist on disk.
+        
+        Args:
+            project_id: Project identifier
+            branch: Branch name
+            project_root: Path to project root directory
+            
+        Returns:
+            List of file paths that were cleaned up
+        """
+        removed_files = []
+        
+        async with self.get_connection() as db:
+            # Get all file descriptions for this project/branch
+            cursor = await db.execute(
+                "SELECT file_path FROM file_descriptions WHERE project_id = ? AND branch = ?",
+                (project_id, branch)
+            )
+            
+            rows = await cursor.fetchall()
+            
+            # Check which files no longer exist
+            to_remove = []
+            for row in rows:
+                file_path = row['file_path']
+                full_path = project_root / file_path
+                
+                if not full_path.exists():
+                    to_remove.append(file_path)
+                    removed_files.append(file_path)
+            
+            # Remove descriptions for missing files
+            if to_remove:
+                await db.executemany(
+                    "DELETE FROM file_descriptions WHERE project_id = ? AND branch = ? AND file_path = ?",
+                    [(project_id, branch, path) for path in to_remove]
+                )
+                await db.commit()
+                logger.info(f"Cleaned up {len(to_remove)} missing files from {project_id}/{branch}")
+        
+        return removed_files
+    
+    async def analyze_word_frequency(self, project_id: str, branch: str, limit: int = 200) -> WordFrequencyResult:
+        """
+        Analyze word frequency across all file descriptions for a project/branch.
+        
+        Args:
+            project_id: Project identifier
+            branch: Branch name
+            limit: Maximum number of top terms to return
+            
+        Returns:
+            WordFrequencyResult with top terms and statistics
+        """
+        from collections import Counter
+        import re
+        
+        # Load stop words from bundled file
+        stop_words_path = Path(__file__).parent.parent / "data" / "stop_words_english.txt"
+        stop_words = set()
+        
+        if stop_words_path.exists():
+            with open(stop_words_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Parse lines like "1: word" and extract just the word
+                    parts = line.strip().split(': ', 1)
+                    if len(parts) == 2:
+                        stop_words.add(parts[1].lower())
+        
+        # Add common programming keywords to stop words
+        programming_keywords = {
+            'if', 'else', 'for', 'while', 'do', 'break', 'continue', 'return',
+            'function', 'class', 'def', 'var', 'let', 'const', 'public', 'private',
+            'static', 'async', 'await', 'import', 'export', 'from', 'true', 'false',
+            'null', 'undefined', 'this', 'that', 'self', 'super', 'new', 'delete'
+        }
+        stop_words.update(programming_keywords)
+        
+        async with self.get_connection() as db:
+            # Get all descriptions for this project/branch
+            cursor = await db.execute(
+                "SELECT description FROM file_descriptions WHERE project_id = ? AND branch = ?",
+                (project_id, branch)
+            )
+            
+            rows = await cursor.fetchall()
+            
+            # Combine all descriptions
+            all_text = " ".join(row['description'] for row in rows)
+            
+            # Tokenize and filter
+            words = re.findall(r'\b[a-zA-Z]{2,}\b', all_text.lower())
+            filtered_words = [word for word in words if word not in stop_words]
+            
+            # Count frequencies
+            word_counts = Counter(filtered_words)
+            
+            # Create result
+            top_terms = [
+                WordFrequencyTerm(term=term, frequency=count)
+                for term, count in word_counts.most_common(limit)
+            ]
+            
+            return WordFrequencyResult(
+                top_terms=top_terms,
+                total_terms_analyzed=len(filtered_words),
+                total_unique_terms=len(word_counts)
+            )

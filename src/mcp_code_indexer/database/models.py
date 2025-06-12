@@ -62,6 +62,22 @@ class MergeConflict(BaseModel):
     created: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
 
 
+class ProjectOverview(BaseModel):
+    """
+    Represents a condensed, interpretive overview of an entire codebase.
+    
+    Stores a comprehensive narrative that captures architecture, components,
+    relationships, and design patterns in a single document rather than
+    individual file descriptions.
+    """
+    project_id: str = Field(..., description="Reference to project")
+    branch: str = Field(..., description="Git branch name")
+    overview: str = Field(..., description="Comprehensive codebase narrative")
+    last_modified: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    total_files: int = Field(..., description="Number of files in codebase")
+    total_tokens: int = Field(..., description="Total tokens in individual descriptions")
+
+
 class CodebaseOverview(BaseModel):
     """
     Represents a complete codebase structure with file descriptions.
@@ -116,6 +132,25 @@ class CodebaseSizeInfo(BaseModel):
     is_large: bool = Field(..., description="Whether codebase exceeds token limit")
     recommendation: str = Field(..., description="Recommended approach (use_search or use_overview)")
     token_limit: int = Field(..., description="Configured token limit")
+    cleaned_up_files: List[str] = Field(default_factory=list, description="Files removed during cleanup")
+    cleaned_up_count: int = Field(default=0, description="Number of files cleaned up")
+
+
+class WordFrequencyTerm(BaseModel):
+    """
+    Represents a term and its frequency from word analysis.
+    """
+    term: str = Field(..., description="The word/term")
+    frequency: int = Field(..., description="Number of occurrences")
+
+
+class WordFrequencyResult(BaseModel):
+    """
+    Results from word frequency analysis of file descriptions.
+    """
+    top_terms: List[WordFrequencyTerm] = Field(..., description="Top frequent terms")
+    total_terms_analyzed: int = Field(..., description="Total terms processed")
+    total_unique_terms: int = Field(..., description="Number of unique terms found")
 
 
 # Enable forward references for recursive models
