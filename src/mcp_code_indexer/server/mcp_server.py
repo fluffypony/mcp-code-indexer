@@ -252,7 +252,7 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="check_codebase_size",
-                    description="Checks the total token count of a codebase's file structure and descriptions. Returns whether the codebase is 'large' and recommends using search instead of the full overview.",
+                    description="Checks the total token count of a codebase's file structure and descriptions - if you're in a git repo be sure to run `git rev-parse --abbrev-ref HEAD` to see what branch you're on before running this tool. Returns whether the codebase is 'large' and recommends using search instead of the full overview.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -350,7 +350,7 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="get_codebase_overview",
-                    description="Returns a condensed, interpretive overview of the entire codebase. This is a single comprehensive narrative that captures the architecture, key components, relationships, and design patterns. Unlike get_all_descriptions which lists every file, this provides a holistic view suitable for understanding the codebase's structure and purpose. If no overview exists, returns empty string.",
+                    description="Returns a condensed, interpretive overview of the entire codebase - if you're in a git repo be sure to run `git rev-parse --abbrev-ref HEAD` to see what branch you're on before running this tool. This is a single comprehensive narrative that captures the architecture, key components, relationships, and design patterns. Unlike get_all_descriptions which lists every file, this provides a holistic view suitable for understanding the codebase's structure and purpose. If no overview exists, returns empty string.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -417,7 +417,7 @@ src/
                 ),
                 types.Tool(
                     name="get_word_frequency",
-                    description="Analyzes all file descriptions to find the most frequently used technical terms. Filters out common English stop words and symbols, returning the top 200 meaningful terms. Useful for understanding the codebase's domain vocabulary and finding all functions/files related to specific concepts.",
+                    description="Analyzes all file descriptions to find the most frequently used technical terms - if you're in a git repo be sure to run `git rev-parse --abbrev-ref HEAD` to see what branch you're on before running this tool. Filters out common English stop words and symbols, returning the top 200 meaningful terms. Useful for understanding the codebase's domain vocabulary and finding all functions/files related to specific concepts.",
                     inputSchema={
                         "type": "object",
                         "properties": {
