@@ -201,14 +201,17 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
             sys.exit(1)
         
         try:
-            # Map tool names to handler methods
+            # Map tool names to handler methods - use the same mapping as MCP server
             tool_handlers = {
                 "get_file_description": server._handle_get_file_description,
                 "update_file_description": server._handle_update_file_description,
                 "check_codebase_size": server._handle_check_codebase_size,
                 "find_missing_descriptions": server._handle_find_missing_descriptions,
                 "search_descriptions": server._handle_search_descriptions,
-                "get_codebase_overview": server._handle_get_codebase_overview,
+                "get_all_descriptions": server._handle_get_codebase_overview,
+                "get_codebase_overview": server._handle_get_condensed_overview,
+                "update_codebase_overview": server._handle_update_codebase_overview,
+                "get_word_frequency": server._handle_get_word_frequency,
                 "merge_branch_descriptions": server._handle_merge_branch_descriptions,
             }
             
