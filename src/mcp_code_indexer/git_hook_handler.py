@@ -22,6 +22,7 @@ from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_excep
 from .database.database import DatabaseManager
 from .database.models import Project, FileDescription
 from .error_handler import ValidationError
+from .token_counter import TokenCounter
 
 
 class GitHookError(Exception):
@@ -59,11 +60,12 @@ class GitHookHandler:
         self.db_manager = db_manager
         self.cache_dir = cache_dir
         self.logger = logging.getLogger(__name__)
+        self.token_counter = TokenCounter()
         
         # Git hook specific settings
         self.config = {
             "model": os.getenv("MCP_GITHOOK_MODEL", self.OPENROUTER_MODEL),
-            "max_diff_size": 100000,  # Skip if diff larger than this
+            "max_diff_tokens": 136000,  # Skip if diff larger than this (in tokens)
             "timeout": 30,
             "temperature": 0.3,  # Lower temperature for consistent updates
         }
@@ -102,8 +104,14 @@ class GitHookHandler:
                 git_diff = await self._get_git_diff()
                 commit_message = await self._get_commit_message()
             
-            if not git_diff or len(git_diff) > self.config["max_diff_size"]:
-                self.logger.info(f"Skipping git hook update - diff too large or empty")
+            if not git_diff:
+                self.logger.info(f"Skipping git hook update - no git diff")
+                return
+                
+            # Check token count instead of character count
+            diff_tokens = self.token_counter.count_tokens(git_diff)
+            if diff_tokens > self.config["max_diff_tokens"]:
+                self.logger.info(f"Skipping git hook update - diff too large ({diff_tokens} tokens > {self.config['max_diff_tokens']} limit)")
                 return
             
             # Fetch current state
