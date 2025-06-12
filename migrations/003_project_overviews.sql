@@ -2,7 +2,7 @@
 -- This table stores comprehensive narrative overviews of entire codebases
 -- as an alternative to file-by-file descriptions
 
-CREATE TABLE project_overviews (
+CREATE TABLE IF NOT EXISTS project_overviews (
     project_id TEXT NOT NULL,
     branch TEXT NOT NULL,
     overview TEXT NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE project_overviews (
 ) WITHOUT ROWID;
 
 -- Index for temporal queries and overview management
-CREATE INDEX idx_project_overviews_last_modified ON project_overviews(last_modified);
+CREATE INDEX IF NOT EXISTS idx_project_overviews_last_modified ON project_overviews(last_modified);
 
 -- Index for project-based queries
-CREATE INDEX idx_project_overviews_project_id ON project_overviews(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_overviews_project_id ON project_overviews(project_id);
