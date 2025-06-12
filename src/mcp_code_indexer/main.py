@@ -80,6 +80,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Export descriptions for a project. Usage: --dumpdescriptions PROJECT_ID [BRANCH]"
     )
     
+    parser.add_argument(
+        "--githook",
+        action="store_true",
+        help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API"
+    )
+    
     return parser.parse_args()
 
 
@@ -313,9 +319,42 @@ async def handle_dumpdescriptions(args: argparse.Namespace) -> None:
 
 
 
+async def handle_githook(args: argparse.Namespace) -> None:
+    """Handle --githook command."""
+    try:
+        from .database.database import DatabaseManager
+        from .git_hook_handler import GitHookHandler
+        
+        # Initialize database
+        db_path = Path(args.db_path).expanduser()
+        cache_dir = Path(args.cache_dir).expanduser()
+        
+        # Create directories if they don't exist
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        db_manager = DatabaseManager(db_path)
+        await db_manager.initialize()
+        
+        # Initialize git hook handler
+        git_handler = GitHookHandler(db_manager, cache_dir)
+        
+        # Run git hook analysis
+        await git_handler.run_githook_mode()
+        
+    except Exception as e:
+        print(f"Git hook error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
+    
+    # Handle git hook command
+    if args.githook:
+        await handle_githook(args)
+        return
     
     # Handle utility commands
     if args.getprojects:
