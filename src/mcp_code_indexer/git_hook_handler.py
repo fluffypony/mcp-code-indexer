@@ -67,7 +67,7 @@ class GitHookHandler:
         self.config = {
             "model": os.getenv("MCP_GITHOOK_MODEL", self.OPENROUTER_MODEL),
             "max_diff_tokens": 136000,  # Skip if diff larger than this (in tokens)
-            "timeout": 30,
+            "timeout": 300,  # 5 minutes
             "temperature": 0.3,  # Lower temperature for consistent updates
         }
         
