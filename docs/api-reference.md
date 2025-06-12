@@ -7,18 +7,18 @@ Complete reference for all 11 MCP tools provided by the Code Indexer server (v1.
 - [Core Operations](#core-operations)
   - [get_file_description](#get_file_description)
   - [update_file_description](#update_file_description)
-  - [check_codebase_size](#check_codebase_size) 🆕 *Enhanced with cleanup*
+  - [check_codebase_size](#check_codebase_size)
 - [Batch Operations](#batch-operations)
   - [find_missing_descriptions](#find_missing_descriptions)
   - [update_missing_descriptions](#update_missing_descriptions)
 - [Search & Discovery](#search--discovery)
   - [search_descriptions](#search_descriptions)
-  - [get_all_descriptions](#get_all_descriptions) *(Renamed from get_codebase_overview)*
-  - [🆕 get_codebase_overview](#get_codebase_overview-new) *(New condensed overview)*
-  - [🆕 get_word_frequency](#get_word_frequency)
+  - [get_all_descriptions](#get_all_descriptions)
+  - [get_codebase_overview](#get_codebase_overview)
+  - [get_word_frequency](#get_word_frequency)
 - [Advanced Features](#advanced-features)
   - [merge_branch_descriptions](#merge_branch_descriptions)
-  - [🆕 update_codebase_overview](#update_codebase_overview)
+  - [update_codebase_overview](#update_codebase_overview)
 - [Common Parameters](#common-parameters)
 - [Error Handling](#error-handling)
 
