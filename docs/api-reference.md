@@ -1,6 +1,8 @@
 # MCP Tools API Reference 📖
 
-Complete reference for all 11 MCP tools provided by the Code Indexer server (v1.2.0+). Each tool follows the Model Context Protocol standard and returns JSON responses.
+Complete reference for all 11 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
+
+**🎯 New to MCP Code Indexer?** Start with the [Quick Start Guide](../README.md#-quick-start) to set up your server first.
 
 ## Table of Contents
 
@@ -176,7 +178,7 @@ const result = await mcp.callTool("check_codebase_size", {
 }
 ```
 
-**💡 Pro Tip**: Always call this first when working with a new codebase to determine the optimal navigation strategy.
+💡 **Pro Tip**: Always call this first when working with a new codebase to determine the optimal navigation strategy. Large codebases (>32k tokens) work better with `search_descriptions`, while smaller ones can use `get_all_descriptions` for a complete overview.
 
 ---
 
@@ -390,10 +392,12 @@ const result = await mcp.callTool("search_descriptions", {
 }
 ```
 
-**🔍 Search Tips**:
-- Use descriptive terms: "authentication logic" vs "auth"
-- Combine concepts: "database connection pooling"
-- Try different variations if no results found
+🔍 **Search Tips**:
+- **Be descriptive**: "authentication logic" vs "auth"
+- **Combine concepts**: "database connection pooling"
+- **Try variations**: If no results, try different terms
+- **Use technical terms**: "middleware", "controller", "utils"
+- **Search by purpose**: "error handling", "data validation"
 
 ---
 
@@ -625,11 +629,12 @@ const result = await mcp.callTool("merge_branch_descriptions", {
 }
 ```
 
-**🚀 Merge Workflow Tips**:
-1. Always run phase 1 first to detect conflicts
-2. Review conflicts carefully before providing resolutions
-3. Write comprehensive resolutions that capture both versions
-4. Test the merged descriptions for accuracy
+🚀 **Merge Workflow Tips**:
+1. **Start with phase 1**: Always detect conflicts first
+2. **Review carefully**: Understand both descriptions before resolving
+3. **Write comprehensive resolutions**: Capture the best of both versions
+4. **Test accuracy**: Verify merged descriptions make sense
+5. **Document changes**: Note why you chose specific resolutions
 
 ---
 
@@ -696,23 +701,29 @@ interface ErrorResponse {
 
 ## Best Practices
 
-### Performance Optimization
-- **Check codebase size first** with `check_codebase_size`
-- **Use search for large codebases** (>32,000 tokens by default)
-- **Batch operations** when updating multiple files
-- **Cache project info** to avoid repeated setup
+### 🎯 For Everyone: Smart Usage
+- **Always start** with `check_codebase_size` to get personalized recommendations
+- **Use search** for large codebases (>32,000 tokens) instead of getting full overview
+- **Be specific** in search queries - "authentication middleware" vs "auth"
 
-### Description Quality
-- **Be descriptive but concise** in file descriptions
+### 👨‍💻 For Developers: Integration Tips
+- **Batch operations** when updating multiple files for better performance
+- **Cache project info** to avoid repeated setup calls
+- **Handle validation errors** by checking required parameters first
+- **Monitor structured logs** for debugging and performance insights
+
+### 📝 For Content: Description Quality
+- **Be descriptive but concise** - focus on what the file does, not how
 - **Include key technologies** and frameworks used
-- **Mention important dependencies** and relationships
+- **Mention important dependencies** and relationships to other files
 - **Update descriptions** when files change significantly
+- **Use consistent terminology** across your project descriptions
 
-### Error Recovery
-- **Handle validation errors** by checking required parameters
-- **Retry database operations** on transient failures
-- **Provide meaningful resolutions** for merge conflicts
-- **Monitor structured logs** for debugging
+### 🔧 For Operations: Error Recovery
+- **Retry database operations** on transient failures (network issues, etc.)
+- **Provide meaningful resolutions** for merge conflicts that capture both perspectives
+- **Set up monitoring** for error rates and performance metrics
+- **Regular backups** of your description database
 
 ---
 

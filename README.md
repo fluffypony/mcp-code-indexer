@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcp-code-indexer.svg?1)](https://pypi.org/project/mcp-code-indexer/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A production-ready **Model Context Protocol (MCP) server** that provides intelligent codebase navigation for AI agents through searchable file descriptions, token-aware overviews, and advanced merge capabilities.
+A production-ready **Model Context Protocol (MCP) server** that revolutionizes how AI agents navigate and understand codebases. Instead of repeatedly scanning files, agents get instant access to intelligent descriptions, semantic search, and context-aware recommendations.
 
 ## 🎯 What It Does
 
@@ -20,27 +20,54 @@ Perfect for AI-powered code review, refactoring tools, documentation generation,
 
 ## ⚡ Quick Start
 
-### Install from PyPI
+### 👨‍💻 For Developers
+
+Get started integrating MCP Code Indexer into your AI agent workflow:
 
 ```bash
 # Install the package
 pip install mcp-code-indexer
 
-# Run the server
-mcp-code-indexer --token-limit 32000
+# Start the MCP server
+mcp-code-indexer
 
-# Check version
+# Connect your MCP client and start using tools
+# See API Reference for complete tool documentation
+```
+
+### 🔧 For System Administrators
+
+Deploy and configure the server for your team:
+
+```bash
+# Production deployment with custom settings
+mcp-code-indexer \
+  --token-limit 64000 \
+  --db-path /data/mcp-index.db \
+  --cache-dir /var/cache/mcp \
+  --log-level INFO
+
+# Check installation
 mcp-code-indexer --version
 ```
 
-### Install from Source
+### 🎯 For Everyone
+
+**New to MCP Code Indexer?** Start here:
+
+1. **Install**: `pip install mcp-code-indexer`
+2. **Run**: `mcp-code-indexer --token-limit 32000`
+3. **Connect**: Use your favorite MCP client
+4. **Explore**: Try the `check_codebase_size` tool first
+
+**Development Setup**:
 
 ```bash
-# Clone and setup
-git clone https://github.com/your-username/mcp-code-indexer.git
+# Clone and setup for contributing
+git clone https://github.com/fluffypony/mcp-code-indexer.git
 cd mcp-code-indexer
 
-# Install in development mode
+# Install in development mode (required)
 pip install -e .
 
 # Run the server
@@ -49,9 +76,9 @@ mcp-code-indexer --token-limit 32000
 
 ## 🔗 Git Hook Integration
 
-**NEW**: Automated code indexing with OpenRouter API integration! Keep your file descriptions synchronized automatically as you code.
+🚀 **NEW Feature**: Automated code indexing with AI-powered analysis! Keep your file descriptions synchronized automatically as your codebase evolves.
 
-### Quick Setup
+### 👤 For Users: Quick Setup
 
 ```bash
 # Set your OpenRouter API key
@@ -65,31 +92,35 @@ cp examples/git-hooks/post-commit .git/hooks/
 chmod +x .git/hooks/post-commit
 ```
 
-### How It Works
+### 👨‍💻 For Developers: How It Works
 
-The git hook integration:
-- **Analyzes git diffs** automatically after commits/merges
-- **Updates file descriptions** for changed files using AI
-- **Maintains project overview** when structural changes occur
-- **Uses OpenRouter API** with Anthropic's Claude Sonnet 4 model
+The git hook integration provides intelligent automation:
 
-### Features
+- **📊 Git Analysis**: Automatically analyzes git diffs after commits/merges
+- **🤖 AI Processing**: Uses OpenRouter API with Anthropic's Claude Sonnet 4
+- **⚡ Smart Updates**: Only processes files that actually changed  
+- **🔄 Overview Maintenance**: Updates project overview when structure changes
+- **🛡️ Error Isolation**: Git operations continue even if indexing fails
+- **⏱️ Rate Limiting**: Built-in retry logic with exponential backoff
 
-- **Automated Analysis**: No manual intervention required
-- **Smart Updates**: Only processes files that actually changed
-- **Rate Limiting**: Built-in retry logic with exponential backoff
-- **Error Isolation**: Git operations continue even if indexing fails
-- **Configurable**: Support for custom models and timeouts
+### 🎯 Key Benefits
 
-See [Git Hook Setup Guide](docs/git-hook-setup.md) for detailed instructions.
+💡 **Zero Manual Work**: Descriptions stay current without any effort  
+⚡ **Performance**: Only analyzes changed files, not entire codebase  
+🔒 **Reliability**: Robust error handling ensures git operations never fail  
+🎛️ **Configurable**: Support for custom models and timeout settings  
+
+**Learn More**: See [Git Hook Setup Guide](docs/git-hook-setup.md) for complete configuration options and troubleshooting.
 
 ## 🔧 Development Setup
 
-For development work, you **must** install the package in editable mode to ensure proper import resolution:
+### 👨‍💻 For Contributors
+
+Contributing to MCP Code Indexer? Follow these steps for a proper development environment:
 
 ```bash
 # Setup development environment
-git clone https://github.com/your-username/mcp-code-indexer.git
+git clone https://github.com/fluffypony/mcp-code-indexer.git
 cd mcp-code-indexer
 
 # Create and activate virtual environment
@@ -107,11 +138,9 @@ python main.py --help
 mcp-code-indexer --version
 ```
 
-### Why Editable Install is Required
+⚠️ **Important**: The editable install (`pip install -e .`) is **required** for development. The project uses proper PyPI package structure with absolute imports like `from mcp_code_indexer.database.database import DatabaseManager`. Without editable installation, you'll get `ModuleNotFoundError` exceptions.
 
-The project uses a proper PyPI package structure with absolute imports like `from mcp_code_indexer.database.database import DatabaseManager`. Without the editable installation (`pip install -e .`), Python cannot resolve these imports and you'll get `ModuleNotFoundError` exceptions.
-
-### Development Workflow
+### 🎯 Development Workflow
 
 ```bash
 # Activate virtual environment
@@ -139,26 +168,26 @@ mypy src/
 
 ## 🛠️ MCP Tools Available
 
-The server provides **11 powerful MCP tools** for intelligent codebase management:
+The server provides **11 powerful MCP tools** for intelligent codebase management. Whether you're an AI agent or human developer, these tools make navigating code effortless.
 
-### Core Operations
+### 🎯 For Everyone: Start Here
+- **`check_codebase_size`** - Get instant recommendations for how to navigate your codebase
+- **`search_descriptions`** - Find files by what they do, not just their names
+- **`get_codebase_overview`** - Get a high-level understanding of any project
+
+### 👨‍💻 For Developers: Core Operations
 - **`get_file_description`** - Retrieve stored file descriptions instantly
-- **`update_file_description`** - Store detailed file summaries and metadata
-- **`check_codebase_size`** - Get token count and size-based recommendations with automatic file cleanup
-
-### Batch Operations
+- **`update_file_description`** - Store detailed file summaries and metadata  
 - **`find_missing_descriptions`** - Scan projects for files without descriptions
 - **`update_missing_descriptions`** - Bulk update multiple file descriptions
 
-### Search & Discovery
-- **`search_descriptions`** - Fast full-text search across all descriptions
+### 🔍 For Advanced Users: Search & Discovery
 - **`get_all_descriptions`** - Complete hierarchical project structure
-- **`get_codebase_overview`** - Condensed narrative overview of entire codebase
 - **`get_word_frequency`** - Technical vocabulary analysis with stop-word filtering
-
-### Advanced Features
 - **`merge_branch_descriptions`** - Two-phase merge with conflict resolution
 - **`update_codebase_overview`** - Create comprehensive codebase documentation
+
+💡 **Pro Tip**: Always start with `check_codebase_size` to get personalized recommendations for navigating your specific codebase.
 
 ## 🏗️ Architecture Highlights
 
@@ -183,10 +212,16 @@ The server provides **11 powerful MCP tools** for intelligent codebase managemen
 
 ## 📖 Documentation
 
-- **[API Reference](docs/api-reference.md)** - Complete MCP tool documentation
-- **[Configuration Guide](docs/configuration.md)** - Setup and tuning options
-- **[Architecture Overview](docs/architecture.md)** - Technical deep dive
-- **[Contributing Guide](docs/contributing.md)** - Development workflow
+### 👤 For Users
+- **[Git Hook Setup Guide](docs/git-hook-setup.md)** - Automated code indexing setup
+- **[Configuration Guide](docs/configuration.md)** - Production deployment and tuning
+
+### 👨‍💻 For Developers  
+- **[API Reference](docs/api-reference.md)** - Complete MCP tool documentation with examples
+- **[Architecture Overview](docs/architecture.md)** - Technical deep dive into system design
+
+### 🤝 For Contributors
+- **[Contributing Guide](docs/contributing.md)** - Development setup and workflow guidelines
 
 ## 🚦 System Requirements
 
@@ -353,10 +388,20 @@ mcp-code-indexer --dumpdescriptions PROJECT_ID [BRANCH]
 
 ## 🚀 Next Steps
 
-1. **[Read the API docs](docs/api-reference.md)** to understand available tools
-2. **[Check the configuration guide](docs/configuration.md)** for advanced setup
-3. **[Review the architecture](docs/architecture.md)** for technical details  
-4. **[Contribute](docs/contributing.md)** to help improve the project
+Ready to supercharge your AI agents with intelligent codebase navigation?
+
+### 👤 Getting Started
+1. **[Install and run your first server](#-quick-start)** - Get up and running in 2 minutes
+2. **[Set up git hooks](docs/git-hook-setup.md)** - Automate your workflow
+3. **[Configure for production](docs/configuration.md)** - Deploy for your team
+
+### 👨‍💻 For Developers
+4. **[Explore the API tools](docs/api-reference.md)** - Master all 11 MCP tools
+5. **[Understand the architecture](docs/architecture.md)** - Deep dive into the technical design
+
+### 🤝 Join the Community
+6. **[Contribute to the project](docs/contributing.md)** - Help make it even better
+7. **[Report issues on GitHub](https://github.com/fluffypony/mcp-code-indexer/issues)** - Share feedback and suggestions
 
 ## 🤝 Contributing
 
@@ -381,4 +426,8 @@ MIT License - see **[LICENSE](LICENSE)** for details.
 
 ---
 
-**Ready to supercharge your AI agents with intelligent codebase navigation?** 🚀 [Install from PyPI](#install-from-pypi) or [explore the API docs](docs/api-reference.md)!
+**Transform how your AI agents understand code!** 🚀  
+
+🎯 **New User?** [Get started in 2 minutes](#-quick-start)  
+👨‍💻 **Developer?** [Explore the complete API](docs/api-reference.md)  
+🔧 **Production?** [Deploy with confidence](docs/configuration.md)

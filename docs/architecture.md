@@ -1,6 +1,8 @@
 # Architecture Overview 🏗️
 
-Technical deep dive into the MCP Code Indexer architecture, design decisions, and implementation details for developers and system architects.
+Technical deep dive into the MCP Code Indexer architecture, design decisions, and implementation details. Perfect for developers who want to understand how the system works, contribute to the codebase, or integrate with the MCP protocol.
+
+**🎯 Looking for usage info?** Check the [API Reference](api-reference.md) for tool documentation.
 
 ## Table of Contents
 
@@ -29,13 +31,13 @@ The MCP Code Indexer follows a **layered architecture** with clear separation of
 └─────────────────────────────────────────────┘
 ```
 
-### Architecture Principles
+### 🎯 Architecture Principles
 
-- **Async-First**: All I/O operations are asynchronous for optimal performance
-- **Layered Design**: Clear separation between protocol, business logic, and infrastructure
-- **Error Isolation**: Comprehensive error handling prevents cascading failures
-- **Resource Management**: Proper cleanup and connection pooling for scalability
-- **Performance-Oriented**: Token-aware decisions and caching strategies
+- **🚀 Async-First**: All I/O operations are asynchronous for optimal performance
+- **🏗️ Layered Design**: Clear separation between protocol, business logic, and infrastructure  
+- **🛡️ Error Isolation**: Comprehensive error handling prevents cascading failures
+- **♻️ Resource Management**: Proper cleanup and connection pooling for scalability
+- **⚡ Performance-Oriented**: Token-aware decisions and intelligent caching strategies
 
 ## Core Components
 

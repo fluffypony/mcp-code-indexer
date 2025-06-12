@@ -1,15 +1,18 @@
-# Git Hook Integration Setup
+# Git Hook Integration Setup 🔗
 
-The MCP Code Indexer now supports automated analysis of git changes via the `--githook` command line argument. This enables seamless updating of file descriptions and project overviews based on code changes.
+Transform your development workflow with automated code analysis! The MCP Code Indexer can automatically update file descriptions every time you commit, keeping your codebase documentation perfectly synchronized with your code.
 
-## Overview
+**🎯 Perfect for**: Development teams wanting effortless documentation maintenance
 
-The git hook integration:
-- Analyzes git diffs to identify changed files
-- Uses OpenRouter API with Anthropic's Claude Sonnet 4 model
-- Updates descriptions only for changed files
-- Updates project overview when structural changes occur
-- Runs automatically on git events (post-commit, post-merge, etc.)
+## How It Works
+
+The git hook integration provides **zero-effort documentation**:
+
+🔍 **Smart Analysis**: Automatically analyzes git diffs to identify changed files  
+🤖 **AI-Powered**: Uses OpenRouter API with Anthropic's Claude Sonnet 4 model  
+⚡ **Efficient**: Updates descriptions only for files that actually changed  
+📋 **Overview Updates**: Refreshes project overview when structural changes occur  
+🔄 **Automated**: Runs automatically on git events (post-commit, post-merge, etc.)
 
 ## Prerequisites
 
@@ -18,26 +21,32 @@ The git hook integration:
    export OPENROUTER_API_KEY="sk-or-v1-your-api-key-here"
    ```
 
-2. **Dependencies**: Install required packages
-   ```bash
-   pip install aiohttp>=3.8.0 tenacity>=8.0.0
-   ```
+### Step 2: Install Dependencies
 
-## Basic Usage
+The git hook feature requires additional packages:
+```bash
+pip install aiohttp>=3.8.0 tenacity>=8.0.0
+```
 
-### Manual Testing
+**Already have MCP Code Indexer installed?** These dependencies are included automatically.
 
-Test the git hook functionality manually:
+## 🚀 Quick Setup Guide
+
+### Test It First
+
+Before setting up automatic hooks, test the functionality manually:
 
 ```bash
-# Ensure you're in a git repository
+# Navigate to your git project
 cd /path/to/your/project
 
-# Run git hook analysis on recent changes
+# Test git hook analysis on recent changes
 mcp-code-indexer --githook
 ```
 
-### Git Hook Setup
+**What you'll see**: The tool analyzes recent git changes and updates descriptions for modified files.
+
+### Automatic Setup
 
 #### Post-Commit Hook
 
@@ -81,23 +90,29 @@ Make it executable:
 chmod +x .git/hooks/post-merge
 ```
 
-## Configuration
+## 🔧 Configuration Options
 
 ### Environment Variables
 
-- `OPENROUTER_API_KEY`: Required. Your OpenRouter API key
-- `MCP_GITHOOK_MODEL`: Optional. Override model (default: "anthropic/claude-sonnet-4")
+**Required**:
+- `OPENROUTER_API_KEY`: Your OpenRouter API key
 
-### Command Line Options
+**Optional**:
+- `MCP_GITHOOK_MODEL`: Override the AI model (default: "anthropic/claude-sonnet-4")
 
-The git hook mode supports all standard MCP Code Indexer options:
+### Advanced Options
+
+The git hook mode supports all standard MCP Code Indexer options for fine-tuning:
 
 ```bash
+# Custom database and cache locations
 mcp-code-indexer --githook \
   --db-path ~/.mcp-code-index/tracker.db \
   --cache-dir ~/.mcp-code-index/cache \
   --log-level INFO
 ```
+
+**💡 Most users can use the defaults** - only customize if you have specific requirements.
 
 ## Behavior
 
@@ -121,33 +136,33 @@ The system analyzes:
 - **Error Isolation**: Git operations continue even if indexing fails
 - **Rate Limiting**: Automatic retries with exponential backoff
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### Common Issues
+### Common Issues & Solutions
 
-1. **Missing API Key**
-   ```
-   Error: OPENROUTER_API_KEY environment variable is required
-   ```
-   Solution: Set the environment variable in your shell profile
+**🚨 Missing API Key**
+```
+Error: OPENROUTER_API_KEY environment variable is required
+```
+**Solution**: Set the environment variable in your shell profile (`~/.bashrc`, `~/.zshrc`)
 
-2. **Git Command Failures**
-   ```
-   Error: Git command not found
-   ```
-   Solution: Ensure git is installed and in your PATH
+**🚨 Git Command Failures**
+```
+Error: Git command not found
+```
+**Solution**: Ensure git is installed and in your PATH. Try `git --version` to test.
 
-3. **Large Diff Skipped**
-   ```
-   Info: Skipping git hook update - diff too large or empty
-   ```
-   Solution: This is normal for large changes. Run manual analysis if needed.
+**ℹ️ Large Diff Skipped**
+```
+Info: Skipping git hook update - diff too large or empty
+```
+**This is normal** for large changes (>100KB diffs). Run manual analysis if needed with individual file updates.
 
-4. **Rate Limiting**
-   ```
-   Warning: Rate limited. Retry after 60s
-   ```
-   Solution: The system will automatically retry. Consider upgrading OpenRouter plan.
+**⏱️ Rate Limiting**
+```
+Warning: Rate limited. Retry after 60s
+```
+**The system handles this automatically** - it will retry with exponential backoff. Consider upgrading your OpenRouter plan for higher limits.
 
 ### Logs
 

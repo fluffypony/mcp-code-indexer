@@ -1,6 +1,8 @@
 # Contributing Guide 🤝
 
-Welcome to the MCP Code Indexer project! We're excited to have you contribute to this powerful tool for AI-driven codebase navigation.
+Welcome to the MCP Code Indexer project! We're thrilled you want to help make this AI-powered codebase navigation tool even better. Whether you're fixing a bug, adding a feature, or improving documentation, your contribution makes a difference.
+
+**🎯 New contributor?** Start with [Getting Started](#getting-started) for a quick setup guide.
 
 ## Table of Contents
 
@@ -17,10 +19,14 @@ Welcome to the MCP Code Indexer project! We're excited to have you contribute to
 
 ### Prerequisites
 
+**Required**:
 - **Python 3.8+** with asyncio support
-- **Git** for version control
+- **Git** for version control  
 - **SQLite 3.35+** (included with Python)
-- **VS Code** (recommended) with Python extension
+
+**Recommended**:
+- **VS Code** with Python extension for the best development experience
+- **Basic familiarity** with async Python and SQLite
 
 ### Development Environment
 

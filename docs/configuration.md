@@ -1,6 +1,8 @@
 # Configuration Guide 🔧
 
-Complete guide to configuring and tuning the MCP Code Indexer for optimal performance in your environment.
+Complete guide to configuring and tuning the MCP Code Indexer for optimal performance. Whether you're setting up for development, deploying for a team, or optimizing for production, this guide has you covered.
+
+**🎯 New to configuration?** Start with [Command Line Options](#command-line-options) for basic setup.
 
 ## Table of Contents
 
@@ -14,22 +16,24 @@ Complete guide to configuring and tuning the MCP Code Indexer for optimal perfor
 
 ## Command Line Options
 
-The server accepts several command-line arguments for basic configuration:
+### 👤 For Users: Basic Setup
+
+The server accepts several command-line arguments for quick configuration:
 
 ```bash
 mcp-code-indexer [OPTIONS]
 ```
 
-### Available Options
+**Most Important Options**:
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--token-limit` | `32000` | Maximum tokens before recommending search over overview |
-| `--db-path` | `~/.mcp-code-index/tracker.db` | Path to SQLite database file |
-| `--cache-dir` | `~/.mcp-code-index/cache` | Directory for caching token counts and logs |
-| `--log-level` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| Option | Default | When to Change |
+|--------|---------|----------------|
+| `--token-limit` | `32000` | **Large codebases**: Use 50000+ for better overview support |
+| `--db-path` | `~/.mcp-code-index/tracker.db` | **Custom location**: When you want data elsewhere |
+| `--cache-dir` | `~/.mcp-code-index/cache` | **Performance**: Put on SSD for faster access |
+| `--log-level` | `INFO` | **Debugging**: Use DEBUG for troubleshooting |
 
-### Examples
+### 🎯 Common Setups
 
 ```bash
 # Development setup with debug logging
@@ -179,16 +183,18 @@ echo "Backup completed: mcp-database-$TIMESTAMP.db.gz"
 
 ## Performance Tuning
 
-### Token Limit Optimization
+### 🎯 Token Limit Optimization
 
-Choose the right token limit based on your use case:
+**What's a token limit?** It determines when the server recommends search vs. full overview. Higher limits = more complete overviews for larger codebases.
 
-| Use Case | Recommended Limit | Rationale |
-|----------|------------------|-----------|
-| **Small Projects** | 10,000 - 20,000 | Fast overview generation |
-| **Medium Projects** | 32,000 (default) | Balanced performance |
-| **Large Enterprises** | 50,000 - 100,000 | Accommodate complex codebases |
-| **AI Training Data** | 150,000+ | Maximum context utilization |
+| Your Codebase Size | Recommended Limit | Why This Works |
+|-------------------|------------------|----------------|
+| **Small projects** (< 50 files) | 10,000 - 20,000 | Fast, complete overviews |
+| **Medium projects** (50-200 files) | 32,000 (default) | Balanced performance |
+| **Large projects** (200+ files) | 50,000 - 100,000 | Handles complex codebases |
+| **Enterprise/Monorepos** | 150,000+ | Maximum context for AI agents |
+
+💡 **Tip**: Start with the default (32,000) and increase if you get "use search" recommendations too often.
 
 ### Memory Optimization
 
