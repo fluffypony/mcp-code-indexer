@@ -49,7 +49,7 @@ class DatabaseManager:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Apply migrations in order
-        migrations_dir = Path(__file__).parent.parent.parent / "migrations"
+        migrations_dir = Path(__file__).parent.parent.parent.parent / "migrations"
         migration_files = sorted(migrations_dir.glob("*.sql"))
         
         async with aiosqlite.connect(self.db_path) as db:
