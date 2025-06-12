@@ -7,8 +7,10 @@ for file description management tools.
 
 import asyncio
 import hashlib
+import html
 import json
 import logging
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -85,6 +87,102 @@ class MCPCodeIndexServer:
             extra={"structured_data": {"initialization": {"token_limit": token_limit}}}
         )
     
+    def _clean_html_entities(self, text: str) -> str:
+        """
+        Clean HTML entities from text to prevent encoding issues.
+        
+        Args:
+            text: Text that may contain HTML entities
+            
+        Returns:
+            Text with HTML entities decoded to proper characters
+        """
+        if not text:
+            return text
+        
+        # Decode HTML entities like &lt; &gt; &amp; etc.
+        return html.unescape(text)
+    
+    def _clean_arguments(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Clean HTML entities from all text arguments.
+        
+        Args:
+            arguments: Dictionary of arguments to clean
+            
+        Returns:
+            Dictionary with HTML entities decoded in all string values
+        """
+        cleaned = {}
+        
+        for key, value in arguments.items():
+            if isinstance(value, str):
+                cleaned[key] = self._clean_html_entities(value)
+            elif isinstance(value, list):
+                # Clean strings in lists (like conflict resolutions)
+                cleaned[key] = [
+                    self._clean_html_entities(item) if isinstance(item, str) else item
+                    for item in value
+                ]
+            elif isinstance(value, dict):
+                # Recursively clean nested dictionaries
+                cleaned[key] = self._clean_arguments(value)
+            else:
+                # Pass through other types unchanged
+                cleaned[key] = value
+        
+        return cleaned
+    
+    def _parse_json_robust(self, json_str: str) -> Dict[str, Any]:
+        """
+        Parse JSON with automatic repair for common issues.
+        
+        Args:
+            json_str: JSON string that may have formatting issues
+            
+        Returns:
+            Parsed JSON dictionary
+            
+        Raises:
+            ValueError: If JSON cannot be parsed even after repair attempts
+        """
+        # First try normal parsing
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as original_error:
+            logger.warning(f"Initial JSON parse failed: {original_error}")
+            
+            # Try to repair common issues
+            repaired = json_str
+            
+            # Fix 1: Quote unquoted URLs and paths
+            # Look for patterns like: "key": http://... or "key": /path/...
+            url_pattern = r'("[\w]+"):\s*([a-zA-Z][a-zA-Z0-9+.-]*://[^\s,}]+|/[^\s,}]*)'
+            repaired = re.sub(url_pattern, r'\1: "\2"', repaired)
+            
+            # Fix 2: Quote unquoted boolean-like strings
+            # Look for: "key": true-ish-string or "key": false-ish-string  
+            bool_pattern = r'("[\w]+"):\s*([a-zA-Z][a-zA-Z0-9_-]*[a-zA-Z0-9])(?=\s*[,}])'
+            repaired = re.sub(bool_pattern, r'\1: "\2"', repaired)
+            
+            # Fix 3: Remove trailing commas
+            repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
+            
+            # Fix 4: Ensure proper string quoting for common unquoted values
+            # Handle cases like: "key": value (where value should be "value")
+            unquoted_pattern = r'("[\w]+"):\s*([a-zA-Z0-9_-]+)(?=\s*[,}])'
+            repaired = re.sub(unquoted_pattern, r'\1: "\2"', repaired)
+            
+            try:
+                result = json.loads(repaired)
+                logger.info(f"Successfully repaired JSON. Original: {json_str[:100]}...")
+                logger.info(f"Repaired: {repaired[:100]}...")
+                return result
+            except json.JSONDecodeError as repair_error:
+                logger.error(f"JSON repair failed. Original: {json_str}")
+                logger.error(f"Repaired attempt: {repaired}")
+                raise ValueError(f"Could not parse JSON even after repair attempts. Original error: {original_error}, Repair error: {repair_error}")
+    
     async def initialize(self) -> None:
         """Initialize database and other resources."""
         await self.db_manager.initialize()
@@ -116,11 +214,11 @@ class MCPCodeIndexServer:
                                 "description": "Git branch name (e.g., 'main', 'develop')"
                             },
                             "remoteOrigin": {
-                                "type": ["string", "null"],
+                                "type": "string",
                                 "description": "Git remote origin URL if available"
                             },
                             "upstreamOrigin": {
-                                "type": ["string", "null"],
+                                "type": "string",
                                 "description": "Upstream repository URL if this is a fork"
                             },
                             "filePath": {
@@ -140,11 +238,11 @@ class MCPCodeIndexServer:
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
                             "branch": {"type": "string", "description": "Git branch name"},
-                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "filePath": {"type": "string", "description": "Relative path to the file from project root"},
                             "description": {"type": "string", "description": "Detailed description of the file's contents"},
-                            "fileHash": {"type": ["string", "null"], "description": "SHA-256 hash of the file contents (optional)"}
+                            "fileHash": {"type": "string", "description": "SHA-256 hash of the file contents (optional)"}
                         },
                         "required": ["projectName", "folderPath", "branch", "filePath", "description"]
                     }
@@ -158,8 +256,8 @@ class MCPCodeIndexServer:
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
                             "branch": {"type": "string", "description": "Git branch name"},
-                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "tokenLimit": {"type": "integer", "description": "Optional token limit override (defaults to server configuration)"}
                         },
                         "required": ["projectName", "folderPath", "branch"]
@@ -174,8 +272,8 @@ class MCPCodeIndexServer:
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
                             "branch": {"type": "string", "description": "Git branch name"},
-                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "limit": {"type": "integer", "description": "Maximum number of missing files to return (optional)"}
                         },
                         "required": ["projectName", "folderPath", "branch"]
@@ -190,8 +288,8 @@ class MCPCodeIndexServer:
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
                             "branch": {"type": "string", "description": "Git branch to search in"},
-                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "query": {"type": "string", "description": "Search query (e.g., 'authentication middleware', 'database models')"},
                             "maxResults": {"type": "integer", "default": 20, "description": "Maximum number of results to return"}
                         },
@@ -207,8 +305,8 @@ class MCPCodeIndexServer:
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
                             "branch": {"type": "string", "description": "Git branch name"},
-                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"}
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
                         },
                         "required": ["projectName", "folderPath", "branch"]
                     }
@@ -221,8 +319,8 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder"},
-                            "remoteOrigin": {"type": ["string", "null"], "description": "Git remote origin URL"},
-                            "upstreamOrigin": {"type": ["string", "null"], "description": "Upstream repository URL if this is a fork"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "sourceBranch": {"type": "string", "description": "Branch to merge from (e.g., 'feature/new-ui')"},
                             "targetBranch": {"type": "string", "description": "Branch to merge into (e.g., 'main')"},
                             "conflictResolutions": {
@@ -270,7 +368,10 @@ class MCPCodeIndexServer:
     
     async def _execute_tool_handler(self, handler, arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Execute a tool handler and format the result."""
-        result = await handler(arguments)
+        # Clean HTML entities from all arguments before processing
+        cleaned_arguments = self._clean_arguments(arguments)
+        
+        result = await handler(cleaned_arguments)
         
         return [types.TextContent(
             type="text",
@@ -410,8 +511,8 @@ class MCPCodeIndexServer:
             if not scanner.is_valid_project_directory():
                 return False
             
-            current_files = scanner.scan_files()
-            current_basenames = {Path(f).name for f in current_files}
+            current_files = scanner.scan_directory()
+            current_basenames = {f.name for f in current_files}
             
             if not current_basenames:
                 return False

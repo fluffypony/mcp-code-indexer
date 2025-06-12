@@ -136,8 +136,33 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
         # Parse JSON (handle both single-line and multi-line)
         json_data = json.loads(args.runcommand)
     except json.JSONDecodeError as e:
-        print(f"Error parsing JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        print(f"Initial JSON parse failed: {e}", file=sys.stderr)
+        
+        # Try to repair the JSON
+        try:
+            import re
+            repaired = args.runcommand
+            
+            # Fix common issues
+            # Quote unquoted URLs and paths
+            url_pattern = r'("[\w]+"):\s*([a-zA-Z][a-zA-Z0-9+.-]*://[^\s,}]+|/[^\s,}]*)'
+            repaired = re.sub(url_pattern, r'\1: "\2"', repaired)
+            
+            # Quote unquoted values
+            unquoted_pattern = r'("[\w]+"):\s*([a-zA-Z0-9_-]+)(?=\s*[,}])'
+            repaired = re.sub(unquoted_pattern, r'\1: "\2"', repaired)
+            
+            # Remove trailing commas
+            repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
+            
+            json_data = json.loads(repaired)
+            print(f"JSON repaired successfully", file=sys.stderr)
+            print(f"Original: {args.runcommand}", file=sys.stderr)
+            print(f"Repaired: {repaired}", file=sys.stderr)
+        except json.JSONDecodeError as repair_error:
+            print(f"JSON repair also failed: {repair_error}", file=sys.stderr)
+            print(f"Original JSON: {args.runcommand}", file=sys.stderr)
+            sys.exit(1)
     
     # Initialize server
     db_path = Path(args.db_path).expanduser()
@@ -154,6 +179,20 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
     if "method" in json_data and json_data["method"] == "tools/call":
         tool_name = json_data["params"]["name"]
         tool_arguments = json_data["params"]["arguments"]
+    elif "projectName" in json_data and "folderPath" in json_data:
+        # Auto-detect: user provided just arguments, try to infer the tool
+        if "filePath" in json_data and "description" in json_data:
+            tool_name = "update_file_description"
+            tool_arguments = json_data
+            print("Auto-detected tool: update_file_description", file=sys.stderr)
+        elif "branch" in json_data:
+            tool_name = "check_codebase_size"
+            tool_arguments = json_data
+            print("Auto-detected tool: check_codebase_size", file=sys.stderr)
+        else:
+            print("Error: Could not auto-detect tool from arguments. Please use full MCP format:", file=sys.stderr)
+            print('{"method": "tools/call", "params": {"name": "TOOL_NAME", "arguments": {...}}}', file=sys.stderr)
+            sys.exit(1)
         
         try:
             # Map tool names to handler methods
@@ -177,8 +216,33 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
                 print(json.dumps(error_result, indent=2))
                 return
             
+            # Clean HTML entities from arguments before execution
+            def clean_html_entities(text: str) -> str:
+                if not text:
+                    return text
+                import html
+                return html.unescape(text)
+            
+            def clean_arguments(arguments: dict) -> dict:
+                cleaned = {}
+                for key, value in arguments.items():
+                    if isinstance(value, str):
+                        cleaned[key] = clean_html_entities(value)
+                    elif isinstance(value, list):
+                        cleaned[key] = [
+                            clean_html_entities(item) if isinstance(item, str) else item
+                            for item in value
+                        ]
+                    elif isinstance(value, dict):
+                        cleaned[key] = clean_arguments(value)
+                    else:
+                        cleaned[key] = value
+                return cleaned
+            
+            cleaned_tool_arguments = clean_arguments(tool_arguments)
+            
             # Execute the tool handler directly
-            result = await tool_handlers[tool_name](tool_arguments)
+            result = await tool_handlers[tool_name](cleaned_tool_arguments)
             print(json.dumps(result, indent=2, default=str))
         except Exception as e:
             error_result = {
@@ -246,6 +310,7 @@ async def handle_dumpdescriptions(args: argparse.Namespace) -> None:
     print("=" * 80)
     print(f"Total descriptions: {len(file_descriptions)}")
     print(f"Total tokens: {total_tokens}")
+
 
 
 async def main() -> None:
