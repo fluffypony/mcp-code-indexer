@@ -91,6 +91,7 @@ def parse_arguments() -> argparse.Namespace:
 
 async def handle_getprojects(args: argparse.Namespace) -> None:
     """Handle --getprojects command."""
+    db_manager = None
     try:
         from .database.database import DatabaseManager
         
@@ -132,19 +133,43 @@ async def handle_getprojects(args: argparse.Namespace) -> None:
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        # Clean up database connections
+        if db_manager:
+            await db_manager.close_pool()
 
 
 async def handle_runcommand(args: argparse.Namespace) -> None:
     """Handle --runcommand command."""
     from .server.mcp_server import MCPCodeIndexServer
+    from .logging_config import setup_command_logger
+    
+    # Set up dedicated logging for runcommand
+    cache_dir = Path(args.cache_dir).expanduser()
+    logger = setup_command_logger("runcommand", cache_dir)
+    
+    logger.info("Starting runcommand execution", extra={
+        "structured_data": {
+            "command": args.runcommand,
+            "args": {
+                "token_limit": args.token_limit,
+                "db_path": str(args.db_path),
+                "cache_dir": str(args.cache_dir)
+            }
+        }
+    })
     
     try:
         # Parse JSON (handle both single-line and multi-line)
+        logger.debug("Parsing JSON command")
         json_data = json.loads(args.runcommand)
+        logger.debug("JSON parsed successfully", extra={"structured_data": {"parsed_json": json_data}})
     except json.JSONDecodeError as e:
+        logger.warning("Initial JSON parse failed", extra={"structured_data": {"error": str(e)}})
         print(f"Initial JSON parse failed: {e}", file=sys.stderr)
         
         # Try to repair the JSON
+        logger.debug("Attempting JSON repair")
         try:
             import re
             repaired = args.runcommand
@@ -162,10 +187,22 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
             repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
             
             json_data = json.loads(repaired)
+            logger.info("JSON repaired successfully", extra={
+                "structured_data": {
+                    "original": args.runcommand,
+                    "repaired": repaired
+                }
+            })
             print(f"JSON repaired successfully", file=sys.stderr)
             print(f"Original: {args.runcommand}", file=sys.stderr)
             print(f"Repaired: {repaired}", file=sys.stderr)
         except json.JSONDecodeError as repair_error:
+            logger.error("JSON repair failed", extra={
+                "structured_data": {
+                    "repair_error": str(repair_error),
+                    "original_json": args.runcommand
+                }
+            })
             print(f"JSON repair also failed: {repair_error}", file=sys.stderr)
             print(f"Original JSON: {args.runcommand}", file=sys.stderr)
             sys.exit(1)
@@ -174,6 +211,14 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
     db_path = Path(args.db_path).expanduser()
     cache_dir = Path(args.cache_dir).expanduser()
     
+    logger.info("Initializing MCP server", extra={
+        "structured_data": {
+            "db_path": str(db_path),
+            "cache_dir": str(cache_dir),
+            "token_limit": args.token_limit
+        }
+    })
+    
     server = MCPCodeIndexServer(
         token_limit=args.token_limit,
         db_path=db_path,
@@ -181,27 +226,43 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
     )
     
     try:
+        logger.debug("Initializing server database connection")
         await server.initialize()
+        logger.debug("Server initialized successfully")
         
         # Extract the tool call information from the JSON
         if "method" in json_data and json_data["method"] == "tools/call":
             tool_name = json_data["params"]["name"]
             tool_arguments = json_data["params"]["arguments"]
+            logger.info("JSON-RPC format detected", extra={
+                "structured_data": {
+                    "tool_name": tool_name,
+                    "arguments_keys": list(tool_arguments.keys())
+                }
+            })
         elif "projectName" in json_data and "folderPath" in json_data:
             # Auto-detect: user provided just arguments, try to infer the tool
             if "filePath" in json_data and "description" in json_data:
                 tool_name = "update_file_description"
                 tool_arguments = json_data
+                logger.info("Auto-detected tool: update_file_description")
                 print("Auto-detected tool: update_file_description", file=sys.stderr)
             elif "branch" in json_data:
                 tool_name = "check_codebase_size"
                 tool_arguments = json_data
+                logger.info("Auto-detected tool: check_codebase_size")
                 print("Auto-detected tool: check_codebase_size", file=sys.stderr)
             else:
+                logger.error("Could not auto-detect tool from arguments", extra={
+                    "structured_data": {"provided_keys": list(json_data.keys())}
+                })
                 print("Error: Could not auto-detect tool from arguments. Please use full MCP format:", file=sys.stderr)
                 print('{"method": "tools/call", "params": {"name": "TOOL_NAME", "arguments": {...}}}', file=sys.stderr)
                 sys.exit(1)
         else:
+            logger.error("Invalid JSON format", extra={
+                "structured_data": {"provided_keys": list(json_data.keys())}
+            })
             print("Error: JSON must contain a valid MCP tool call", file=sys.stderr)
             sys.exit(1)
         
@@ -220,6 +281,12 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
         }
         
         if tool_name not in tool_handlers:
+            logger.error("Unknown tool requested", extra={
+                "structured_data": {
+                    "tool_name": tool_name,
+                    "available_tools": list(tool_handlers.keys())
+                }
+            })
             error_result = {
                 "error": {
                     "code": -32601,
@@ -254,11 +321,38 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
         
         cleaned_tool_arguments = clean_arguments(tool_arguments)
         
+        logger.info("Executing tool", extra={
+            "structured_data": {
+                "tool_name": tool_name,
+                "arguments": {k: v for k, v in cleaned_tool_arguments.items() if k not in ['description']}  # Exclude long descriptions
+            }
+        })
+        
         # Execute the tool handler directly
+        import time
+        start_time = time.time()
         result = await tool_handlers[tool_name](cleaned_tool_arguments)
+        execution_time = time.time() - start_time
+        
+        logger.info("Tool execution completed", extra={
+            "structured_data": {
+                "tool_name": tool_name,
+                "execution_time_seconds": execution_time,
+                "result_type": type(result).__name__,
+                "result_size": len(json.dumps(result, default=str)) if result else 0
+            }
+        })
+        
         print(json.dumps(result, indent=2, default=str))
         
     except Exception as e:
+        logger.error("Tool execution failed", extra={
+            "structured_data": {
+                "tool_name": tool_name if 'tool_name' in locals() else 'unknown',
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            }
+        })
         error_result = {
             "error": {
                 "code": -32603,
@@ -269,7 +363,15 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
     finally:
         # Clean up database connections
         if hasattr(server, 'db_manager') and server.db_manager:
+            logger.debug("Closing database connections")
             await server.db_manager.close_pool()
+            logger.debug("Database connections closed")
+        logger.info("=== RUNCOMMAND SESSION ENDED ===")
+        
+        # Close logger handlers to flush any remaining logs
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
 
 
 async def handle_dumpdescriptions(args: argparse.Namespace) -> None:
@@ -284,59 +386,89 @@ async def handle_dumpdescriptions(args: argparse.Namespace) -> None:
     project_id = args.dumpdescriptions[0]
     branch = args.dumpdescriptions[1] if len(args.dumpdescriptions) > 1 else None
     
-    # Initialize database and token counter
-    db_path = Path(args.db_path).expanduser()
-    db_manager = DatabaseManager(db_path)
-    await db_manager.initialize()
-    
-    token_counter = TokenCounter(args.token_limit)
-    
-    # Get file descriptions
-    if branch:
-        file_descriptions = await db_manager.get_all_file_descriptions(
-            project_id=project_id,
-            branch=branch
-        )
-        print(f"File descriptions for project {project_id}, branch {branch}:")
-    else:
-        file_descriptions = await db_manager.get_all_file_descriptions(
-            project_id=project_id
-        )
-        print(f"File descriptions for project {project_id} (all branches):")
-    
-    print("=" * 80)
-    
-    if not file_descriptions:
-        print("No descriptions found.")
-        total_tokens = 0
-    else:
-        total_tokens = 0
-        for desc in file_descriptions:
-            print(f"File: {desc.file_path}")
-            if branch is None:
-                print(f"Branch: {desc.branch}")
-            print(f"Description: {desc.description}")
-            print("-" * 40)
-            
-            # Count tokens for this description
-            desc_tokens = token_counter.count_file_description_tokens(desc)
-            total_tokens += desc_tokens
-    
-    print("=" * 80)
-    print(f"Total descriptions: {len(file_descriptions)}")
-    print(f"Total tokens: {total_tokens}")
+    db_manager = None
+    try:
+        # Initialize database and token counter
+        db_path = Path(args.db_path).expanduser()
+        db_manager = DatabaseManager(db_path)
+        await db_manager.initialize()
+        
+        token_counter = TokenCounter(args.token_limit)
+        
+        # Get file descriptions
+        if branch:
+            file_descriptions = await db_manager.get_all_file_descriptions(
+                project_id=project_id,
+                branch=branch
+            )
+            print(f"File descriptions for project {project_id}, branch {branch}:")
+        else:
+            file_descriptions = await db_manager.get_all_file_descriptions(
+                project_id=project_id
+            )
+            print(f"File descriptions for project {project_id} (all branches):")
+        
+        print("=" * 80)
+        
+        if not file_descriptions:
+            print("No descriptions found.")
+            total_tokens = 0
+        else:
+            total_tokens = 0
+            for desc in file_descriptions:
+                print(f"File: {desc.file_path}")
+                if branch is None:
+                    print(f"Branch: {desc.branch}")
+                print(f"Description: {desc.description}")
+                print("-" * 40)
+                
+                # Count tokens for this description
+                desc_tokens = token_counter.count_file_description_tokens(desc)
+                total_tokens += desc_tokens
+        
+        print("=" * 80)
+        print(f"Total descriptions: {len(file_descriptions)}")
+        print(f"Total tokens: {total_tokens}")
+        
+    finally:
+        # Clean up database connections
+        if db_manager:
+            await db_manager.close_pool()
 
 
 
 async def handle_githook(args: argparse.Namespace) -> None:
     """Handle --githook command."""
+    from .logging_config import setup_command_logger
+    
+    # Set up dedicated logging for githook
+    cache_dir = Path(args.cache_dir).expanduser()
+    logger = setup_command_logger("githook", cache_dir)
+    
     try:
         from .database.database import DatabaseManager
         from .git_hook_handler import GitHookHandler
         
+        logger.info("Starting git hook execution", extra={
+            "structured_data": {
+                "args": {
+                    "db_path": str(args.db_path),
+                    "cache_dir": str(args.cache_dir),
+                    "token_limit": args.token_limit
+                }
+            }
+        })
+        
         # Initialize database
         db_path = Path(args.db_path).expanduser()
         cache_dir = Path(args.cache_dir).expanduser()
+        
+        logger.info("Setting up directories and database", extra={
+            "structured_data": {
+                "db_path": str(db_path),
+                "cache_dir": str(cache_dir)
+            }
+        })
         
         # Create directories if they don't exist
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -344,16 +476,33 @@ async def handle_githook(args: argparse.Namespace) -> None:
         
         db_manager = DatabaseManager(db_path)
         await db_manager.initialize()
+        logger.debug("Database initialized successfully")
         
         # Initialize git hook handler
         git_handler = GitHookHandler(db_manager, cache_dir)
+        logger.debug("Git hook handler initialized")
         
         # Run git hook analysis
+        logger.info("Starting git hook analysis")
         await git_handler.run_githook_mode()
+        logger.info("Git hook analysis completed successfully")
         
     except Exception as e:
+        logger.error("Git hook execution failed", extra={
+            "structured_data": {
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            }
+        })
         print(f"Git hook error: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        logger.info("=== GITHOOK SESSION ENDED ===")
+        
+        # Close logger handlers to flush any remaining logs
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
 
 
 async def main() -> None:

@@ -18,8 +18,8 @@ def setup_logging(
     log_level: str = "INFO",
     log_file: Optional[Path] = None,
     enable_file_logging: bool = False,
-    max_bytes: int = 10 * 1024 * 1024,  # 10MB
-    backup_count: int = 5
+    max_bytes: int = 50 * 1024 * 1024,  # 50MB
+    backup_count: int = 2
 ) -> logging.Logger:
     """
     Set up comprehensive logging configuration.
@@ -58,12 +58,20 @@ def setup_logging(
             log_file.parent.mkdir(parents=True, exist_ok=True)
             
             # Rotating file handler
-            file_handler = logging.handlers.RotatingFileHandler(
-                log_file,
-                maxBytes=max_bytes,
-                backupCount=backup_count,
-                encoding='utf-8'
-            )
+            if max_bytes > 0:
+                file_handler = logging.handlers.RotatingFileHandler(
+                    log_file,
+                    maxBytes=max_bytes,
+                    backupCount=backup_count,
+                    encoding='utf-8'
+                )
+            else:
+                # No size limit - use regular FileHandler
+                file_handler = logging.FileHandler(
+                    log_file,
+                    mode='a',
+                    encoding='utf-8'
+                )
             file_handler.setLevel(logging.DEBUG)  # File gets all levels
             file_handler.setFormatter(structured_formatter)
             
@@ -105,6 +113,66 @@ def get_logger(name: str) -> logging.Logger:
         Logger instance
     """
     return logging.getLogger(name)
+
+
+def setup_command_logger(
+    command_name: str,
+    cache_dir: Path,
+    log_level: str = "DEBUG"
+) -> logging.Logger:
+    """
+    Set up a dedicated logger for specific commands (runcommand, githook).
+    
+    Args:
+        command_name: Name of the command (e.g., 'runcommand', 'githook')
+        cache_dir: Cache directory path
+        log_level: Logging level
+        
+    Returns:
+        Configured logger for the command
+    """
+    logger_name = f"mcp_code_indexer.{command_name}"
+    logger = logging.getLogger(logger_name)
+    
+    # Don't propagate to parent loggers to avoid duplicate console output
+    logger.propagate = False
+    logger.setLevel(getattr(logging, log_level.upper()))
+    
+    # Clear existing handlers
+    logger.handlers.clear()
+    
+    # Create log file path
+    log_file = cache_dir / f"{command_name}.log"
+    
+    try:
+        # Ensure cache directory exists
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # File handler with 50MB limit
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=50 * 1024 * 1024,  # 50MB
+            backupCount=2,
+            encoding='utf-8'
+        )
+        file_handler.setLevel(logging.DEBUG)
+        
+        # Use structured formatter
+        structured_formatter = StructuredFormatter()
+        file_handler.setFormatter(structured_formatter)
+        
+        logger.addHandler(file_handler)
+        
+        logger.info(f"=== {command_name.upper()} SESSION STARTED ===")
+        
+    except (OSError, PermissionError) as e:
+        # Fallback to console logging
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setFormatter(StructuredFormatter())
+        logger.addHandler(console_handler)
+        logger.warning(f"Failed to set up {command_name} file logging: {e}")
+    
+    return logger
 
 
 def log_performance_metrics(
