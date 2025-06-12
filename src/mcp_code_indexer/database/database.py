@@ -728,3 +728,78 @@ class DatabaseManager:
             
             await db.commit()
             return removed_count
+    
+    async def get_project_map_data(self, project_identifier: str, branch: str = None) -> dict:
+        """
+        Get all data needed to generate a project map.
+        
+        Args:
+            project_identifier: Project name or ID
+            branch: Branch name (optional, will use first available if not specified)
+            
+        Returns:
+            Dictionary containing project info, overview, and file descriptions
+        """
+        async with self.get_connection() as db:
+            # Try to find project by ID first, then by name
+            if len(project_identifier) == 36 and '-' in project_identifier:
+                # Looks like a UUID
+                cursor = await db.execute(
+                    "SELECT * FROM projects WHERE id = ?", 
+                    (project_identifier,)
+                )
+            else:
+                # Search by name
+                cursor = await db.execute(
+                    "SELECT * FROM projects WHERE LOWER(name) = LOWER(?)", 
+                    (project_identifier,)
+                )
+            
+            project_row = await cursor.fetchone()
+            if not project_row:
+                return None
+            
+            # Handle aliases JSON parsing
+            project_dict = dict(project_row)
+            if isinstance(project_dict['aliases'], str):
+                import json
+                project_dict['aliases'] = json.loads(project_dict['aliases'])
+            
+            project = Project(**project_dict)
+            
+            # If no branch specified, find the first available branch
+            if not branch:
+                cursor = await db.execute(
+                    "SELECT DISTINCT branch FROM file_descriptions WHERE project_id = ? LIMIT 1",
+                    (project.id,)
+                )
+                branch_row = await cursor.fetchone()
+                if branch_row:
+                    branch = branch_row['branch']
+                else:
+                    branch = 'main'  # Default fallback
+            
+            # Get project overview
+            cursor = await db.execute(
+                "SELECT * FROM project_overviews WHERE project_id = ? AND branch = ?",
+                (project.id, branch)
+            )
+            overview_row = await cursor.fetchone()
+            project_overview = ProjectOverview(**overview_row) if overview_row else None
+            
+            # Get all file descriptions for this project/branch
+            cursor = await db.execute(
+                """SELECT * FROM file_descriptions 
+                   WHERE project_id = ? AND branch = ? 
+                   ORDER BY file_path""",
+                (project.id, branch)
+            )
+            file_rows = await cursor.fetchall()
+            file_descriptions = [FileDescription(**row) for row in file_rows]
+            
+            return {
+                'project': project,
+                'branch': branch,
+                'overview': project_overview,
+                'files': file_descriptions
+            }

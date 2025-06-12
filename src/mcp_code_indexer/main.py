@@ -92,6 +92,13 @@ def parse_arguments() -> argparse.Namespace:
         help="Remove empty projects (no descriptions and no project overview)"
     )
     
+    parser.add_argument(
+        "--map",
+        type=str,
+        metavar="PROJECT_NAME_OR_ID",
+        help="Generate a markdown project map for the specified project (by name or ID)"
+    )
+    
     return parser.parse_args()
 
 
@@ -574,6 +581,184 @@ async def handle_cleanup(args: argparse.Namespace) -> None:
             logger.removeHandler(handler)
 
 
+async def handle_map(args: argparse.Namespace) -> None:
+    """Handle --map command."""
+    from .logging_config import setup_command_logger
+    import re
+    from collections import defaultdict
+    from pathlib import Path as PathLib
+    
+    # Set up dedicated logging for map
+    cache_dir = Path(args.cache_dir).expanduser()
+    logger = setup_command_logger("map", cache_dir)
+    
+    db_manager = None
+    try:
+        from .database.database import DatabaseManager
+        
+        logger.info("Starting project map generation", extra={
+            "structured_data": {
+                "project_identifier": args.map,
+                "args": {
+                    "db_path": str(args.db_path),
+                    "cache_dir": str(args.cache_dir)
+                }
+            }
+        })
+        
+        # Initialize database
+        db_path = Path(args.db_path).expanduser()
+        db_manager = DatabaseManager(db_path)
+        await db_manager.initialize()
+        logger.debug("Database initialized successfully")
+        
+        # Get project data
+        logger.info("Retrieving project data")
+        project_data = await db_manager.get_project_map_data(args.map)
+        
+        if not project_data:
+            print(f"Error: Project '{args.map}' not found", file=sys.stderr)
+            logger.error("Project not found", extra={"structured_data": {"identifier": args.map}})
+            sys.exit(1)
+        
+        project = project_data['project']
+        branch = project_data['branch']
+        overview = project_data['overview']
+        files = project_data['files']
+        
+        logger.info("Generating markdown map", extra={
+            "structured_data": {
+                "project_name": project.name,
+                "branch": branch,
+                "file_count": len(files),
+                "has_overview": overview is not None
+            }
+        })
+        
+        # Generate markdown
+        markdown_content = generate_project_markdown(project, branch, overview, files, logger)
+        
+        # Output the markdown
+        print(markdown_content)
+        
+        logger.info("Project map generated successfully")
+        
+    except Exception as e:
+        logger.error("Map generation failed", extra={
+            "structured_data": {
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            }
+        })
+        print(f"Map generation error: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        # Clean up database connections
+        if db_manager:
+            logger.debug("Closing database connections")
+            await db_manager.close_pool()
+            logger.debug("Database connections closed")
+        logger.info("=== MAP SESSION ENDED ===")
+        
+        # Close logger handlers to flush any remaining logs
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
+
+
+def generate_project_markdown(project, branch, overview, files, logger):
+    """Generate the markdown content for the project map."""
+    import re
+    from collections import defaultdict
+    from pathlib import Path as PathLib
+    
+    markdown_lines = []
+    
+    # Project header
+    markdown_lines.append(f"# {project.name}")
+    markdown_lines.append("")
+    
+    # Project metadata
+    if project.remote_origin:
+        markdown_lines.append(f"**Repository:** {project.remote_origin}")
+    if project.upstream_origin:
+        markdown_lines.append(f"**Upstream:** {project.upstream_origin}")
+    markdown_lines.append(f"**Branch:** {branch}")
+    markdown_lines.append("")
+    
+    # Project overview (with header demotion if needed)
+    if overview and overview.overview:
+        markdown_lines.append("## Project Overview")
+        markdown_lines.append("")
+        
+        # Check if overview contains H1 headers and demote if needed
+        overview_content = overview.overview
+        if re.search(r'^#\s', overview_content, re.MULTILINE):
+            logger.debug("H1 headers found in overview, demoting all headers")
+            # Demote all headers by one level
+            overview_content = re.sub(r'^(#{1,6})', r'#\1', overview_content, flags=re.MULTILINE)
+        
+        markdown_lines.append(overview_content)
+        markdown_lines.append("")
+    
+    # File structure
+    if files:
+        markdown_lines.append("## Codebase Structure")
+        markdown_lines.append("")
+        
+        # Organize files by directory
+        directories = defaultdict(list)
+        for file_desc in files:
+            file_path = PathLib(file_desc.file_path)
+            if len(file_path.parts) == 1:
+                # Root level file
+                directories["(root)"].append(file_desc)
+            else:
+                # File in subdirectory
+                directory = str(file_path.parent)
+                directories[directory].append(file_desc)
+        
+        # Sort directories (root first, then alphabetically)
+        sorted_dirs = sorted(directories.keys(), key=lambda x: ("" if x == "(root)" else x))
+        
+        for directory in sorted_dirs:
+            dir_files = directories[directory]
+            
+            # Directory header
+            if directory == "(root)":
+                markdown_lines.append("### Root Directory")
+            else:
+                # Create nested headers based on directory depth
+                depth = len(PathLib(directory).parts)
+                header_level = "#" * min(depth + 2, 6)  # Cap at H6
+                markdown_lines.append(f"{header_level} {directory}/")
+            
+            markdown_lines.append("")
+            
+            # Files table
+            markdown_lines.append("| File | Description |")
+            markdown_lines.append("|------|-------------|")
+            
+            for file_desc in sorted(dir_files, key=lambda x: x.file_path):
+                file_name = PathLib(file_desc.file_path).name
+                # Escape pipe characters in descriptions for markdown table
+                description = file_desc.description.replace("|", "\\|").replace("\n", " ").strip()
+                # Truncate very long descriptions
+                if len(description) > 200:
+                    description = description[:197] + "..."
+                markdown_lines.append(f"| `{file_name}` | {description} |")
+            
+            markdown_lines.append("")
+    
+    # Footer with generation info
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    markdown_lines.append("---")
+    markdown_lines.append(f"*Generated by MCP Code Indexer on {timestamp}*")
+    
+    return "\n".join(markdown_lines)
+
+
 async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
@@ -598,6 +783,10 @@ async def main() -> None:
     
     if args.cleanup:
         await handle_cleanup(args)
+        return
+    
+    if args.map:
+        await handle_map(args)
         return
     
     # Setup structured logging
