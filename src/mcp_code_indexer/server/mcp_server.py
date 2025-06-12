@@ -227,7 +227,8 @@ class MCPCodeIndexServer:
                                 "description": "Relative path to the file from project root"
                             }
                         },
-                        "required": ["projectName", "folderPath", "branch", "filePath"]
+                        "required": ["projectName", "folderPath", "branch", "filePath"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -245,7 +246,8 @@ class MCPCodeIndexServer:
                             "description": {"type": "string", "description": "Detailed description of the file's contents"},
                             "fileHash": {"type": "string", "description": "SHA-256 hash of the file contents (optional)"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "filePath", "description"]
+                        "required": ["projectName", "folderPath", "branch", "filePath", "description"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -261,7 +263,8 @@ class MCPCodeIndexServer:
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "tokenLimit": {"type": "integer", "description": "Optional token limit override (defaults to server configuration)"}
                         },
-                        "required": ["projectName", "folderPath", "branch"]
+                        "required": ["projectName", "folderPath", "branch"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -277,7 +280,8 @@ class MCPCodeIndexServer:
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "limit": {"type": "integer", "description": "Maximum number of missing files to return (optional)"}
                         },
-                        "required": ["projectName", "folderPath", "branch"]
+                        "required": ["projectName", "folderPath", "branch"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -294,7 +298,8 @@ class MCPCodeIndexServer:
                             "query": {"type": "string", "description": "Search query (e.g., 'authentication middleware', 'database models')"},
                             "maxResults": {"type": "integer", "default": 20, "description": "Maximum number of results to return"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "query"]
+                        "required": ["projectName", "folderPath", "branch", "query"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -309,7 +314,8 @@ class MCPCodeIndexServer:
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
                         },
-                        "required": ["projectName", "folderPath", "branch"]
+                        "required": ["projectName", "folderPath", "branch"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -333,11 +339,13 @@ class MCPCodeIndexServer:
                                         "conflictId": {"type": "string", "description": "ID of the conflict to resolve"},
                                         "resolvedDescription": {"type": "string", "description": "Final description to use after merge"}
                                     },
-                                    "required": ["conflictId", "resolvedDescription"]
+                                    "required": ["conflictId", "resolvedDescription"],
+                                    "additionalProperties": False
                                 }
                             }
                         },
-                        "required": ["projectName", "folderPath", "sourceBranch", "targetBranch"]
+                        "required": ["projectName", "folderPath", "sourceBranch", "targetBranch"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -352,7 +360,8 @@ class MCPCodeIndexServer:
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
                         },
-                        "required": ["projectName", "folderPath", "branch"]
+                        "required": ["projectName", "folderPath", "branch"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -402,7 +411,8 @@ src/
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "overview": {"type": "string", "description": "Comprehensive narrative overview of the codebase (10-30k tokens recommended)"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "overview"]
+                        "required": ["projectName", "folderPath", "branch", "overview"],
+                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -418,7 +428,8 @@ src/
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "limit": {"type": "integer", "default": 200, "description": "Number of top terms to return"}
                         },
-                        "required": ["projectName", "folderPath", "branch"]
+                        "required": ["projectName", "folderPath", "branch"],
+                        "additionalProperties": False
                     }
                 )
             ]
@@ -898,7 +909,7 @@ src/
     
     def _build_folder_structure(self, file_descriptions: List[FileDescription]) -> Dict[str, Any]:
         """Build hierarchical folder structure from file descriptions."""
-        root = {"name": "", "path": "", "files": [], "folders": {}}
+        root = {"path": "", "files": [], "folders": {}}
         
         for file_desc in file_descriptions:
             path_parts = Path(file_desc.file_path).parts
@@ -909,7 +920,6 @@ src/
                 folder_path = "/".join(path_parts[:i+1])
                 if part not in current["folders"]:
                     current["folders"][part] = {
-                        "name": part,
                         "path": folder_path,
                         "files": [],
                         "folders": {}
@@ -919,18 +929,23 @@ src/
             # Add file to current folder
             if path_parts:  # Handle empty paths
                 current["files"].append({
-                    "name": path_parts[-1],
                     "path": file_desc.file_path,
                     "description": file_desc.description
                 })
         
-        # Convert nested dict structure to list format
+        # Convert nested dict structure to list format, skipping empty folders
         def convert_structure(node):
+            folders = []
+            for folder in node["folders"].values():
+                converted_folder = convert_structure(folder)
+                # Only include folders that have files or non-empty subfolders
+                if converted_folder["files"] or converted_folder["folders"]:
+                    folders.append(converted_folder)
+            
             return {
-                "name": node["name"],
                 "path": node["path"],
                 "files": node["files"],
-                "folders": [convert_structure(folder) for folder in node["folders"].values()]
+                "folders": folders
             }
         
         return convert_structure(root)

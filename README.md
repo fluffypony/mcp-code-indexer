@@ -1,7 +1,7 @@
 # MCP Code Indexer 🚀
 
-[![PyPI version](https://badge.fury.io/py/mcp-code-indexer.svg)](https://badge.fury.io/py/mcp-code-indexer)
-[![Python](https://img.shields.io/pypi/pyversions/mcp-code-indexer.svg)](https://pypi.org/project/mcp-code-indexer/)
+[![PyPI version](https://badge.fury.io/py/mcp-code-indexer.svg?1)](https://badge.fury.io/py/mcp-code-indexer)
+[![Python](https://img.shields.io/pypi/pyversions/mcp-code-indexer.svg?1)](https://pypi.org/project/mcp-code-indexer/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 A production-ready **Model Context Protocol (MCP) server** that provides intelligent codebase navigation for AI agents through searchable file descriptions, token-aware overviews, and advanced merge capabilities.

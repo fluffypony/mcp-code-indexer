@@ -12,12 +12,12 @@ from typing import AsyncGenerator, Generator
 import pytest
 import pytest_asyncio
 
-from src.database.database import DatabaseManager
-from src.database.models import Project, FileDescription
-from src.token_counter import TokenCounter
-from src.merge_handler import MergeHandler
-from src.error_handler import setup_error_handling
-from src.logging_config import setup_logging
+from mcp_code_indexer.database.database import DatabaseManager
+from mcp_code_indexer.database.models import Project, FileDescription
+from mcp_code_indexer.token_counter import TokenCounter
+from mcp_code_indexer.merge_handler import MergeHandler
+from mcp_code_indexer.error_handler import setup_error_handling
+from mcp_code_indexer.logging_config import setup_logging
 
 
 @pytest.fixture(scope="session")
