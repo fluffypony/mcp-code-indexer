@@ -7,7 +7,25 @@ token-aware overviews, and advanced merge capabilities.
 """
 
 def _get_version() -> str:
-    """Read version from pyproject.toml."""
+    """Get version from package metadata or pyproject.toml."""
+    # First try to get version from installed package metadata
+    try:
+        try:
+            from importlib.metadata import version
+        except ImportError:
+            # Python < 3.8 fallback
+            from importlib_metadata import version
+        
+        # Try different package name variations
+        for pkg_name in ["mcp-code-indexer", "mcp_code_indexer"]:
+            try:
+                return version(pkg_name)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    
+    # Fallback to reading from pyproject.toml (for development)
     try:
         from pathlib import Path
         import sys
@@ -18,15 +36,13 @@ def _get_version() -> str:
             try:
                 import tomli as tomllib
             except ImportError:
-                # Fallback if tomli not available
-                return "1.6.3"
+                return "dev"
         
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
         return data["project"]["version"]
     except Exception:
-        # Return dev version if reading fails - indicates something is wrong
         return "dev"
 
 __version__ = _get_version()
