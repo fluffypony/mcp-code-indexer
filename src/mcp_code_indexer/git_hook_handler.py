@@ -308,7 +308,50 @@ GIT DIFF:
 CHANGED FILES:
 {', '.join(changed_files)}
 
-Based on these changes, provide updated descriptions for any files that have changed significantly, and update the project overview if the changes warrant it (new major features, architectural changes, etc).
+INSTRUCTIONS:
+
+1. **File Descriptions**: Update descriptions for any files that have changed significantly. Only include files that need actual description updates.
+
+2. **Project Overview**: Update ONLY if there are major structural changes like:
+   - New major features or components
+   - Architectural changes (new patterns, frameworks, or approaches)
+   - Significant dependency additions
+   - New API endpoints or workflows
+   - Changes to build/deployment processes
+   
+   Do NOT update overview for minor changes like bug fixes, small refactors, or documentation updates.
+
+3. **Overview Format**: If updating the overview, follow this structure with comprehensive narrative (10-20 pages of text):
+
+````
+## Directory Structure
+```
+src/
+├── api/          # REST API endpoints and middleware
+├── models/       # Database models and business logic  
+├── services/     # External service integrations
+├── utils/        # Shared utilities and helpers
+└── tests/        # Test suites
+```
+
+## Architecture Overview
+[Describe how components interact, data flow, key design decisions]
+
+## Core Components
+### API Layer
+[Details about API structure, authentication, routing]
+
+### Data Model
+[Key entities, relationships, database design]
+
+## Key Workflows
+1. User Authentication Flow
+   [Step-by-step description]
+2. Data Processing Pipeline
+   [How data moves through the system]
+
+[Continue with other sections...]
+````
 
 Return ONLY a JSON object in this exact format:
 {{
@@ -356,7 +399,7 @@ Return ONLY the JSON, no other text."""
                 }
             ],
             "temperature": self.config["temperature"],
-            "max_tokens": 4000,
+            "max_tokens": 24000,
         }
         
         timeout = aiohttp.ClientTimeout(total=self.config["timeout"])
