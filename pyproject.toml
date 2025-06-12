@@ -86,7 +86,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-mcp_code_indexer = ["tiktoken_cache/*", "*.sql"]
+mcp_code_indexer = ["tiktoken_cache/*", "*.sql", "data/*"]
 
 # Black configuration
 [tool.black]
