@@ -18,6 +18,23 @@ The MCP Code Indexer solves a critical problem for AI agents working with large 
 
 Perfect for AI-powered code review, refactoring tools, documentation generation, and codebase analysis workflows.
 
+## 🆕 What's New in v1.2.0
+
+### Condensed Codebase Overviews
+- **Smart Dual Approach**: Get detailed file-by-file structure OR comprehensive narrative overview
+- **`get_codebase_overview`**: Single condensed narrative capturing architecture and design patterns
+- **`update_codebase_overview`**: Create technical onboarding documents for new developers
+
+### Technical Vocabulary Analysis  
+- **`get_word_frequency`**: Analyze most common technical terms across your codebase
+- **Smart Filtering**: 850+ English stop words + programming keywords automatically filtered
+- **Domain Discovery**: Understand your codebase's vocabulary and find related concepts
+
+### Enhanced File Management
+- **Automatic Cleanup**: `check_codebase_size` now removes descriptions for deleted files
+- **Better Performance**: Cleaner databases with automatic maintenance
+- **Accurate Metrics**: Token counts reflect actual file state
+
 ## ⚡ Quick Start
 
 ### Install from PyPI
@@ -103,12 +120,12 @@ mypy src/
 
 ## 🛠️ MCP Tools Available
 
-The server provides **8 powerful MCP tools** for intelligent codebase management:
+The server provides **11 powerful MCP tools** for intelligent codebase management:
 
 ### Core Operations
 - **`get_file_description`** - Retrieve stored file descriptions instantly
 - **`update_file_description`** - Store detailed file summaries and metadata
-- **`check_codebase_size`** - Get token count and size-based recommendations
+- **`check_codebase_size`** - Get token count and size-based recommendations (🆕 *auto file cleanup*)
 
 ### Batch Operations
 - **`find_missing_descriptions`** - Scan projects for files without descriptions
@@ -116,10 +133,13 @@ The server provides **8 powerful MCP tools** for intelligent codebase management
 
 ### Search & Discovery
 - **`search_descriptions`** - Fast full-text search across all descriptions
-- **`get_codebase_overview`** - Complete hierarchical project structure
+- **`get_all_descriptions`** - Complete hierarchical project structure
+- **🆕 `get_codebase_overview`** - Condensed narrative overview of entire codebase
+- **🆕 `get_word_frequency`** - Technical vocabulary analysis with stop-word filtering
 
 ### Advanced Features
 - **`merge_branch_descriptions`** - Two-phase merge with conflict resolution
+- **🆕 `update_codebase_overview`** - Create comprehensive codebase documentation
 
 ## 🏗️ Architecture Highlights
 

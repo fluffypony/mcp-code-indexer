@@ -2,14 +2,30 @@
 
 from setuptools import setup, find_packages
 from pathlib import Path
+import sys
 
 # Read the README file
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
+# Read version from pyproject.toml
+def get_version():
+    try:
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            import tomli as tomllib
+        
+        with open(this_directory / "pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+        return data["project"]["version"]
+    except Exception:
+        # Fallback version if reading fails
+        return "1.2.0"
+
 setup(
     name="mcp-code-indexer",
-    version="1.0.0",
+    version=get_version(),
     description="MCP server that tracks file descriptions across codebases",
     long_description=long_description,
     long_description_content_type="text/markdown",
