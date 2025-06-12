@@ -579,6 +579,15 @@ src/
                 score += 1
                 match_factors.append("folder_path")
             
+            # Enhanced matching: If name matches and no remote origins are provided,
+            # consider it a strong match to prevent duplicates
+            if (score == 1 and "name" in match_factors and 
+                not remote_origin and not project.remote_origin and
+                not upstream_origin and not project.upstream_origin):
+                logger.info(f"Name-only match with no remotes for project {project.name} - treating as strong match to prevent duplicates")
+                score = 2  # Boost score to strong match level
+                match_factors.append("no_remotes_boost")
+            
             # If we have 2+ matches, this is a strong candidate
             if score >= 2:
                 if score > best_score:

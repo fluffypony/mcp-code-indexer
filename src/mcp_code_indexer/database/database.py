@@ -688,7 +688,43 @@ class DatabaseManager:
             ]
             
             return WordFrequencyResult(
-                top_terms=top_terms,
-                total_terms_analyzed=len(filtered_words),
-                total_unique_terms=len(word_counts)
+            top_terms=top_terms,
+            total_terms_analyzed=len(filtered_words),
+            total_unique_terms=len(word_counts)
             )
+    
+    async def cleanup_empty_projects(self) -> int:
+        """
+        Remove projects that have no file descriptions and no project overview.
+        
+        Returns:
+            Number of projects removed
+        """
+        async with self.get_connection() as db:
+            # Find projects with no descriptions and no overview
+            cursor = await db.execute("""
+                SELECT p.id, p.name 
+                FROM projects p
+                LEFT JOIN file_descriptions fd ON p.id = fd.project_id
+                LEFT JOIN project_overviews po ON p.id = po.project_id
+                WHERE fd.project_id IS NULL AND po.project_id IS NULL
+            """)
+            
+            empty_projects = await cursor.fetchall()
+            
+            if not empty_projects:
+                return 0
+            
+            removed_count = 0
+            for project in empty_projects:
+                project_id = project['id']
+                project_name = project['name']
+                
+                # Remove from projects table (cascading will handle related data)
+                await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+                removed_count += 1
+                
+                logger.info(f"Removed empty project: {project_name} (ID: {project_id})")
+            
+            await db.commit()
+            return removed_count

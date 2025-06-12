@@ -86,6 +86,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API"
     )
     
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Remove empty projects (no descriptions and no project overview)"
+    )
+    
     return parser.parse_args()
 
 
@@ -505,6 +511,69 @@ async def handle_githook(args: argparse.Namespace) -> None:
             logger.removeHandler(handler)
 
 
+async def handle_cleanup(args: argparse.Namespace) -> None:
+    """Handle --cleanup command."""
+    from .logging_config import setup_command_logger
+    
+    # Set up dedicated logging for cleanup
+    cache_dir = Path(args.cache_dir).expanduser()
+    logger = setup_command_logger("cleanup", cache_dir)
+    
+    db_manager = None
+    try:
+        from .database.database import DatabaseManager
+        
+        logger.info("Starting database cleanup", extra={
+            "structured_data": {
+                "args": {
+                    "db_path": str(args.db_path),
+                    "cache_dir": str(args.cache_dir)
+                }
+            }
+        })
+        
+        # Initialize database
+        db_path = Path(args.db_path).expanduser()
+        db_manager = DatabaseManager(db_path)
+        await db_manager.initialize()
+        logger.debug("Database initialized successfully")
+        
+        # Perform cleanup
+        logger.info("Removing empty projects")
+        removed_count = await db_manager.cleanup_empty_projects()
+        
+        if removed_count > 0:
+            print(f"Removed {removed_count} empty project(s)")
+            logger.info("Cleanup completed", extra={
+                "structured_data": {"removed_projects": removed_count}
+            })
+        else:
+            print("No empty projects found")
+            logger.info("No empty projects found")
+        
+    except Exception as e:
+        logger.error("Cleanup failed", extra={
+            "structured_data": {
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            }
+        })
+        print(f"Cleanup error: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        # Clean up database connections
+        if db_manager:
+            logger.debug("Closing database connections")
+            await db_manager.close_pool()
+            logger.debug("Database connections closed")
+        logger.info("=== CLEANUP SESSION ENDED ===")
+        
+        # Close logger handlers to flush any remaining logs
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
+
+
 async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
@@ -525,6 +594,10 @@ async def main() -> None:
     
     if args.dumpdescriptions:
         await handle_dumpdescriptions(args)
+        return
+    
+    if args.cleanup:
+        await handle_cleanup(args)
         return
     
     # Setup structured logging
