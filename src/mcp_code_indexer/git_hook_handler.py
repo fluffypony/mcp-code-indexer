@@ -667,8 +667,49 @@ Return ONLY a JSON object:
         Returns:
             Validated response data
         """
+        def extract_json_from_response(text: str) -> str:
+            """Extract JSON from response that might have extra text before/after."""
+            text = text.strip()
+            
+            # Try to find JSON in the response
+            json_start = -1
+            json_end = -1
+            
+            # Look for opening brace
+            for i, char in enumerate(text):
+                if char == '{':
+                    json_start = i
+                    break
+            
+            if json_start == -1:
+                return text  # No JSON found, return original
+            
+            # Find matching closing brace
+            brace_count = 0
+            for i in range(json_start, len(text)):
+                if text[i] == '{':
+                    brace_count += 1
+                elif text[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_end = i + 1
+                        break
+            
+            if json_end == -1:
+                return text  # No matching brace found, return original
+            
+            return text[json_start:json_end]
+        
         try:
-            data = json.loads(response_text.strip())
+            # First try parsing as-is
+            try:
+                data = json.loads(response_text.strip())
+            except json.JSONDecodeError:
+                # Try extracting JSON from response
+                extracted_json = extract_json_from_response(response_text)
+                if extracted_json != response_text.strip():
+                    self.logger.debug(f"Extracted JSON from response: {extracted_json}")
+                data = json.loads(extracted_json)
             
             # Handle both single-stage and two-stage responses
             if "file_updates" in data and "overview_update" in data:
@@ -700,8 +741,10 @@ Return ONLY a JSON object:
             return data
             
         except json.JSONDecodeError as e:
+            self.logger.error(f"Raw response content: {repr(response_text)}")
             raise GitHookError(f"Invalid JSON response from API: {e}")
         except ValueError as e:
+            self.logger.error(f"Raw response content: {repr(response_text)}")
             raise GitHookError(f"Invalid response structure: {e}")
     
     async def _apply_updates(self, project_info: Dict[str, Any], updates: Dict[str, Any]) -> None:
