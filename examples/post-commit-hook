@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# MCP Code Indexer - Post-Commit Hook
+#
+# This hook runs after every commit to automatically update file descriptions
+# based on the changes in that commit.
+#
+# Installation:
+#   cp examples/post-commit-hook .git/hooks/post-commit
+#   chmod +x .git/hooks/post-commit
+#
+# Requirements:
+#   - mcp-code-indexer installed and in PATH
+#   - OPENROUTER_API_KEY environment variable set
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Get the latest commit hash
+COMMIT_HASH=$(git rev-parse HEAD)
+
+echo "Post-commit hook: Analyzing commit $COMMIT_HASH..." >&2
+
+# Run git hook analysis for the specific commit in the background
+mcp-code-indexer --githook "$COMMIT_HASH" >> ~/.mcp-code-index/githook.log 2>&1 &
+disown
+
+echo "Post-commit hook: Background analysis started. Check ~/.mcp-code-index/githook.log for progress." >&2
+
+exit 0

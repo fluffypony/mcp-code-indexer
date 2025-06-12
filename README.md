@@ -189,6 +189,28 @@ The server provides **11 powerful MCP tools** for intelligent codebase managemen
 
 💡 **Pro Tip**: Always start with `check_codebase_size` to get personalized recommendations for navigating your specific codebase.
 
+## 🔗 Git Hook Integration
+
+Keep your codebase documentation automatically synchronized with automated analysis on every commit, rebase, or merge:
+
+```bash
+# Analyze current staged changes
+mcp-code-indexer --githook
+
+# Analyze a specific commit
+mcp-code-indexer --githook abc123def
+
+# Analyze a commit range (perfect for rebases)
+mcp-code-indexer --githook abc123 def456
+```
+
+**🎯 Perfect for**:
+- **Automated documentation** that never goes stale
+- **Rebase-aware analysis** that handles complex git operations
+- **Zero-effort maintenance** with background processing
+
+See the **[Git Hook Setup Guide](docs/git-hook-setup.md)** for complete installation instructions including post-commit, post-merge, and post-rewrite hooks.
+
 ## 🏗️ Architecture Highlights
 
 ### Performance Optimized

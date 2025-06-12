@@ -40,11 +40,25 @@ Before setting up automatic hooks, test the functionality manually:
 # Navigate to your git project
 cd /path/to/your/project
 
-# Test git hook analysis on recent changes
+# Test git hook analysis on recent changes (staged changes)
 mcp-code-indexer --githook
+
+# Or analyze a specific commit
+mcp-code-indexer --githook abc123def
+
+# Or analyze a range of commits (useful for rebases)
+mcp-code-indexer --githook abc123..def456
 ```
 
-**What you'll see**: The tool analyzes recent git changes and updates descriptions for modified files.
+**What you'll see**: The tool analyzes git changes and updates descriptions for modified files.
+
+### Usage Modes
+
+The `--githook` command supports three modes:
+
+1. **Current Changes** (default): `--githook` - Analyzes staged changes
+2. **Specific Commit**: `--githook COMMIT_HASH` - Analyzes a particular commit
+3. **Commit Range**: `--githook HASH1 HASH2` - Analyzes all commits from HASH1 to HASH2
 
 ### Automatic Setup
 
@@ -89,6 +103,69 @@ Make it executable:
 ```bash
 chmod +x .git/hooks/post-merge
 ```
+
+#### Post-Rewrite Hook (Recommended for Rebases)
+
+For handling **rebases**, **amends**, and other commit-rewriting operations, use the `post-rewrite` hook. This ensures descriptions are updated for all rewritten commits:
+
+Create `.git/hooks/post-rewrite`:
+
+```bash
+#!/bin/bash
+set -eo pipefail
+
+# MCP Code Indexer - Auto-update descriptions after rebase/amend
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Read the list of rewritten commits from stdin
+first_hash=""
+last_hash=""
+count=0
+
+while read -r old_sha new_sha; do
+  # Skip invalid lines (e.g., comments)
+  [[ "$old_sha" =~ ^# ]] && continue
+  
+  # Track first and last commits
+  if [ $count -eq 0 ]; then
+    first_hash="$new_sha"
+  fi
+  last_hash="$new_sha"
+  ((count++))
+done < "$1"
+
+# Process the commit range if we have commits
+if [ $count -gt 0 ]; then
+  if [ $count -eq 1 ]; then
+    # Single commit
+    mcp-code-indexer --githook "$first_hash" >> ~/.mcp-code-index/githook.log 2>&1 &
+  else
+    # Commit range - use first commit's parent to last commit
+    parent_hash=$(git rev-parse "${first_hash}~1" 2>/dev/null || echo "")
+    if [ -n "$parent_hash" ]; then
+      mcp-code-indexer --githook "$parent_hash" "$last_hash" >> ~/.mcp-code-index/githook.log 2>&1 &
+    else
+      # If no parent (first commit), process each individually
+      mcp-code-indexer --githook "$first_hash" >> ~/.mcp-code-index/githook.log 2>&1 &
+    fi
+  fi
+  disown  # Detach background process
+fi
+
+exit 0
+```
+
+Make it executable:
+```bash
+chmod +x .git/hooks/post-rewrite
+```
+
+**🎯 Why Post-Rewrite?**
+- **Handles rebases**: Processes all rewritten commits after `git rebase`
+- **Non-blocking**: Runs in background, doesn't slow down git operations  
+- **Efficient**: Processes commit ranges instead of individual commits
+- **Comprehensive**: Works with `git commit --amend`, interactive rebases, etc.
 
 ## 🔧 Configuration Options
 

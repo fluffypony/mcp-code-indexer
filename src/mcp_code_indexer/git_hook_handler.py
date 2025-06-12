@@ -73,9 +73,17 @@ class GitHookHandler:
         if not self.api_key:
             raise GitHookError("OPENROUTER_API_KEY environment variable is required for git hook mode")
     
-    async def run_githook_mode(self) -> None:
+    async def run_githook_mode(
+        self, 
+        commit_hash: Optional[str] = None, 
+        commit_range: Optional[Tuple[str, str]] = None
+    ) -> None:
         """
         Run in git hook mode - analyze changes and update descriptions.
+        
+        Args:
+            commit_hash: Process a specific commit by hash
+            commit_range: Process commits in range (start_hash, end_hash)
         
         This is the main entry point for git hook functionality.
         """
@@ -83,9 +91,16 @@ class GitHookHandler:
             # Get git info from current directory
             project_info = await self._identify_project_from_git()
             
-            # Get git diff and commit message
-            git_diff = await self._get_git_diff()
-            commit_message = await self._get_commit_message()
+            # Get git diff and commit message based on mode
+            if commit_hash:
+                git_diff = await self._get_git_diff_for_commit(commit_hash)
+                commit_message = await self._get_commit_message_for_commit(commit_hash)
+            elif commit_range:
+                git_diff = await self._get_git_diff_for_range(commit_range[0], commit_range[1])
+                commit_message = await self._get_commit_messages_for_range(commit_range[0], commit_range[1])
+            else:
+                git_diff = await self._get_git_diff()
+                commit_message = await self._get_commit_message()
             
             if not git_diff or len(git_diff) > self.config["max_diff_size"]:
                 self.logger.info(f"Skipping git hook update - diff too large or empty")
@@ -224,6 +239,97 @@ class GitHookHandler:
         except subprocess.CalledProcessError:
             # If no commits exist yet, return empty string
             return ""
+
+    async def _get_git_diff_for_commit(self, commit_hash: str) -> str:
+        """
+        Get git diff for a specific commit.
+        
+        Args:
+            commit_hash: The commit hash to analyze
+            
+        Returns:
+            Git diff content as string
+        """
+        try:
+            # Get diff for the specific commit compared to its parent
+            diff_result = await self._run_git_command([
+                "diff", "--no-color", "--no-ext-diff", f"{commit_hash}~1..{commit_hash}"
+            ])
+            return diff_result
+            
+        except subprocess.CalledProcessError:
+            # If parent doesn't exist (first commit), diff against empty tree
+            try:
+                diff_result = await self._run_git_command([
+                    "diff", "--no-color", "--no-ext-diff", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", commit_hash
+                ])
+                return diff_result
+            except subprocess.CalledProcessError as e:
+                raise GitHookError(f"Failed to get git diff for commit {commit_hash}: {e}")
+
+    async def _get_git_diff_for_range(self, start_hash: str, end_hash: str) -> str:
+        """
+        Get git diff for a range of commits.
+        
+        Args:
+            start_hash: Starting commit hash (exclusive)
+            end_hash: Ending commit hash (inclusive)
+            
+        Returns:
+            Git diff content as string
+        """
+        try:
+            diff_result = await self._run_git_command([
+                "diff", "--no-color", "--no-ext-diff", f"{start_hash}..{end_hash}"
+            ])
+            return diff_result
+        except subprocess.CalledProcessError as e:
+            raise GitHookError(f"Failed to get git diff for range {start_hash}..{end_hash}: {e}")
+
+    async def _get_commit_message_for_commit(self, commit_hash: str) -> str:
+        """
+        Get the commit message for a specific commit.
+        
+        Args:
+            commit_hash: The commit hash
+            
+        Returns:
+            Commit message as string
+        """
+        try:
+            message_result = await self._run_git_command([
+                "log", "-1", "--pretty=%B", commit_hash
+            ])
+            return message_result.strip()
+        except subprocess.CalledProcessError as e:
+            raise GitHookError(f"Failed to get commit message for {commit_hash}: {e}")
+
+    async def _get_commit_messages_for_range(self, start_hash: str, end_hash: str) -> str:
+        """
+        Get commit messages for a range of commits.
+        
+        Args:
+            start_hash: Starting commit hash (exclusive)
+            end_hash: Ending commit hash (inclusive)
+            
+        Returns:
+            Combined commit messages as string
+        """
+        try:
+            # Get all commit messages in the range
+            message_result = await self._run_git_command([
+                "log", "--pretty=%B", f"{start_hash}..{end_hash}"
+            ])
+            
+            # Clean up and format the messages
+            messages = message_result.strip()
+            if messages:
+                return f"Combined commit messages for range {start_hash}..{end_hash}:\n\n{messages}"
+            else:
+                return f"No commits found in range {start_hash}..{end_hash}"
+                
+        except subprocess.CalledProcessError as e:
+            raise GitHookError(f"Failed to get commit messages for range {start_hash}..{end_hash}: {e}")
     
     def _extract_changed_files(self, git_diff: str) -> List[str]:
         """

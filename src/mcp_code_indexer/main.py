@@ -82,8 +82,11 @@ def parse_arguments() -> argparse.Namespace:
     
     parser.add_argument(
         "--githook",
-        action="store_true",
-        help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API"
+        nargs="*",
+        metavar="COMMIT_HASH",
+        help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API. "
+             "Usage: --githook (current changes), --githook HASH (specific commit), "
+             "--githook HASH1 HASH2 (commit range from HASH1 to HASH2)"
     )
     
     parser.add_argument(
@@ -462,12 +465,16 @@ async def handle_githook(args: argparse.Namespace) -> None:
         from .database.database import DatabaseManager
         from .git_hook_handler import GitHookHandler
         
+        # Process commit hash arguments
+        commit_hashes = args.githook if args.githook else []
+        
         logger.info("Starting git hook execution", extra={
             "structured_data": {
                 "args": {
                     "db_path": str(args.db_path),
                     "cache_dir": str(args.cache_dir),
-                    "token_limit": args.token_limit
+                    "token_limit": args.token_limit,
+                    "commit_hashes": commit_hashes
                 }
             }
         })
@@ -497,7 +504,17 @@ async def handle_githook(args: argparse.Namespace) -> None:
         
         # Run git hook analysis
         logger.info("Starting git hook analysis")
-        await git_handler.run_githook_mode()
+        if len(commit_hashes) == 0:
+            # Process current staged changes
+            await git_handler.run_githook_mode()
+        elif len(commit_hashes) == 1:
+            # Process specific commit
+            await git_handler.run_githook_mode(commit_hash=commit_hashes[0])
+        elif len(commit_hashes) == 2:
+            # Process commit range
+            await git_handler.run_githook_mode(commit_range=(commit_hashes[0], commit_hashes[1]))
+        else:
+            raise ValueError("--githook accepts 0, 1, or 2 commit hashes")
         logger.info("Git hook analysis completed successfully")
         
     except Exception as e:
@@ -768,8 +785,8 @@ async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
     
-    # Handle git hook command
-    if args.githook:
+    # Handle git hook command  
+    if args.githook is not None:
         await handle_githook(args)
         return
     
