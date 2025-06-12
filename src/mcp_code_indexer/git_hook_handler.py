@@ -137,32 +137,26 @@ class GitHookHandler:
             self.logger.info(f"Current overview length: {len(current_overview) if current_overview else 0} characters")
             self.logger.info(f"Current descriptions count: {len(current_descriptions)}")
             
-            # Build prompt for OpenRouter
-            self.logger.info("Building analysis prompt...")
-            prompt = self._build_githook_prompt(
-                git_diff, 
-                commit_message,
-                current_overview, 
-                current_descriptions,
-                changed_files
+            # Use two-stage approach for large codebases
+            self.logger.info("Starting two-stage analysis approach...")
+            
+            # Stage 1: Check if overview needs updating
+            overview_updates = await self._analyze_overview_updates(
+                git_diff, commit_message, current_overview, changed_files
             )
             
-            # Log prompt details
-            prompt_chars = len(prompt)
-            prompt_tokens = self.token_counter.count_tokens(prompt)
-            self.logger.info(f"Analysis prompt: {prompt_chars} characters, {prompt_tokens} tokens")
+            # Stage 2: Update file descriptions 
+            file_updates = await self._analyze_file_updates(
+                git_diff, commit_message, current_descriptions, changed_files
+            )
             
-            # Check total prompt token count
-            if prompt_tokens > self.config["max_diff_tokens"]:
-                self.logger.info(f"Skipping git hook update - prompt too large ({prompt_tokens} tokens > {self.config['max_diff_tokens']} limit)")
-                return
+            # Combine updates
+            updates = {
+                "file_updates": file_updates.get("file_updates", {}),
+                "overview_update": overview_updates.get("overview_update")
+            }
             
-            self.logger.info(f"Prompt size OK ({prompt_tokens} <= {self.config['max_diff_tokens']} tokens), calling OpenRouter...")
-            
-            # Call OpenRouter API
-            updates = await self._call_openrouter(prompt)
-            
-            self.logger.info(f"OpenRouter response received, processing updates...")
+            self.logger.info(f"Two-stage analysis completed, processing updates...")
             
             # Apply updates to database
             await self._apply_updates(project_info, updates)
@@ -441,101 +435,143 @@ class GitHookHandler:
             self.logger.warning(f"Failed to get file descriptions: {e}")
             return {}
     
-    def _build_githook_prompt(
-        self, 
-        git_diff: str, 
-        commit_message: str,
-        overview: str, 
-        descriptions: Dict[str, str], 
+    async def _analyze_overview_updates(
+        self,
+        git_diff: str,
+        commit_message: str, 
+        current_overview: str,
         changed_files: List[str]
-    ) -> str:
+    ) -> Dict[str, Any]:
         """
-        Build prompt for OpenRouter API to analyze git changes.
+        Stage 1: Analyze if project overview needs updating.
         
         Args:
             git_diff: Git diff content
             commit_message: Commit message explaining the changes
-            overview: Current project overview
-            descriptions: Current file descriptions
+            current_overview: Current project overview
             changed_files: List of changed file paths
             
         Returns:
-            Formatted prompt for the API
+            Dict with overview_update key
         """
-        return f"""Analyze this git commit and update the file descriptions and project overview as needed.
+        self.logger.info("Stage 1: Analyzing overview updates...")
+        
+        prompt = f"""Analyze this git commit to determine if the project overview needs updating.
 
 COMMIT MESSAGE:
 {commit_message or "No commit message available"}
 
 CURRENT PROJECT OVERVIEW:
-{overview or "No overview available"}
-
-CURRENT FILE DESCRIPTIONS:
-{json.dumps(descriptions, indent=2)}
-
-GIT DIFF:
-{git_diff}
+{current_overview or "No overview available"}
 
 CHANGED FILES:
 {', '.join(changed_files)}
 
+GIT DIFF (ABBREVIATED):
+{git_diff[:10000]}{'...[truncated]' if len(git_diff) > 10000 else ''}
+
 INSTRUCTIONS:
 
-Use the COMMIT MESSAGE to understand the intent and context of the changes. The commit message explains what the developer was trying to accomplish.
+Update project overview ONLY if there are major structural changes like:
+- New major features or components (indicated by commit message or new directories)
+- Architectural changes (new patterns, frameworks, or approaches)
+- Significant dependency additions (Cargo.toml, package.json, requirements.txt changes)
+- New API endpoints or workflows
+- Changes to build/deployment processes
 
-1. **File Descriptions**: Update descriptions for any files that have changed significantly. Consider both the diff content and the commit message context. Only include files that need actual description updates.
+Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
 
-2. **Project Overview**: Update ONLY if there are major structural changes like:
-   - New major features or components (which may be indicated by commit message)
-   - Architectural changes (new patterns, frameworks, or approaches)
-   - Significant dependency additions
-   - New API endpoints or workflows
-   - Changes to build/deployment processes
-   
-   Do NOT update overview for minor changes like bug fixes, small refactors, or documentation updates.
+If updating, provide comprehensive narrative (10-20 pages of text) with directory structure, architecture, components, and workflows.
 
-3. **Overview Format**: If updating the overview, follow this structure with comprehensive narrative (10-20 pages of text):
+Return ONLY a JSON object:
+{{
+  "overview_update": "Updated overview text" or null
+}}"""
 
-````
-## Directory Structure
-```
-src/
-├── api/          # REST API endpoints and middleware
-├── models/       # Database models and business logic  
-├── services/     # External service integrations
-├── utils/        # Shared utilities and helpers
-└── tests/        # Test suites
-```
+        # Log prompt details
+        prompt_chars = len(prompt)
+        prompt_tokens = self.token_counter.count_tokens(prompt)
+        self.logger.info(f"Stage 1 prompt: {prompt_chars} characters, {prompt_tokens} tokens")
+        
+        if prompt_tokens > self.config["max_diff_tokens"]:
+            self.logger.warning(f"Stage 1 prompt too large ({prompt_tokens} tokens), skipping overview analysis")
+            return {"overview_update": None}
+            
+        # Call OpenRouter API
+        result = await self._call_openrouter(prompt)
+        self.logger.info("Stage 1 completed: overview analysis")
+        
+        return result
 
-## Architecture Overview
-[Describe how components interact, data flow, key design decisions]
+    async def _analyze_file_updates(
+        self,
+        git_diff: str,
+        commit_message: str,
+        current_descriptions: Dict[str, str],
+        changed_files: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Stage 2: Analyze file description updates.
+        
+        Args:
+            git_diff: Git diff content
+            commit_message: Commit message explaining the changes
+            current_descriptions: Current file descriptions for changed files only
+            changed_files: List of changed file paths
+            
+        Returns:
+            Dict with file_updates key
+        """
+        self.logger.info("Stage 2: Analyzing file description updates...")
+        
+        # Only include descriptions for changed files to reduce token usage
+        relevant_descriptions = {
+            path: desc for path, desc in current_descriptions.items() 
+            if path in changed_files
+        }
+        
+        prompt = f"""Analyze this git commit and update file descriptions for changed files.
 
-## Core Components
-### API Layer
-[Details about API structure, authentication, routing]
+COMMIT MESSAGE:
+{commit_message or "No commit message available"}
 
-### Data Model
-[Key entities, relationships, database design]
+CURRENT FILE DESCRIPTIONS (for changed files only):
+{json.dumps(relevant_descriptions, indent=2)}
 
-## Key Workflows
-1. User Authentication Flow
-   [Step-by-step description]
-2. Data Processing Pipeline
-   [How data moves through the system]
+CHANGED FILES:
+{', '.join(changed_files)}
 
-[Continue with other sections...]
-````
+GIT DIFF:
+{git_diff}
 
-Return ONLY a JSON object in this exact format:
+INSTRUCTIONS:
+
+Use the COMMIT MESSAGE to understand the intent and context of the changes.
+
+Update descriptions for files that have changed significantly. Consider both the diff content and commit message context. Only include files that need actual description updates.
+
+Return ONLY a JSON object:
 {{
   "file_updates": {{
     "path/to/file1.py": "Updated description for file1",
     "path/to/file2.js": "Updated description for file2"
-  }},
-  "overview_update": "Updated project overview text (or null if no update needed)"
-}}
+  }}
+}}"""
 
-Return ONLY the JSON, no other text."""
+        # Log prompt details  
+        prompt_chars = len(prompt)
+        prompt_tokens = self.token_counter.count_tokens(prompt)
+        self.logger.info(f"Stage 2 prompt: {prompt_chars} characters, {prompt_tokens} tokens")
+        
+        if prompt_tokens > self.config["max_diff_tokens"]:
+            self.logger.warning(f"Stage 2 prompt too large ({prompt_tokens} tokens), skipping file analysis")
+            return {"file_updates": {}}
+            
+        # Call OpenRouter API
+        result = await self._call_openrouter(prompt)
+        self.logger.info("Stage 2 completed: file description analysis")
+        
+        return result
     
     @retry(
         wait=wait_exponential(multiplier=1, min=4, max=60),
@@ -634,19 +670,32 @@ Return ONLY the JSON, no other text."""
         try:
             data = json.loads(response_text.strip())
             
-            # Validate structure
-            if "file_updates" not in data:
-                raise ValueError("Missing 'file_updates' field")
-            if "overview_update" not in data:
-                raise ValueError("Missing 'overview_update' field")
-            
-            if not isinstance(data["file_updates"], dict):
-                raise ValueError("'file_updates' must be a dictionary")
-            
-            # Validate descriptions
-            for path, desc in data["file_updates"].items():
-                if not isinstance(desc, str) or not desc.strip():
-                    raise ValueError(f"Invalid description for {path}")
+            # Handle both single-stage and two-stage responses
+            if "file_updates" in data and "overview_update" in data:
+                # Original single-stage format
+                if not isinstance(data["file_updates"], dict):
+                    raise ValueError("'file_updates' must be a dictionary")
+                
+                # Validate descriptions
+                for path, desc in data["file_updates"].items():
+                    if not isinstance(desc, str) or not desc.strip():
+                        raise ValueError(f"Invalid description for {path}")
+                        
+            elif "file_updates" in data:
+                # Stage 2 format (file updates only)
+                if not isinstance(data["file_updates"], dict):
+                    raise ValueError("'file_updates' must be a dictionary")
+                    
+                # Validate descriptions
+                for path, desc in data["file_updates"].items():
+                    if not isinstance(desc, str) or not desc.strip():
+                        raise ValueError(f"Invalid description for {path}")
+                        
+            elif "overview_update" in data:
+                # Stage 1 format (overview only) - overview_update can be null
+                pass
+            else:
+                raise ValueError("Response must contain 'file_updates' and/or 'overview_update'")
             
             return data
             
