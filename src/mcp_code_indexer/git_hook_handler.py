@@ -119,9 +119,8 @@ class GitHookHandler:
                 self.logger.info(f"Skipping git hook update - no git diff")
                 return
             
-            diff_chars = len(git_diff)
             diff_tokens = self.token_counter.count_tokens(git_diff)
-            self.logger.info(f"Git diff: {diff_chars} characters, {diff_tokens} tokens")
+            self.logger.info(f"Git diff: {diff_tokens} tokens")
             
             # Fetch current state
             self.logger.info("Fetching current project state...")
@@ -134,7 +133,8 @@ class GitHookHandler:
                 return
             
             self.logger.info(f"Found {len(changed_files)} changed files: {', '.join(changed_files)}")
-            self.logger.info(f"Current overview length: {len(current_overview) if current_overview else 0} characters")
+            overview_tokens = self.token_counter.count_tokens(current_overview) if current_overview else 0
+            self.logger.info(f"Current overview: {overview_tokens} tokens")
             self.logger.info(f"Current descriptions count: {len(current_descriptions)}")
             
             # Try single-stage first, fall back to two-stage if needed
@@ -184,7 +184,7 @@ class GitHookHandler:
         prompt_tokens = self.token_counter.count_tokens(single_stage_prompt)
         token_limit = self.config.get("max_diff_tokens", 130000)  # Conservative limit under 136k
         
-        self.logger.info(f"Single-stage prompt: {len(single_stage_prompt)} characters, {prompt_tokens} tokens")
+        self.logger.info(f"Single-stage prompt: {prompt_tokens} tokens")
         self.logger.info(f"Token limit: {token_limit}")
         
         if prompt_tokens <= token_limit:
@@ -602,9 +602,8 @@ Return ONLY a JSON object:
 }}"""
 
         # Log prompt details
-        prompt_chars = len(prompt)
         prompt_tokens = self.token_counter.count_tokens(prompt)
-        self.logger.info(f"Stage 1 prompt: {prompt_chars} characters, {prompt_tokens} tokens")
+        self.logger.info(f"Stage 1 prompt: {prompt_tokens} tokens")
         
         if prompt_tokens > self.config["max_diff_tokens"]:
             self.logger.warning(f"Stage 1 prompt too large ({prompt_tokens} tokens), skipping overview analysis")
@@ -672,9 +671,8 @@ Return ONLY a JSON object:
 }}"""
 
         # Log prompt details  
-        prompt_chars = len(prompt)
         prompt_tokens = self.token_counter.count_tokens(prompt)
-        self.logger.info(f"Stage 2 prompt: {prompt_chars} characters, {prompt_tokens} tokens")
+        self.logger.info(f"Stage 2 prompt: {prompt_tokens} tokens")
         
         if prompt_tokens > self.config["max_diff_tokens"]:
             self.logger.warning(f"Stage 2 prompt too large ({prompt_tokens} tokens), skipping file analysis")
