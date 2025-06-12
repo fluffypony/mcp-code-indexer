@@ -357,7 +357,41 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="update_codebase_overview",
-                    description="Updates the condensed codebase overview. Create a comprehensive narrative that would help a new developer understand this codebase. Include: (1) A visual directory tree showing the main folders and their purposes, (2) Overall architecture - how components fit together, (3) Core business logic and main workflows, (4) Key technical patterns and conventions used, (5) Important dependencies and integrations, (6) Database schema overview if applicable, (7) API structure if applicable, (8) Testing approach, (9) Build and deployment notes. Write in a clear, structured format with headers and sections. Be thorough but organized - imagine writing a technical onboarding document. The overview should be substantial (think 10-20 pages of text) but well-structured so specific sections can be found easily.",
+                    description="""Updates the condensed codebase overview. Create a comprehensive narrative that would help a new developer understand this codebase. Include: (1) A visual directory tree showing the main folders and their purposes, (2) Overall architecture - how components fit together, (3) Core business logic and main workflows, (4) Key technical patterns and conventions used, (5) Important dependencies and integrations, (6) Database schema overview if applicable, (7) API structure if applicable, (8) Testing approach, (9) Build and deployment notes. Write in a clear, structured format with headers and sections. Be thorough but organized - imagine writing a technical onboarding document. The overview should be substantial (think 10-20 pages of text) but well-structured so specific sections can be found easily.
+
+Example Structure:
+
+````
+## Directory Structure
+```
+src/
+├── api/          # REST API endpoints and middleware
+├── models/       # Database models and business logic  
+├── services/     # External service integrations
+├── utils/        # Shared utilities and helpers
+└── tests/        # Test suites
+```
+
+## Architecture Overview
+[Describe how components interact, data flow, key design decisions]
+
+## Core Components
+### API Layer
+[Details about API structure, authentication, routing]
+
+### Data Model
+[Key entities, relationships, database design]
+
+## Key Workflows
+1. User Authentication Flow
+   [Step-by-step description]
+2. Data Processing Pipeline
+   [How data moves through the system]
+
+[Continue with other sections...]"
+````                    
+
+                    """,
                     inputSchema={
                         "type": "object",
                         "properties": {
