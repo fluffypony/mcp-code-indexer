@@ -137,8 +137,65 @@ class GitHookHandler:
             self.logger.info(f"Current overview length: {len(current_overview) if current_overview else 0} characters")
             self.logger.info(f"Current descriptions count: {len(current_descriptions)}")
             
-            # Use two-stage approach for large codebases
-            self.logger.info("Starting two-stage analysis approach...")
+            # Try single-stage first, fall back to two-stage if needed
+            updates = await self._analyze_with_smart_staging(
+                git_diff, commit_message, current_overview, current_descriptions, changed_files
+            )
+            
+            # Apply updates to database
+            await self._apply_updates(project_info, updates)
+            
+            self.logger.info(f"Git hook update completed successfully for {len(changed_files)} files")
+            
+        except Exception as e:
+            self.logger.error(f"Git hook mode failed: {e}")
+            self.logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+            import traceback
+            self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            # Don't fail the git operation - just log the error
+            raise GitHookError(f"Git hook processing failed: {e}")
+    
+    async def _analyze_with_smart_staging(
+        self,
+        git_diff: str,
+        commit_message: str,
+        current_overview: str,
+        current_descriptions: Dict[str, str],
+        changed_files: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Smart staging: Try single-stage first, fall back to two-stage if token limit exceeded.
+        
+        Args:
+            git_diff: Git diff content
+            commit_message: Commit message explaining the changes
+            current_overview: Current project overview
+            current_descriptions: Current file descriptions
+            changed_files: List of changed file paths
+            
+        Returns:
+            Dict containing file_updates and overview_update
+        """
+        # Build single-stage prompt and check token count
+        single_stage_prompt = self._build_single_stage_prompt(
+            git_diff, commit_message, current_overview, current_descriptions, changed_files
+        )
+        
+        prompt_tokens = self.token_counter.count_tokens(single_stage_prompt)
+        token_limit = self.config.get("max_diff_tokens", 130000)  # Conservative limit under 136k
+        
+        self.logger.info(f"Single-stage prompt: {len(single_stage_prompt)} characters, {prompt_tokens} tokens")
+        self.logger.info(f"Token limit: {token_limit}")
+        
+        if prompt_tokens <= token_limit:
+            # Use single-stage approach
+            self.logger.info("Using single-stage analysis (within token limit)")
+            result = await self._call_openrouter(single_stage_prompt)
+            self.logger.info("Single-stage analysis completed")
+            return result
+        else:
+            # Fall back to two-stage approach
+            self.logger.info(f"Single-stage prompt too large ({prompt_tokens} tokens), falling back to two-stage analysis")
             
             # Stage 1: Check if overview needs updating
             overview_updates = await self._analyze_overview_updates(
@@ -156,20 +213,76 @@ class GitHookHandler:
                 "overview_update": overview_updates.get("overview_update")
             }
             
-            self.logger.info(f"Two-stage analysis completed, processing updates...")
+            self.logger.info("Two-stage analysis completed")
+            return updates
+    
+    def _build_single_stage_prompt(
+        self,
+        git_diff: str,
+        commit_message: str,
+        current_overview: str,
+        current_descriptions: Dict[str, str],
+        changed_files: List[str]
+    ) -> str:
+        """
+        Build single-stage prompt that handles both overview and file updates.
+        
+        Args:
+            git_diff: Git diff content
+            commit_message: Commit message explaining the changes
+            current_overview: Current project overview
+            current_descriptions: Current file descriptions
+            changed_files: List of changed file paths
             
-            # Apply updates to database
-            await self._apply_updates(project_info, updates)
-            
-            self.logger.info(f"Git hook update completed successfully for {len(changed_files)} files")
-            
-        except Exception as e:
-            self.logger.error(f"Git hook mode failed: {e}")
-            self.logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
-            import traceback
-            self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
-            # Don't fail the git operation - just log the error
-            raise GitHookError(f"Git hook processing failed: {e}")
+        Returns:
+            Complete single-stage prompt
+        """
+        # Only include descriptions for changed files to reduce token usage
+        relevant_descriptions = {
+            path: desc for path, desc in current_descriptions.items() 
+            if path in changed_files
+        }
+        
+        return f"""Analyze this git commit and update both the project overview (if needed) and file descriptions.
+
+COMMIT MESSAGE:
+{commit_message or "No commit message available"}
+
+CURRENT PROJECT OVERVIEW:
+{current_overview or "No overview available"}
+
+CURRENT FILE DESCRIPTIONS (for changed files only):
+{json.dumps(relevant_descriptions, indent=2)}
+
+CHANGED FILES:
+{', '.join(changed_files)}
+
+GIT DIFF:
+{git_diff}
+
+INSTRUCTIONS:
+
+1. OVERVIEW UPDATE: Update project overview ONLY if there are major structural changes like:
+   - New major features or components (indicated by commit message or new directories)
+   - Architectural changes (new patterns, frameworks, or approaches)
+   - Significant dependency additions (Cargo.toml, package.json, requirements.txt changes)
+   - New API endpoints or workflows
+   - Changes to build/deployment processes
+   
+   Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
+   
+   If updating, provide comprehensive narrative (10-20 pages of text) with directory structure, architecture, components, and workflows.
+
+2. FILE UPDATES: Update descriptions for files that have changed significantly. Consider both the diff content and commit message context. Only include files that need actual description updates.
+
+Return ONLY a JSON object:
+{{
+  "overview_update": "Updated overview text" or null,
+  "file_updates": {{
+    "path/to/file1.py": "Updated description for file1",
+    "path/to/file2.js": "Updated description for file2"
+  }}
+}}"""
     
     async def _identify_project_from_git(self) -> Dict[str, Any]:
         """
