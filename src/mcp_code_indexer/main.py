@@ -699,15 +699,18 @@ def generate_project_markdown(project, branch, overview, files, logger):
     
     markdown_lines = []
     
-    # Project header
-    markdown_lines.append(f"# {project.name}")
+    # Project header with sentence case
+    project_name = project.name.title() if project.name.islower() else project.name
+    markdown_lines.append(f"# {project_name}")
     markdown_lines.append("")
     
     # Project metadata
     if project.remote_origin:
         markdown_lines.append(f"**Repository:** {project.remote_origin}")
+        markdown_lines.append("")
     if project.upstream_origin:
         markdown_lines.append(f"**Upstream:** {project.upstream_origin}")
+        markdown_lines.append("")
     markdown_lines.append(f"**Branch:** {branch}")
     markdown_lines.append("")
     
