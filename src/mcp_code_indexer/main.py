@@ -179,32 +179,32 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
         db_path=db_path,
         cache_dir=cache_dir
     )
-    await server.initialize()
     
-    # Extract the tool call information from the JSON
-    if "method" in json_data and json_data["method"] == "tools/call":
-        tool_name = json_data["params"]["name"]
-        tool_arguments = json_data["params"]["arguments"]
-    elif "projectName" in json_data and "folderPath" in json_data:
-        # Auto-detect: user provided just arguments, try to infer the tool
-        if "filePath" in json_data and "description" in json_data:
-            tool_name = "update_file_description"
-            tool_arguments = json_data
-            print("Auto-detected tool: update_file_description", file=sys.stderr)
-        elif "branch" in json_data:
-            tool_name = "check_codebase_size"
-            tool_arguments = json_data
-            print("Auto-detected tool: check_codebase_size", file=sys.stderr)
-        else:
-            print("Error: Could not auto-detect tool from arguments. Please use full MCP format:", file=sys.stderr)
-            print('{"method": "tools/call", "params": {"name": "TOOL_NAME", "arguments": {...}}}', file=sys.stderr)
-            sys.exit(1)
-    else:
-        print("Error: JSON must contain a valid MCP tool call", file=sys.stderr)
-        sys.exit(1)
-    
-    # Execute the tool (common path for both JSON-RPC and auto-detection)
     try:
+        await server.initialize()
+        
+        # Extract the tool call information from the JSON
+        if "method" in json_data and json_data["method"] == "tools/call":
+            tool_name = json_data["params"]["name"]
+            tool_arguments = json_data["params"]["arguments"]
+        elif "projectName" in json_data and "folderPath" in json_data:
+            # Auto-detect: user provided just arguments, try to infer the tool
+            if "filePath" in json_data and "description" in json_data:
+                tool_name = "update_file_description"
+                tool_arguments = json_data
+                print("Auto-detected tool: update_file_description", file=sys.stderr)
+            elif "branch" in json_data:
+                tool_name = "check_codebase_size"
+                tool_arguments = json_data
+                print("Auto-detected tool: check_codebase_size", file=sys.stderr)
+            else:
+                print("Error: Could not auto-detect tool from arguments. Please use full MCP format:", file=sys.stderr)
+                print('{"method": "tools/call", "params": {"name": "TOOL_NAME", "arguments": {...}}}', file=sys.stderr)
+                sys.exit(1)
+        else:
+            print("Error: JSON must contain a valid MCP tool call", file=sys.stderr)
+            sys.exit(1)
+        
         # Map tool names to handler methods - use the same mapping as MCP server
         tool_handlers = {
             "get_file_description": server._handle_get_file_description,
@@ -257,6 +257,7 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
         # Execute the tool handler directly
         result = await tool_handlers[tool_name](cleaned_tool_arguments)
         print(json.dumps(result, indent=2, default=str))
+        
     except Exception as e:
         error_result = {
             "error": {
@@ -265,6 +266,10 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
             }
         }
         print(json.dumps(error_result, indent=2))
+    finally:
+        # Clean up database connections
+        if hasattr(server, 'db_manager') and server.db_manager:
+            await server.db_manager.close_pool()
 
 
 async def handle_dumpdescriptions(args: argparse.Namespace) -> None:

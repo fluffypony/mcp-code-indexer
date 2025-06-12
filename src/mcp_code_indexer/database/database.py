@@ -648,10 +648,10 @@ class DatabaseManager:
         if stop_words_path.exists():
             with open(stop_words_path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    # Parse lines like "1: word" and extract just the word
-                    parts = line.strip().split(': ', 1)
-                    if len(parts) == 2:
-                        stop_words.add(parts[1].lower())
+                    # Each line contains just the stop word
+                    word = line.strip().lower()
+                    if word:  # Skip empty lines
+                        stop_words.add(word)
         
         # Add common programming keywords to stop words
         programming_keywords = {
