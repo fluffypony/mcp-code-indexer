@@ -6,7 +6,7 @@ intelligent codebase navigation through searchable file descriptions,
 token-aware overviews, and advanced merge capabilities.
 """
 
-__version__ = "1.2.4"
+__version__ = "1.3.0"
 __author__ = "MCP Code Indexer Contributors"
 __email__ = ""
 __license__ = "MIT"

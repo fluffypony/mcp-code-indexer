@@ -21,7 +21,7 @@ def get_version():
         return data["project"]["version"]
     except Exception:
         # Fallback version if reading fails
-        return "1.2.4"
+        return "1.3.0"
 
 setup(
     name="mcp-code-indexer",
@@ -33,12 +33,14 @@ setup(
     packages=find_packages(),
     python_requires=">=3.9",
     install_requires=[
-        "tiktoken==0.7.0",
-        "mcp==1.0.0", 
+        "tiktoken>=0.9.0",
+        "mcp>=1.9.0", 
         "gitignore_parser==0.1.11",
-        "pydantic==2.5.0",
+        "pydantic>=2.8.0",
         "aiofiles==23.2.0",
         "aiosqlite==0.19.0",
+        "aiohttp>=3.8.0",
+        "tenacity>=8.0.0",
     ],
     entry_points={
         "console_scripts": [
