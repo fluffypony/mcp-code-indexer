@@ -163,6 +163,9 @@ def setup_command_logger(
         
         logger.addHandler(file_handler)
         
+        # Set up component loggers to also log to this command's log file
+        _setup_component_loggers_for_command(command_name, file_handler, structured_formatter)
+        
         logger.info(f"=== {command_name.upper()} SESSION STARTED ===")
         
     except (OSError, PermissionError) as e:
@@ -173,6 +176,56 @@ def setup_command_logger(
         logger.warning(f"Failed to set up {command_name} file logging: {e}")
     
     return logger
+
+
+def _setup_component_loggers_for_command(
+    command_name: str,
+    file_handler: logging.Handler,
+    formatter: logging.Formatter
+) -> None:
+    """
+    Set up component loggers to also send logs to the command's log file.
+    
+    Args:
+        command_name: Name of the command
+        file_handler: File handler to add to component loggers
+        formatter: Formatter to use for the handler
+    """
+    # List of component logger names that should also log to command files
+    component_loggers = [
+        "mcp_code_indexer.database.database",
+        "mcp_code_indexer.server.mcp_server", 
+        "mcp_code_indexer.token_counter",
+        "mcp_code_indexer.file_scanner",
+        "mcp_code_indexer.error_handler",
+        "mcp_code_indexer.merge_handler"
+    ]
+    
+    for component_logger_name in component_loggers:
+        component_logger = logging.getLogger(component_logger_name)
+        
+        # Create a separate handler for this command to avoid interference
+        command_handler = logging.handlers.RotatingFileHandler(
+            file_handler.baseFilename,
+            maxBytes=file_handler.maxBytes,
+            backupCount=file_handler.backupCount,
+            encoding='utf-8'
+        )
+        command_handler.setLevel(logging.DEBUG)
+        command_handler.setFormatter(formatter)
+        
+        # Add a marker to identify which command this handler belongs to
+        command_handler._command_name = command_name
+        
+        # Remove any existing handlers for this command (in case of multiple calls)
+        existing_handlers = [h for h in component_logger.handlers if hasattr(h, '_command_name') and h._command_name == command_name]
+        for handler in existing_handlers:
+            component_logger.removeHandler(handler)
+            handler.close()
+        
+        # Add the new handler
+        component_logger.addHandler(command_handler)
+        component_logger.setLevel(logging.DEBUG)  # Ensure component loggers capture all levels
 
 
 def log_performance_metrics(
