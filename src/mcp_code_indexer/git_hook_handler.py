@@ -90,8 +90,17 @@ class GitHookHandler:
         This is the main entry point for git hook functionality.
         """
         try:
+            self.logger.info(f"=== Git Hook Analysis Started ===")
+            if commit_hash:
+                self.logger.info(f"Mode: Single commit ({commit_hash})")
+            elif commit_range:
+                self.logger.info(f"Mode: Commit range ({commit_range[0]}..{commit_range[1]})")
+            else:
+                self.logger.info(f"Mode: Staged changes")
+            
             # Get git info from current directory
             project_info = await self._identify_project_from_git()
+            self.logger.info(f"Project identified: {project_info.get('name', 'Unknown')} at {project_info.get('folderPath', 'Unknown')}")
             
             # Get git diff and commit message based on mode
             if commit_hash:
@@ -104,11 +113,17 @@ class GitHookHandler:
                 git_diff = await self._get_git_diff()
                 commit_message = await self._get_commit_message()
             
+            # Log diff details
             if not git_diff:
                 self.logger.info(f"Skipping git hook update - no git diff")
                 return
             
+            diff_chars = len(git_diff)
+            diff_tokens = self.token_counter.count_tokens(git_diff)
+            self.logger.info(f"Git diff: {diff_chars} characters, {diff_tokens} tokens")
+            
             # Fetch current state
+            self.logger.info("Fetching current project state...")
             current_overview = await self._get_project_overview(project_info)
             current_descriptions = await self._get_all_descriptions(project_info)
             changed_files = self._extract_changed_files(git_diff)
@@ -117,7 +132,12 @@ class GitHookHandler:
                 self.logger.info("No changed files detected in git diff")
                 return
             
+            self.logger.info(f"Found {len(changed_files)} changed files: {', '.join(changed_files)}")
+            self.logger.info(f"Current overview length: {len(current_overview) if current_overview else 0} characters")
+            self.logger.info(f"Current descriptions count: {len(current_descriptions)}")
+            
             # Build prompt for OpenRouter
+            self.logger.info("Building analysis prompt...")
             prompt = self._build_githook_prompt(
                 git_diff, 
                 commit_message,
@@ -126,22 +146,33 @@ class GitHookHandler:
                 changed_files
             )
             
-            # Check total prompt token count
+            # Log prompt details
+            prompt_chars = len(prompt)
             prompt_tokens = self.token_counter.count_tokens(prompt)
+            self.logger.info(f"Analysis prompt: {prompt_chars} characters, {prompt_tokens} tokens")
+            
+            # Check total prompt token count
             if prompt_tokens > self.config["max_diff_tokens"]:
                 self.logger.info(f"Skipping git hook update - prompt too large ({prompt_tokens} tokens > {self.config['max_diff_tokens']} limit)")
                 return
             
+            self.logger.info(f"Prompt size OK ({prompt_tokens} <= {self.config['max_diff_tokens']} tokens), calling OpenRouter...")
+            
             # Call OpenRouter API
             updates = await self._call_openrouter(prompt)
+            
+            self.logger.info(f"OpenRouter response received, processing updates...")
             
             # Apply updates to database
             await self._apply_updates(project_info, updates)
             
-            self.logger.info(f"Git hook update completed for {len(changed_files)} files")
+            self.logger.info(f"Git hook update completed successfully for {len(changed_files)} files")
             
         except Exception as e:
             self.logger.error(f"Git hook mode failed: {e}")
+            self.logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+            import traceback
+            self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
             # Don't fail the git operation - just log the error
             raise GitHookError(f"Git hook processing failed: {e}")
     
@@ -547,6 +578,12 @@ Return ONLY the JSON, no other text."""
         
         timeout = aiohttp.ClientTimeout(total=self.config["timeout"])
         
+        self.logger.info(f"Sending request to OpenRouter API...")
+        self.logger.info(f"  Model: {self.config['model']}")
+        self.logger.info(f"  Temperature: {self.config['temperature']}")
+        self.logger.info(f"  Max tokens: 24000")
+        self.logger.info(f"  Timeout: {self.config['timeout']}s")
+        
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
@@ -555,8 +592,11 @@ Return ONLY the JSON, no other text."""
                     json=payload
                 ) as response:
                     
+                    self.logger.info(f"OpenRouter API response status: {response.status}")
+                    
                     if response.status == 429:
                         retry_after = int(response.headers.get("Retry-After", 60))
+                        self.logger.warning(f"Rate limited by OpenRouter, retry after {retry_after}s")
                         raise ThrottlingError(f"Rate limited. Retry after {retry_after}s")
                     
                     response.raise_for_status()
@@ -564,14 +604,20 @@ Return ONLY the JSON, no other text."""
                     response_data = await response.json()
                     
                     if "choices" not in response_data:
+                        self.logger.error(f"Invalid API response format: {response_data}")
                         raise GitHookError(f"Invalid API response format: {response_data}")
                     
                     content = response_data["choices"][0]["message"]["content"]
+                    self.logger.info(f"OpenRouter response content length: {len(content)} characters")
+                    
                     return self._validate_githook_response(content)
                     
         except aiohttp.ClientError as e:
+            self.logger.error(f"OpenRouter API request failed: {e}")
+            self.logger.error(f"ClientError details: {type(e).__name__}: {str(e)}")
             raise GitHookError(f"OpenRouter API request failed: {e}")
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
+            self.logger.error(f"OpenRouter API request timed out after {self.config['timeout']}s")
             raise GitHookError("OpenRouter API request timed out")
     
     def _validate_githook_response(self, response_text: str) -> Dict[str, Any]:

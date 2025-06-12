@@ -437,6 +437,12 @@ src/
         @self.server.call_tool()
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
             """Handle tool calls with middleware."""
+            import time
+            start_time = time.time()
+            
+            logger.info(f"=== MCP Tool Call: {name} ===")
+            logger.info(f"Arguments: {', '.join(arguments.keys())}")
+            
             # Map tool names to handler methods
             tool_handlers = {
                 "get_file_description": self._handle_get_file_description,
@@ -452,6 +458,7 @@ src/
             }
             
             if name not in tool_handlers:
+                logger.error(f"Unknown tool requested: {name}")
                 from ..error_handler import ValidationError
                 raise ValidationError(f"Unknown tool: {name}")
             
@@ -460,7 +467,18 @@ src/
                 lambda args: self._execute_tool_handler(tool_handlers[name], args)
             )
             
-            return await wrapped_handler(arguments)
+            try:
+                result = await wrapped_handler(arguments)
+                
+                elapsed_time = time.time() - start_time
+                logger.info(f"MCP Tool '{name}' completed successfully in {elapsed_time:.2f}s")
+                
+                return result
+            except Exception as e:
+                elapsed_time = time.time() - start_time
+                logger.error(f"MCP Tool '{name}' failed after {elapsed_time:.2f}s: {e}")
+                logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+                raise
     
     async def _execute_tool_handler(self, handler, arguments: Dict[str, Any]) -> List[types.TextContent]:
         """Execute a tool handler and format the result."""
@@ -758,8 +776,17 @@ src/
     
     async def _handle_update_file_description(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle update_file_description tool calls."""
+        logger.info(f"Updating file description for: {arguments['filePath']}")
+        logger.info(f"Project: {arguments.get('projectName', 'Unknown')}")
+        logger.info(f"Branch: {arguments.get('branch', 'Unknown')}")
+        
+        description_length = len(arguments.get("description", ""))
+        logger.info(f"Description length: {description_length} characters")
+        
         project_id = await self._get_or_create_project_id(arguments)
         resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
+        
+        logger.info(f"Resolved project_id: {project_id}, branch: {resolved_branch}")
         
         file_desc = FileDescription(
             project_id=project_id,
@@ -773,6 +800,8 @@ src/
         
         await self.db_manager.create_file_description(file_desc)
         
+        logger.info(f"Successfully updated description for: {arguments['filePath']}")
+        
         return {
             "success": True,
             "message": f"Description updated for {arguments['filePath']}",
@@ -782,30 +811,45 @@ src/
     
     async def _handle_check_codebase_size(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle check_codebase_size tool calls."""
+        logger.info(f"Checking codebase size for: {arguments.get('projectName', 'Unknown')}")
+        logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
+        logger.info(f"Branch: {arguments.get('branch', 'Unknown')}")
+        
         project_id = await self._get_or_create_project_id(arguments)
         resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         folder_path = Path(arguments["folderPath"])
         
+        logger.info(f"Resolved project_id: {project_id}, branch: {resolved_branch}")
+        
         # Clean up descriptions for files that no longer exist
+        logger.info("Cleaning up descriptions for missing files...")
         cleaned_up_files = await self.db_manager.cleanup_missing_files(
             project_id=project_id,
             branch=resolved_branch,
             project_root=folder_path
         )
+        logger.info(f"Cleaned up {len(cleaned_up_files)} missing files")
         
         # Get file descriptions for this project/branch (after cleanup)
+        logger.info("Retrieving file descriptions...")
         file_descriptions = await self.db_manager.get_all_file_descriptions(
             project_id=project_id,
             branch=resolved_branch
         )
+        logger.info(f"Found {len(file_descriptions)} file descriptions")
         
         # Use provided token limit or fall back to server default
         token_limit = arguments.get("tokenLimit", self.token_limit)
         
         # Calculate total tokens
+        logger.info("Calculating total token count...")
         total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
         is_large = total_tokens > token_limit
         recommendation = "use_search" if is_large else "use_overview"
+        
+        logger.info(f"Codebase analysis complete: {total_tokens} tokens, {len(file_descriptions)} files")
+        logger.info(f"Size assessment: {'LARGE' if is_large else 'SMALL'} (limit: {token_limit})")
+        logger.info(f"Recommendation: {recommendation}")
         
         return {
             "totalTokens": total_tokens,
@@ -819,20 +863,29 @@ src/
     
     async def _handle_find_missing_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle find_missing_descriptions tool calls."""
+        logger.info(f"Finding missing descriptions for: {arguments.get('projectName', 'Unknown')}")
+        logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
+        
         project_id = await self._get_or_create_project_id(arguments)
         resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         folder_path = Path(arguments["folderPath"])
         
+        logger.info(f"Resolved project_id: {project_id}, branch: {resolved_branch}")
+        
         # Get existing file descriptions
+        logger.info("Retrieving existing file descriptions...")
         existing_descriptions = await self.db_manager.get_all_file_descriptions(
             project_id=project_id,
             branch=resolved_branch
         )
         existing_paths = {desc.file_path for desc in existing_descriptions}
+        logger.info(f"Found {len(existing_paths)} existing descriptions")
         
         # Scan directory for files
+        logger.info(f"Scanning project directory: {folder_path}")
         scanner = FileScanner(folder_path)
         if not scanner.is_valid_project_directory():
+            logger.error(f"Invalid or inaccessible project directory: {folder_path}")
             return {
                 "error": f"Invalid or inaccessible project directory: {folder_path}"
             }
@@ -840,14 +893,18 @@ src/
         missing_files = scanner.find_missing_files(existing_paths)
         missing_paths = [scanner.get_relative_path(f) for f in missing_files]
         
+        logger.info(f"Found {len(missing_paths)} files without descriptions")
+        
         # Apply limit if specified
         limit = arguments.get("limit")
         total_missing = len(missing_paths)
         if limit is not None and isinstance(limit, int) and limit > 0:
             missing_paths = missing_paths[:limit]
+            logger.info(f"Applied limit {limit}, returning {len(missing_paths)} files")
         
         # Get project stats
         stats = scanner.get_project_stats()
+        logger.info(f"Project stats: {stats.get('total_files', 0)} total files")
         
         return {
             "missingFiles": missing_paths,
