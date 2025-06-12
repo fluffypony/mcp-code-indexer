@@ -19,9 +19,9 @@ def get_version():
         with open(this_directory / "pyproject.toml", "rb") as f:
             data = tomllib.load(f)
         return data["project"]["version"]
-    except Exception:
-        # Fallback version if reading fails
-        return "1.6.3"
+    except Exception as e:
+        # Fail hard if version reading fails
+        raise RuntimeError(f"Could not read version from pyproject.toml: {e}")
 
 setup(
     name="mcp-code-indexer",
