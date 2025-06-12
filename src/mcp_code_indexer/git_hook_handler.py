@@ -467,8 +467,8 @@ CURRENT PROJECT OVERVIEW:
 CHANGED FILES:
 {', '.join(changed_files)}
 
-GIT DIFF (ABBREVIATED):
-{git_diff[:10000]}{'...[truncated]' if len(git_diff) > 10000 else ''}
+GIT DIFF:
+{git_diff}
 
 INSTRUCTIONS:
 
