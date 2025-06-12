@@ -47,6 +47,42 @@ pip install -e .
 mcp-code-indexer --token-limit 32000
 ```
 
+## 🔗 Git Hook Integration
+
+**NEW**: Automated code indexing with OpenRouter API integration! Keep your file descriptions synchronized automatically as you code.
+
+### Quick Setup
+
+```bash
+# Set your OpenRouter API key
+export OPENROUTER_API_KEY="sk-or-v1-your-api-key-here"
+
+# Test git hook functionality
+mcp-code-indexer --githook
+
+# Install post-commit hook
+cp examples/git-hooks/post-commit .git/hooks/
+chmod +x .git/hooks/post-commit
+```
+
+### How It Works
+
+The git hook integration:
+- **Analyzes git diffs** automatically after commits/merges
+- **Updates file descriptions** for changed files using AI
+- **Maintains project overview** when structural changes occur
+- **Uses OpenRouter API** with Anthropic's Claude Sonnet 4 model
+
+### Features
+
+- **Automated Analysis**: No manual intervention required
+- **Smart Updates**: Only processes files that actually changed
+- **Rate Limiting**: Built-in retry logic with exponential backoff
+- **Error Isolation**: Git operations continue even if indexing fails
+- **Configurable**: Support for custom models and timeouts
+
+See [Git Hook Setup Guide](docs/git-hook-setup.md) for detailed instructions.
+
 ## 🔧 Development Setup
 
 For development work, you **must** install the package in editable mode to ensure proper import resolution:
@@ -274,6 +310,39 @@ The server provides structured JSON logs for monitoring:
 }
 ```
 
+## 📋 Command Line Options
+
+### Server Mode (Default)
+```bash
+mcp-code-indexer [OPTIONS]
+
+Options:
+  --token-limit INT     Maximum tokens before recommending search (default: 32000)
+  --db-path PATH        SQLite database path (default: ~/.mcp-code-index/tracker.db)
+  --cache-dir PATH      Cache directory path (default: ~/.mcp-code-index/cache)
+  --log-level LEVEL     Logging level: DEBUG|INFO|WARNING|ERROR|CRITICAL (default: INFO)
+```
+
+### Git Hook Mode
+```bash
+mcp-code-indexer --githook [OPTIONS]
+
+# Automated analysis of git changes using OpenRouter API
+# Requires: OPENROUTER_API_KEY environment variable
+```
+
+### Utility Commands
+```bash
+# List all projects and branches
+mcp-code-indexer --getprojects
+
+# Execute MCP tool directly
+mcp-code-indexer --runcommand '{"method": "tools/call", "params": {...}}'
+
+# Export descriptions for a project
+mcp-code-indexer --dumpdescriptions PROJECT_ID [BRANCH]
+```
+
 ## 🛡️ Security Features
 
 - **Input validation** on all MCP tool parameters
@@ -306,6 +375,8 @@ MIT License - see **[LICENSE](LICENSE)** for details.
 - **[Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk)** - The foundation for tool integration
 - **[tiktoken](https://pypi.org/project/tiktoken/)** - Fast BPE tokenization  
 - **[aiosqlite](https://pypi.org/project/aiosqlite/)** - Async SQLite operations
+- **[aiohttp](https://pypi.org/project/aiohttp/)** - Async HTTP client for OpenRouter API
+- **[tenacity](https://pypi.org/project/tenacity/)** - Robust retry logic and rate limiting
 - **[Pydantic](https://pydantic.dev/)** - Data validation and settings
 
 ---

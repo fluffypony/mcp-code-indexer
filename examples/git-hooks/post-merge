@@ -1,0 +1,64 @@
+#!/bin/bash
+# MCP Code Indexer - Post-Merge Hook
+# 
+# This script automatically updates file descriptions and project overview
+# after merging branches using OpenRouter API integration.
+#
+# Installation:
+# 1. Copy this file to .git/hooks/post-merge
+# 2. Make it executable: chmod +x .git/hooks/post-merge
+# 3. Set OPENROUTER_API_KEY environment variable
+
+# Exit on any error (but continue git operation)
+set -e
+
+# Change to repository root
+cd "$(git rev-parse --show-toplevel)"
+
+# Check if OpenRouter API key is available
+if [ -z "$OPENROUTER_API_KEY" ]; then
+    echo "Warning: OPENROUTER_API_KEY not set, skipping code indexing" >&2
+    exit 0
+fi
+
+# Check if this was a squash merge (no merge commit created)
+if [ "$1" = "1" ]; then
+    echo "Squash merge detected, skipping git hook analysis" >&2
+    exit 0
+fi
+
+# Create log directory if it doesn't exist
+LOG_DIR="$HOME/.mcp-code-index"
+mkdir -p "$LOG_DIR"
+
+# Log file for git hook operations
+LOG_FILE="$LOG_DIR/githook.log"
+
+# Function to log with timestamp
+log_with_timestamp() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+# Start logging
+log_with_timestamp "Starting post-merge git hook analysis"
+
+# Run MCP code indexer in git hook mode
+# Use extended timeout for merge operations which may have more changes
+{
+    timeout 60 mcp-code-indexer --githook \
+        --log-level INFO \
+        --db-path "$LOG_DIR/tracker.db" \
+        --cache-dir "$LOG_DIR/cache"
+    
+    log_with_timestamp "Post-merge git hook analysis completed successfully"
+} 2>&1 >> "$LOG_FILE" || {
+    exit_code=$?
+    if [ $exit_code -eq 124 ]; then
+        log_with_timestamp "Git hook analysis timed out after 60 seconds"
+    else
+        log_with_timestamp "Git hook analysis failed with error code $exit_code"
+    fi
+}
+
+# Always exit successfully to avoid interfering with git operations
+exit 0

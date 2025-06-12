@@ -1,0 +1,57 @@
+#!/bin/bash
+# MCP Code Indexer - Post-Commit Hook
+# 
+# This script automatically updates file descriptions and project overview
+# after each commit using OpenRouter API integration.
+#
+# Installation:
+# 1. Copy this file to .git/hooks/post-commit
+# 2. Make it executable: chmod +x .git/hooks/post-commit
+# 3. Set OPENROUTER_API_KEY environment variable
+#
+# Requirements:
+# - OpenRouter API key in environment
+# - mcp-code-indexer installed and in PATH
+
+# Exit on any error (but continue git operation)
+set -e
+
+# Change to repository root
+cd "$(git rev-parse --show-toplevel)"
+
+# Check if OpenRouter API key is available
+if [ -z "$OPENROUTER_API_KEY" ]; then
+    echo "Warning: OPENROUTER_API_KEY not set, skipping code indexing" >&2
+    exit 0
+fi
+
+# Create log directory if it doesn't exist
+LOG_DIR="$HOME/.mcp-code-index"
+mkdir -p "$LOG_DIR"
+
+# Log file for git hook operations
+LOG_FILE="$LOG_DIR/githook.log"
+
+# Function to log with timestamp
+log_with_timestamp() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+# Start logging
+log_with_timestamp "Starting post-commit git hook analysis"
+
+# Run MCP code indexer in git hook mode
+# Redirect all output to log file to avoid interfering with git
+{
+    mcp-code-indexer --githook \
+        --log-level INFO \
+        --db-path "$LOG_DIR/tracker.db" \
+        --cache-dir "$LOG_DIR/cache"
+    
+    log_with_timestamp "Git hook analysis completed successfully"
+} 2>&1 >> "$LOG_FILE" || {
+    log_with_timestamp "Git hook analysis failed with error code $?"
+}
+
+# Always exit successfully to avoid interfering with git operations
+exit 0
