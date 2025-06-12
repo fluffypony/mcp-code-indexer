@@ -83,8 +83,9 @@ class GitHookHandler:
             # Get git info from current directory
             project_info = await self._identify_project_from_git()
             
-            # Get git diff
+            # Get git diff and commit message
             git_diff = await self._get_git_diff()
+            commit_message = await self._get_commit_message()
             
             if not git_diff or len(git_diff) > self.config["max_diff_size"]:
                 self.logger.info(f"Skipping git hook update - diff too large or empty")
@@ -102,6 +103,7 @@ class GitHookHandler:
             # Build prompt for OpenRouter
             prompt = self._build_githook_prompt(
                 git_diff, 
+                commit_message,
                 current_overview, 
                 current_descriptions,
                 changed_files
@@ -204,6 +206,24 @@ class GitHookHandler:
                 return diff_result
             except subprocess.CalledProcessError as e:
                 raise GitHookError(f"Failed to get git diff: {e}")
+
+    async def _get_commit_message(self) -> str:
+        """
+        Get the commit message for context about what was changed.
+        
+        Returns:
+            Commit message as string
+        """
+        try:
+            # Get the commit message from the latest commit
+            message_result = await self._run_git_command([
+                "log", "-1", "--pretty=%B"
+            ])
+            return message_result.strip()
+            
+        except subprocess.CalledProcessError:
+            # If no commits exist yet, return empty string
+            return ""
     
     def _extract_changed_files(self, git_diff: str) -> List[str]:
         """
@@ -232,12 +252,12 @@ class GitHookHandler:
     async def _get_project_overview(self, project_info: Dict[str, Any]) -> str:
         """Get current project overview from database."""
         try:
-            # Try to get existing project
-            project = await self.db_manager.get_project(
+            # Try to find existing project
+            project = await self.db_manager.find_matching_project(
                 project_info["projectName"],
-                project_info["folderPath"],
                 project_info.get("remoteOrigin"),
-                project_info.get("upstreamOrigin")
+                project_info.get("upstreamOrigin"),
+                project_info["folderPath"]
             )
             
             if project:
@@ -255,12 +275,12 @@ class GitHookHandler:
     async def _get_all_descriptions(self, project_info: Dict[str, Any]) -> Dict[str, str]:
         """Get all current file descriptions from database."""
         try:
-            # Try to get existing project
-            project = await self.db_manager.get_project(
+            # Try to find existing project
+            project = await self.db_manager.find_matching_project(
                 project_info["projectName"],
-                project_info["folderPath"],
                 project_info.get("remoteOrigin"),
-                project_info.get("upstreamOrigin")
+                project_info.get("upstreamOrigin"),
+                project_info["folderPath"]
             )
             
             if project:
@@ -278,6 +298,7 @@ class GitHookHandler:
     def _build_githook_prompt(
         self, 
         git_diff: str, 
+        commit_message: str,
         overview: str, 
         descriptions: Dict[str, str], 
         changed_files: List[str]
@@ -287,6 +308,7 @@ class GitHookHandler:
         
         Args:
             git_diff: Git diff content
+            commit_message: Commit message explaining the changes
             overview: Current project overview
             descriptions: Current file descriptions
             changed_files: List of changed file paths
@@ -294,7 +316,10 @@ class GitHookHandler:
         Returns:
             Formatted prompt for the API
         """
-        return f"""Analyze this git diff and update the file descriptions and project overview as needed.
+        return f"""Analyze this git commit and update the file descriptions and project overview as needed.
+
+COMMIT MESSAGE:
+{commit_message or "No commit message available"}
 
 CURRENT PROJECT OVERVIEW:
 {overview or "No overview available"}
@@ -310,10 +335,12 @@ CHANGED FILES:
 
 INSTRUCTIONS:
 
-1. **File Descriptions**: Update descriptions for any files that have changed significantly. Only include files that need actual description updates.
+Use the COMMIT MESSAGE to understand the intent and context of the changes. The commit message explains what the developer was trying to accomplish.
+
+1. **File Descriptions**: Update descriptions for any files that have changed significantly. Consider both the diff content and the commit message context. Only include files that need actual description updates.
 
 2. **Project Overview**: Update ONLY if there are major structural changes like:
-   - New major features or components
+   - New major features or components (which may be indicated by commit message)
    - Architectural changes (new patterns, frameworks, or approaches)
    - Significant dependency additions
    - New API endpoints or workflows
@@ -485,22 +512,36 @@ Return ONLY the JSON, no other text."""
             # Update file descriptions
             file_updates = updates.get("file_updates", {})
             for file_path, description in file_updates.items():
-                await self.db_manager.upsert_file_description(
+                from mcp_code_indexer.database.models import FileDescription
+                from datetime import datetime
+                
+                file_desc = FileDescription(
                     project_id=project.id,
                     branch=project_info["branch"],
                     file_path=file_path,
-                    description=description
+                    description=description,
+                    file_hash=None,
+                    last_modified=datetime.utcnow(),
+                    version=1
                 )
+                await self.db_manager.create_file_description(file_desc)
                 self.logger.info(f"Updated description for {file_path}")
             
             # Update project overview if provided
             overview_update = updates.get("overview_update")
             if overview_update and overview_update.strip():
-                await self.db_manager.upsert_project_overview(
+                from mcp_code_indexer.database.models import ProjectOverview
+                from datetime import datetime
+                
+                overview = ProjectOverview(
                     project_id=project.id,
                     branch=project_info["branch"],
-                    overview=overview_update
+                    overview=overview_update,
+                    last_modified=datetime.utcnow(),
+                    total_files=len(file_updates),
+                    total_tokens=len(overview_update.split())
                 )
+                await self.db_manager.create_project_overview(overview)
                 self.logger.info("Updated project overview")
             
         except Exception as e:

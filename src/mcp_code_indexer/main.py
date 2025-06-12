@@ -510,6 +510,14 @@ async def handle_githook(args: argparse.Namespace) -> None:
         print(f"Git hook error: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
+        # Clean up database connections
+        if 'db_manager' in locals():
+            try:
+                await db_manager.close_pool()
+                logger.debug("Database connections closed")
+            except Exception as e:
+                logger.warning(f"Error closing database connections: {e}")
+        
         logger.info("=== GITHOOK SESSION ENDED ===")
         
         # Close logger handlers to flush any remaining logs

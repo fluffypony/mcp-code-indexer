@@ -179,6 +179,126 @@ class DatabaseManager:
                     last_accessed=datetime.fromisoformat(row['last_accessed'])
                 )
             return None
+
+    async def find_matching_project(
+        self, 
+        project_name: str, 
+        remote_origin: Optional[str] = None,
+        upstream_origin: Optional[str] = None,
+        folder_path: Optional[str] = None
+    ) -> Optional[Project]:
+        """
+        Find project by matching criteria.
+        
+        Args:
+            project_name: Name of the project
+            remote_origin: Remote origin URL
+            upstream_origin: Upstream origin URL  
+            folder_path: Project folder path
+            
+        Returns:
+            Matching project or None
+        """
+        projects = await self.get_all_projects()
+        normalized_name = project_name.lower()
+        
+        best_match = None
+        best_score = 0
+        
+        for project in projects:
+            score = 0
+            match_factors = []
+            
+            # Check name match (case-insensitive)
+            if project.name.lower() == normalized_name:
+                score += 1
+                match_factors.append("name")
+            
+            # Check remote origin match
+            if remote_origin and project.remote_origin == remote_origin:
+                score += 1
+                match_factors.append("remote_origin")
+            
+            # Check upstream origin match
+            if upstream_origin and project.upstream_origin == upstream_origin:
+                score += 1
+                match_factors.append("upstream_origin")
+            
+            # Check folder path in aliases
+            if folder_path and folder_path in project.aliases:
+                score += 1
+                match_factors.append("folder_path")
+            
+            # Enhanced matching: If name matches and no remote origins are provided,
+            # consider it a strong match to prevent duplicates
+            if (score == 1 and "name" in match_factors and 
+                not remote_origin and not project.remote_origin and
+                not upstream_origin and not project.upstream_origin):
+                logger.info(f"Name-only match with no remotes for project {project.name} - treating as strong match")
+                score = 2  # Boost score to strong match level
+                match_factors.append("no_remotes_boost")
+            
+            # If we have 2+ matches, this is a strong candidate
+            if score >= 2:
+                if score > best_score:
+                    best_score = score
+                    best_match = project
+                    logger.info(f"Strong match for project {project.name} (score: {score}, factors: {match_factors})")
+        
+        return best_match
+
+    async def get_or_create_project(
+        self,
+        project_name: str,
+        folder_path: str,
+        remote_origin: Optional[str] = None,
+        upstream_origin: Optional[str] = None
+    ) -> Project:
+        """
+        Get or create a project using intelligent matching.
+        
+        Args:
+            project_name: Name of the project
+            folder_path: Project folder path
+            remote_origin: Remote origin URL
+            upstream_origin: Upstream origin URL
+            
+        Returns:
+            Existing or newly created project
+        """
+        # Try to find existing project
+        project = await self.find_matching_project(
+            project_name, remote_origin, upstream_origin, folder_path
+        )
+        
+        if project:
+            # Update aliases if folder path not already included
+            if folder_path not in project.aliases:
+                project.aliases.append(folder_path)
+                await self.update_project(project)
+                logger.info(f"Added folder path {folder_path} to project {project.name} aliases")
+            
+            # Update access time
+            await self.update_project_access_time(project.id)
+            return project
+        
+        # Create new project
+        from ..database.models import Project
+        import uuid
+        
+        new_project = Project(
+            id=str(uuid.uuid4()),
+            name=project_name,
+            remote_origin=remote_origin,
+            upstream_origin=upstream_origin,
+            aliases=[folder_path],
+            created=datetime.utcnow(),
+            last_accessed=datetime.utcnow()
+        )
+        
+        await self.create_project(new_project)
+        logger.info(f"Created new project: {new_project.name} ({new_project.id})")
+        return new_project
     
     async def update_project_access_time(self, project_id: str) -> None:
         """Update the last accessed time for a project."""
