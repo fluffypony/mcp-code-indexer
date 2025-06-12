@@ -107,12 +107,6 @@ class GitHookHandler:
             if not git_diff:
                 self.logger.info(f"Skipping git hook update - no git diff")
                 return
-                
-            # Check token count instead of character count
-            diff_tokens = self.token_counter.count_tokens(git_diff)
-            if diff_tokens > self.config["max_diff_tokens"]:
-                self.logger.info(f"Skipping git hook update - diff too large ({diff_tokens} tokens > {self.config['max_diff_tokens']} limit)")
-                return
             
             # Fetch current state
             current_overview = await self._get_project_overview(project_info)
@@ -131,6 +125,12 @@ class GitHookHandler:
                 current_descriptions,
                 changed_files
             )
+            
+            # Check total prompt token count
+            prompt_tokens = self.token_counter.count_tokens(prompt)
+            if prompt_tokens > self.config["max_diff_tokens"]:
+                self.logger.info(f"Skipping git hook update - prompt too large ({prompt_tokens} tokens > {self.config['max_diff_tokens']} limit)")
+                return
             
             # Call OpenRouter API
             updates = await self._call_openrouter(prompt)
@@ -542,6 +542,8 @@ Return ONLY the JSON, no other text."""
             "temperature": self.config["temperature"],
             "max_tokens": 24000,
         }
+        
+
         
         timeout = aiohttp.ClientTimeout(total=self.config["timeout"])
         

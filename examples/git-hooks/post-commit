@@ -1,57 +1,29 @@
 #!/bin/bash
+
 # MCP Code Indexer - Post-Commit Hook
-# 
-# This script automatically updates file descriptions and project overview
-# after each commit using OpenRouter API integration.
+#
+# This hook runs after every commit to automatically update file descriptions
+# based on the changes in that commit.
 #
 # Installation:
-# 1. Copy this file to .git/hooks/post-commit
-# 2. Make it executable: chmod +x .git/hooks/post-commit
-# 3. Set OPENROUTER_API_KEY environment variable
+#   cp examples/post-commit-hook .git/hooks/post-commit
+#   chmod +x .git/hooks/post-commit
 #
 # Requirements:
-# - OpenRouter API key in environment
-# - mcp-code-indexer installed and in PATH
+#   - mcp-code-indexer installed and in PATH
+#   - OPENROUTER_API_KEY environment variable set
 
-# Exit on any error (but continue git operation)
-set -e
-
-# Change to repository root
 cd "$(git rev-parse --show-toplevel)"
 
-# Check if OpenRouter API key is available
-if [ -z "$OPENROUTER_API_KEY" ]; then
-    echo "Warning: OPENROUTER_API_KEY not set, skipping code indexing" >&2
-    exit 0
-fi
+# Get the latest commit hash
+COMMIT_HASH=$(git rev-parse HEAD)
 
-# Create log directory if it doesn't exist
-LOG_DIR="$HOME/.mcp-code-index"
-mkdir -p "$LOG_DIR"
+echo "Post-commit hook: Analyzing commit $COMMIT_HASH..." >&2
 
-# Log file for git hook operations
-LOG_FILE="$LOG_DIR/githook.log"
+# Run git hook analysis for the specific commit in the background
+mcp-code-indexer --githook "$COMMIT_HASH" >> ~/.mcp-code-index/githook.log 2>&1 &
+disown
 
-# Function to log with timestamp
-log_with_timestamp() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-}
+echo "Post-commit hook: Background analysis started. Check ~/.mcp-code-index/githook.log for progress." >&2
 
-# Start logging
-log_with_timestamp "Starting post-commit git hook analysis"
-
-# Run MCP code indexer in git hook mode
-# Redirect all output to log file to avoid interfering with git
-{
-    mcp-code-indexer --githook \
-        --log-level INFO \
-        --db-path "$LOG_DIR/tracker.db" \
-        --cache-dir "$LOG_DIR/cache"
-    
-    log_with_timestamp "Git hook analysis completed successfully"
-} 2>&1 >> "$LOG_FILE" || {
-    log_with_timestamp "Git hook analysis failed with error code $?"
-}
-
-# Always exit successfully to avoid interfering with git operations
 exit 0
