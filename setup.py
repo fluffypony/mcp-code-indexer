@@ -21,7 +21,7 @@ def get_version():
         return data["project"]["version"]
     except Exception:
         # Fallback version if reading fails
-        return "1.2.2"
+        return "1.2.3"
 
 setup(
     name="mcp-code-indexer",
