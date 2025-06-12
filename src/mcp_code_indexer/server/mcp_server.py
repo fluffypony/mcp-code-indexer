@@ -26,7 +26,8 @@ from mcp_code_indexer.file_scanner import FileScanner
 from mcp_code_indexer.token_counter import TokenCounter
 from mcp_code_indexer.database.models import (
     Project, FileDescription, CodebaseOverview, SearchResult,
-    CodebaseSizeInfo, FolderNode, FileNode
+    CodebaseSizeInfo, FolderNode, FileNode, ProjectOverview,
+    WordFrequencyResult
 )
 from mcp_code_indexer.error_handler import setup_error_handling, ErrorHandler
 from mcp_code_indexer.middleware.error_middleware import create_tool_middleware, AsyncTaskManager
@@ -297,8 +298,8 @@ class MCPCodeIndexServer:
                     }
                 ),
                 types.Tool(
-                    name="get_codebase_overview",
-                    description="Returns the complete file and folder structure of a codebase with all descriptions. For large codebases, this will recommend using search_descriptions instead.",
+                    name="get_all_descriptions",
+                    description="Returns the complete file-by-file structure of a codebase with individual descriptions for each file. For large codebases, consider using get_codebase_overview for a condensed summary instead.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -338,6 +339,53 @@ class MCPCodeIndexServer:
                         },
                         "required": ["projectName", "folderPath", "sourceBranch", "targetBranch"]
                     }
+                ),
+                types.Tool(
+                    name="get_codebase_overview",
+                    description="Returns a condensed, interpretive overview of the entire codebase. This is a single comprehensive narrative that captures the architecture, key components, relationships, and design patterns. Unlike get_all_descriptions which lists every file, this provides a holistic view suitable for understanding the codebase's structure and purpose. If no overview exists, returns empty string.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
+                            "branch": {"type": "string", "description": "Git branch name"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
+                        },
+                        "required": ["projectName", "folderPath", "branch"]
+                    }
+                ),
+                types.Tool(
+                    name="update_codebase_overview",
+                    description="Updates the condensed codebase overview. Create a comprehensive narrative that would help a new developer understand this codebase. Include: (1) A visual directory tree showing the main folders and their purposes, (2) Overall architecture - how components fit together, (3) Core business logic and main workflows, (4) Key technical patterns and conventions used, (5) Important dependencies and integrations, (6) Database schema overview if applicable, (7) API structure if applicable, (8) Testing approach, (9) Build and deployment notes. Write in a clear, structured format with headers and sections. Be thorough but organized - imagine writing a technical onboarding document. The overview should be substantial (think 10-20 pages of text) but well-structured so specific sections can be found easily.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
+                            "branch": {"type": "string", "description": "Git branch name"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+                            "overview": {"type": "string", "description": "Comprehensive narrative overview of the codebase (10-30k tokens recommended)"}
+                        },
+                        "required": ["projectName", "folderPath", "branch", "overview"]
+                    }
+                ),
+                types.Tool(
+                    name="get_word_frequency",
+                    description="Analyzes all file descriptions to find the most frequently used technical terms. Filters out common English stop words and symbols, returning the top 200 meaningful terms. Useful for understanding the codebase's domain vocabulary and finding all functions/files related to specific concepts.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
+                            "branch": {"type": "string", "description": "Git branch name"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+                            "limit": {"type": "integer", "default": 200, "description": "Number of top terms to return"}
+                        },
+                        "required": ["projectName", "folderPath", "branch"]
+                    }
                 )
             ]
         
@@ -351,7 +399,10 @@ class MCPCodeIndexServer:
                 "check_codebase_size": self._handle_check_codebase_size,
                 "find_missing_descriptions": self._handle_find_missing_descriptions,
                 "search_descriptions": self._handle_search_descriptions,
-                "get_codebase_overview": self._handle_get_codebase_overview,
+                "get_all_descriptions": self._handle_get_codebase_overview,
+                "get_codebase_overview": self._handle_get_condensed_overview,
+                "update_codebase_overview": self._handle_update_codebase_overview,
+                "get_word_frequency": self._handle_get_word_frequency,
                 "merge_branch_descriptions": self._handle_merge_branch_descriptions,
             }
             
@@ -679,8 +730,16 @@ class MCPCodeIndexServer:
         """Handle check_codebase_size tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
         resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
+        folder_path = Path(arguments["folderPath"])
         
-        # Get file descriptions for this project/branch
+        # Clean up descriptions for files that no longer exist
+        cleaned_up_files = await self.db_manager.cleanup_missing_files(
+            project_id=project_id,
+            branch=resolved_branch,
+            project_root=folder_path
+        )
+        
+        # Get file descriptions for this project/branch (after cleanup)
         file_descriptions = await self.db_manager.get_all_file_descriptions(
             project_id=project_id,
             branch=resolved_branch
@@ -699,7 +758,9 @@ class MCPCodeIndexServer:
             "isLarge": is_large,
             "recommendation": recommendation,
             "tokenLimit": token_limit,
-            "totalFiles": len(file_descriptions)
+            "totalFiles": len(file_descriptions),
+            "cleanedUpFiles": cleaned_up_files,
+            "cleanedUpCount": len(cleaned_up_files)
         }
     
     async def _handle_find_missing_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -903,6 +964,83 @@ class MCPCodeIndexServer:
                 "phase": "completed",
                 **result
             }
+    
+    async def _handle_get_condensed_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle get_codebase_overview tool calls for condensed overviews."""
+        project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
+        
+        # Try to get existing overview
+        overview = await self.db_manager.get_project_overview(project_id, resolved_branch)
+        
+        if overview:
+            return {
+                "overview": overview.overview,
+                "lastModified": overview.last_modified.isoformat(),
+                "totalFiles": overview.total_files,
+                "totalTokensInFullDescriptions": overview.total_tokens
+            }
+        else:
+            return {
+                "overview": "",
+                "lastModified": "",
+                "totalFiles": 0,
+                "totalTokensInFullDescriptions": 0
+            }
+    
+    async def _handle_update_codebase_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle update_codebase_overview tool calls."""
+        project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
+        folder_path = Path(arguments["folderPath"])
+        
+        # Get current file count and total tokens for context
+        file_descriptions = await self.db_manager.get_all_file_descriptions(
+            project_id=project_id,
+            branch=resolved_branch
+        )
+        
+        total_files = len(file_descriptions)
+        total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
+        
+        # Create overview record
+        overview = ProjectOverview(
+            project_id=project_id,
+            branch=resolved_branch,
+            overview=arguments["overview"],
+            last_modified=datetime.utcnow(),
+            total_files=total_files,
+            total_tokens=total_tokens
+        )
+        
+        await self.db_manager.create_project_overview(overview)
+        
+        return {
+            "success": True,
+            "message": f"Overview updated for {total_files} files",
+            "totalFiles": total_files,
+            "totalTokens": total_tokens,
+            "overviewLength": len(arguments["overview"])
+        }
+    
+    async def _handle_get_word_frequency(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle get_word_frequency tool calls."""
+        project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
+        limit = arguments.get("limit", 200)
+        
+        # Analyze word frequency
+        result = await self.db_manager.analyze_word_frequency(
+            project_id=project_id,
+            branch=resolved_branch,
+            limit=limit
+        )
+        
+        return {
+            "topTerms": [{"term": term.term, "frequency": term.frequency} for term in result.top_terms],
+            "totalTermsAnalyzed": result.total_terms_analyzed,
+            "totalUniqueTerms": result.total_unique_terms
+        }
     
     async def _run_session_with_retry(self, read_stream, write_stream, initialization_options) -> None:
         """Run a single MCP session with error handling and retry logic."""
