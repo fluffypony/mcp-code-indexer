@@ -499,7 +499,7 @@ async def handle_githook(args: argparse.Namespace) -> None:
         logger.debug("Database initialized successfully")
         
         # Initialize git hook handler
-        git_handler = GitHookHandler(db_manager, cache_dir)
+        git_handler = GitHookHandler(db_manager, cache_dir, logger)
         logger.debug("Git hook handler initialized")
         
         # Run git hook analysis

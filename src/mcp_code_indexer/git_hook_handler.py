@@ -49,17 +49,18 @@ class GitHookHandler:
     OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
     OPENROUTER_MODEL = "anthropic/claude-sonnet-4"
     
-    def __init__(self, db_manager: DatabaseManager, cache_dir: Path):
+    def __init__(self, db_manager: DatabaseManager, cache_dir: Path, logger: Optional[logging.Logger] = None):
         """
         Initialize GitHookHandler.
         
         Args:
             db_manager: Database manager instance
             cache_dir: Cache directory for temporary files
+            logger: Logger instance to use (optional, creates default if not provided)
         """
         self.db_manager = db_manager
         self.cache_dir = cache_dir
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger if logger is not None else logging.getLogger(__name__)
         self.token_counter = TokenCounter()
         
         # Git hook specific settings
