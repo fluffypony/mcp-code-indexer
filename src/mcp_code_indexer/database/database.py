@@ -31,19 +31,21 @@ class DatabaseManager:
     and caching with proper transaction management and error handling.
     """
     
-    def __init__(self, db_path: Path, pool_size: int = 5):
+    def __init__(self, db_path: Path, pool_size: int = 3):
         """Initialize database manager with path to SQLite database."""
         self.db_path = db_path
         self.pool_size = pool_size
         self._connection_pool: List[aiosqlite.Connection] = []
         self._pool_lock = None  # Will be initialized in async context
+        self._write_lock = None  # Write serialization lock, initialized in async context
         
     async def initialize(self) -> None:
         """Initialize database schema and configuration."""
         import asyncio
         
-        # Initialize pool lock
+        # Initialize locks
         self._pool_lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()
         
         # Ensure database directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,6 +58,9 @@ class DatabaseManager:
             # Enable row factory for easier data access
             db.row_factory = aiosqlite.Row
             
+            # Configure WAL mode and optimizations for concurrent access
+            await self._configure_database_optimizations(db)
+            
             # Apply each migration
             for migration_file in migration_files:
                 logger.info(f"Applying migration: {migration_file.name}")
@@ -66,6 +71,41 @@ class DatabaseManager:
                 await db.commit()
             
         logger.info(f"Database initialized at {self.db_path} with {len(migration_files)} migrations")
+    
+    async def _configure_database_optimizations(self, db: aiosqlite.Connection) -> None:
+        """
+        Configure SQLite optimizations for concurrent access and performance.
+        
+        Args:
+            db: Database connection to configure
+        """
+        optimizations = [
+            # Enable WAL mode for better concurrent access
+            "PRAGMA journal_mode = WAL",
+            
+            # Optimize performance settings
+            "PRAGMA synchronous = NORMAL",      # Balance durability/performance  
+            "PRAGMA cache_size = -64000",       # 64MB cache
+            "PRAGMA temp_store = MEMORY",       # Use memory for temp tables
+            "PRAGMA mmap_size = 268435456",     # 256MB memory mapping
+            
+            # Reduce lock contention
+            "PRAGMA busy_timeout = 10000",      # 10 second timeout (reduced from 30s)
+            "PRAGMA wal_autocheckpoint = 1000", # Checkpoint after 1000 pages
+            
+            # Enable query planner optimizations
+            "PRAGMA optimize"
+        ]
+        
+        for pragma in optimizations:
+            try:
+                await db.execute(pragma)
+                logger.debug(f"Applied optimization: {pragma}")
+            except Exception as e:
+                logger.warning(f"Failed to apply optimization '{pragma}': {e}")
+        
+        await db.commit()
+        logger.info("Database optimizations configured for concurrent access")
     
     @asynccontextmanager
     async def get_connection(self) -> AsyncIterator[aiosqlite.Connection]:
@@ -83,11 +123,8 @@ class DatabaseManager:
             conn = await aiosqlite.connect(self.db_path)
             conn.row_factory = aiosqlite.Row
             
-            # Apply performance settings to new connections
-            await conn.execute("PRAGMA busy_timeout = 30000")  # 30 second timeout
-            await conn.execute("PRAGMA synchronous = NORMAL")   # Balanced durability/performance
-            await conn.execute("PRAGMA cache_size = -64000")    # 64MB cache
-            await conn.execute("PRAGMA temp_store = MEMORY")    # Use memory for temp tables
+            # Apply optimizations to new connections
+            await self._configure_database_optimizations(conn)
         
         try:
             yield conn
@@ -111,11 +148,26 @@ class DatabaseManager:
                     await conn.close()
                 self._connection_pool.clear()
     
+    @asynccontextmanager
+    async def get_write_connection(self) -> AsyncIterator[aiosqlite.Connection]:
+        """
+        Get a database connection with write serialization.
+        
+        This ensures only one write operation occurs at a time across the entire
+        application, preventing database locking issues in multi-client scenarios.
+        """
+        if self._write_lock is None:
+            raise RuntimeError("DatabaseManager not initialized - call initialize() first")
+        
+        async with self._write_lock:
+            async with self.get_connection() as conn:
+                yield conn
+    
     # Project operations
     
     async def create_project(self, project: Project) -> None:
         """Create a new project record."""
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             await db.execute(
                 """
                 INSERT INTO projects (id, name, remote_origin, upstream_origin, aliases, created, last_accessed)
@@ -302,7 +354,7 @@ class DatabaseManager:
     
     async def update_project_access_time(self, project_id: str) -> None:
         """Update the last accessed time for a project."""
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             await db.execute(
                 "UPDATE projects SET last_accessed = ? WHERE id = ?",
                 (datetime.utcnow(), project_id)
@@ -311,7 +363,7 @@ class DatabaseManager:
     
     async def update_project(self, project: Project) -> None:
         """Update an existing project record."""
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             await db.execute(
                 """
                 UPDATE projects 
@@ -373,7 +425,7 @@ class DatabaseManager:
     
     async def create_file_description(self, file_desc: FileDescription) -> None:
         """Create or update a file description."""
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO file_descriptions 
@@ -460,7 +512,7 @@ class DatabaseManager:
         if not file_descriptions:
             return
             
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             data = [
                 (
                     fd.project_id,
@@ -552,7 +604,7 @@ class DatabaseManager:
         """Cache token count with TTL."""
         expires = datetime.utcnow() + timedelta(hours=ttl_hours)
         
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO token_cache (cache_key, token_count, expires)
@@ -564,7 +616,7 @@ class DatabaseManager:
     
     async def cleanup_expired_cache(self) -> None:
         """Remove expired cache entries."""
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             await db.execute(
                 "DELETE FROM token_cache WHERE expires < ?",
                 (datetime.utcnow(),)
@@ -663,7 +715,7 @@ class DatabaseManager:
     
     async def create_project_overview(self, overview: ProjectOverview) -> None:
         """Create or update a project overview."""
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO project_overviews 
@@ -716,7 +768,7 @@ class DatabaseManager:
         """
         removed_files = []
         
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             # Get all file descriptions for this project/branch
             cursor = await db.execute(
                 "SELECT file_path FROM file_descriptions WHERE project_id = ? AND branch = ?",
@@ -820,7 +872,7 @@ class DatabaseManager:
         Returns:
             Number of projects removed
         """
-        async with self.get_connection() as db:
+        async with self.get_write_connection() as db:
             # Find projects with no descriptions and no overview
             cursor = await db.execute("""
                 SELECT p.id, p.name 
