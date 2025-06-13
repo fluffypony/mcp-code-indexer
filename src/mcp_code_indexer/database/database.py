@@ -30,6 +30,7 @@ from mcp_code_indexer.database.exceptions import (
 from mcp_code_indexer.database.connection_health import (
     ConnectionHealthMonitor, DatabaseMetricsCollector
 )
+from mcp_code_indexer.query_preprocessor import preprocess_search_query
 
 logger = logging.getLogger(__name__)
 
@@ -848,7 +849,16 @@ class DatabaseManager:
         query: str,
         max_results: int = 20
     ) -> List[SearchResult]:
-        """Search file descriptions using FTS5."""
+        """Search file descriptions using FTS5 with intelligent query preprocessing."""
+        # Preprocess query for optimal FTS5 search
+        preprocessed_query = preprocess_search_query(query)
+        
+        if not preprocessed_query:
+            logger.debug(f"Empty query after preprocessing: '{query}'")
+            return []
+        
+        logger.debug(f"Search query preprocessing: '{query}' -> '{preprocessed_query}'")
+        
         async with self.get_connection() as db:
             cursor = await db.execute(
                 """
@@ -866,7 +876,7 @@ class DatabaseManager:
                 ORDER BY bm25(file_descriptions_fts)
                 LIMIT ?
                 """,
-                (query, project_id, branch, max_results)
+                (preprocessed_query, project_id, branch, max_results)
             )
             rows = await cursor.fetchall()
             
