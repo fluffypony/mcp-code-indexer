@@ -312,14 +312,20 @@ class ClaudeAPIHandler:
             Project overview text or empty string if not found
         """
         try:
-            overview = await self.db_manager.get_codebase_overview(
+            # Get or create project first
+            project_id = await self.db_manager.get_or_create_project(
                 project_name=project_info["projectName"],
-                folder_path=project_info["folderPath"],
-                branch=project_info["branch"],
                 remote_origin=project_info.get("remoteOrigin"),
-                upstream_origin=project_info.get("upstreamOrigin")
+                upstream_origin=project_info.get("upstreamOrigin"),
+                folder_path=project_info["folderPath"]
             )
-            return overview or ""
+            
+            # Get overview for the project
+            overview_result = await self.db_manager.get_project_overview(project_id, project_info["branch"])
+            if overview_result:
+                return overview_result.overview
+            else:
+                return ""
         except Exception as e:
             self.logger.warning(f"Failed to get project overview: {e}")
             return ""

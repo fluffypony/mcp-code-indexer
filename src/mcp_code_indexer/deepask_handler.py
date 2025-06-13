@@ -195,40 +195,50 @@ class DeepAskHandler(ClaudeAPIHandler):
         relevant_files = []
         total_files_found = 0
         
-        for search_term in search_terms:
-            try:
-                search_results = await self.db_manager.search_descriptions(
-                    project_name=project_info["projectName"],
-                    folder_path=project_info["folderPath"],
-                    branch=project_info["branch"],
-                    query=search_term,
-                    max_results=max_file_results,
-                    remote_origin=project_info.get("remoteOrigin"),
-                    upstream_origin=project_info.get("upstreamOrigin")
-                )
-                
-                total_files_found += len(search_results)
-                
-                # Add unique files to relevant_files
-                for result in search_results:
-                    if not any(f["filePath"] == result["filePath"] for f in relevant_files):
-                        relevant_files.append({
-                            "filePath": result["filePath"],
-                            "description": result["description"],
-                            "search_term": search_term,
-                            "relevance_score": result.get("relevanceScore", 0.0)
-                        })
-                        
-                        # Stop if we have enough files
-                        if len(relevant_files) >= max_file_results:
-                            break
-                
-                if len(relevant_files) >= max_file_results:
-                    break
+        try:
+            # Get or create project first
+            project_id = await self.db_manager.get_or_create_project(
+                project_name=project_info["projectName"],
+                remote_origin=project_info.get("remoteOrigin"),
+                upstream_origin=project_info.get("upstreamOrigin"),
+                folder_path=project_info["folderPath"]
+            )
+            
+            for search_term in search_terms:
+                try:
+                    search_results = await self.db_manager.search_file_descriptions(
+                        project_id=project_id,
+                        branch=project_info["branch"],
+                        query=search_term,
+                        max_results=max_file_results
+                    )
                     
-            except Exception as e:
-                self.logger.warning(f"Search failed for term '{search_term}': {e}")
-                continue
+                    total_files_found += len(search_results)
+                    
+                    # Add unique files to relevant_files
+                    for result in search_results:
+                        if not any(f["filePath"] == result.file_path for f in relevant_files):
+                            relevant_files.append({
+                                "filePath": result.file_path,
+                                "description": result.description,
+                                "search_term": search_term,
+                                "relevance_score": result.relevance_score
+                            })
+                            
+                            # Stop if we have enough files
+                            if len(relevant_files) >= max_file_results:
+                                break
+                    
+                    if len(relevant_files) >= max_file_results:
+                        break
+                        
+                except Exception as e:
+                    self.logger.warning(f"Search failed for term '{search_term}': {e}")
+                    continue
+                    
+        except Exception as e:
+            self.logger.warning(f"Failed to search files: {e}")
+            # Continue with empty relevant_files list
         
         # Build stage 2 prompt with file context
         prompt = self._build_stage2_prompt(
