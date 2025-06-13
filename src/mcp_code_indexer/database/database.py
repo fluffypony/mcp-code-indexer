@@ -58,9 +58,7 @@ class DatabaseManager:
         self._write_lock = None  # Write serialization lock, initialized in async context
         
         # Retry and recovery components - configure with provided settings
-        from .retry_handler import RetryConfig
-        retry_config = RetryConfig(max_attempts=retry_count)
-        self._retry_handler = create_retry_handler(retry_config)
+        self._retry_handler = create_retry_handler(max_attempts=retry_count)
         self._recovery_manager = None  # Initialized in async context
         
         # Health monitoring and metrics
