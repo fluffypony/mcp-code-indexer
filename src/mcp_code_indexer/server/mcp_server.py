@@ -83,7 +83,14 @@ class MCPCodeIndexServer:
         }
         
         # Initialize components
-        self.db_manager = DatabaseManager(self.db_path, pool_size=db_pool_size)
+        self.db_manager = DatabaseManager(
+            db_path=self.db_path, 
+            pool_size=db_pool_size,
+            retry_count=db_retry_count,
+            timeout=db_timeout,
+            enable_wal_mode=enable_wal_mode,
+            health_check_interval=health_check_interval
+        )
         self.token_counter = TokenCounter(token_limit)
         self.merge_handler = MergeHandler(self.db_manager)
         

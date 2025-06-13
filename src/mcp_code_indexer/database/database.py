@@ -39,16 +39,28 @@ class DatabaseManager:
     and caching with proper transaction management and error handling.
     """
     
-    def __init__(self, db_path: Path, pool_size: int = 3):
+    def __init__(self, 
+                 db_path: Path, 
+                 pool_size: int = 3,
+                 retry_count: int = 5,
+                 timeout: float = 10.0,
+                 enable_wal_mode: bool = True,
+                 health_check_interval: float = 30.0):
         """Initialize database manager with path to SQLite database."""
         self.db_path = db_path
         self.pool_size = pool_size
+        self.retry_count = retry_count
+        self.timeout = timeout
+        self.enable_wal_mode = enable_wal_mode
+        self.health_check_interval = health_check_interval
         self._connection_pool: List[aiosqlite.Connection] = []
         self._pool_lock = None  # Will be initialized in async context
         self._write_lock = None  # Write serialization lock, initialized in async context
         
-        # Retry and recovery components
-        self._retry_handler = create_retry_handler()
+        # Retry and recovery components - configure with provided settings
+        from .retry_handler import RetryConfig
+        retry_config = RetryConfig(max_attempts=retry_count)
+        self._retry_handler = create_retry_handler(retry_config)
         self._recovery_manager = None  # Initialized in async context
         
         # Health monitoring and metrics
@@ -66,8 +78,12 @@ class DatabaseManager:
         # Initialize connection recovery manager
         self._recovery_manager = ConnectionRecoveryManager(self)
         
-        # Initialize health monitoring
-        self._health_monitor = ConnectionHealthMonitor(self)
+        # Initialize health monitoring with configured interval
+        self._health_monitor = ConnectionHealthMonitor(
+            self, 
+            check_interval=self.health_check_interval,
+            timeout_seconds=self.timeout
+        )
         await self._health_monitor.start_monitoring()
         
         # Ensure database directory exists
@@ -82,7 +98,7 @@ class DatabaseManager:
             db.row_factory = aiosqlite.Row
             
             # Configure WAL mode and optimizations for concurrent access
-            await self._configure_database_optimizations(db)
+            await self._configure_database_optimizations(db, include_wal_mode=self.enable_wal_mode)
             
             # Apply each migration
             for migration_file in migration_files:
@@ -108,6 +124,7 @@ class DatabaseManager:
         # WAL mode is database-level, only set during initialization
         if include_wal_mode:
             optimizations.append("PRAGMA journal_mode = WAL")
+            logger.info("Enabling WAL mode for database concurrency")
         
         # Connection-level optimizations that can be set per connection
         optimizations.extend([
@@ -422,7 +439,7 @@ class DatabaseManager:
     
     async def create_project(self, project: Project) -> None:
         """Create a new project record."""
-        async with self.get_write_connection() as db:
+        async with self.get_write_connection_with_retry("create_project") as db:
             await db.execute(
                 """
                 INSERT INTO projects (id, name, remote_origin, upstream_origin, aliases, created, last_accessed)
@@ -609,7 +626,7 @@ class DatabaseManager:
     
     async def update_project_access_time(self, project_id: str) -> None:
         """Update the last accessed time for a project."""
-        async with self.get_write_connection() as db:
+        async with self.get_write_connection_with_retry("update_project_access_time") as db:
             await db.execute(
                 "UPDATE projects SET last_accessed = ? WHERE id = ?",
                 (datetime.utcnow(), project_id)
@@ -618,7 +635,7 @@ class DatabaseManager:
     
     async def update_project(self, project: Project) -> None:
         """Update an existing project record."""
-        async with self.get_write_connection() as db:
+        async with self.get_write_connection_with_retry("update_project") as db:
             await db.execute(
                 """
                 UPDATE projects 
@@ -680,7 +697,7 @@ class DatabaseManager:
     
     async def create_file_description(self, file_desc: FileDescription) -> None:
         """Create or update a file description."""
-        async with self.get_write_connection() as db:
+        async with self.get_write_connection_with_retry("create_file_description") as db:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO file_descriptions 
