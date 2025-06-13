@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-code-indexer"
-version = "1.9.1"
+version = "2.0.0"
 description = "MCP server that tracks file descriptions across codebases, enabling AI agents to efficiently navigate and understand code through searchable summaries and token-aware overviews."
 readme = "README.md"
 license = {text = "MIT"}
