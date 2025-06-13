@@ -324,7 +324,7 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="search_descriptions",
-                    description="Searches through all file descriptions in a project to find files related to specific functionality. Use this for large codebases instead of loading the entire structure. Always start with the fewest terms possible; if the tool returns a lot of results (more than 20) or the results are not relevant, then narrow it down by increasing the number of search terms. Start broad, then narrow the focus only if needed!",
+                    description="Searches through all file descriptions in a project to find files related to specific functionality. Use this for large codebases instead of loading the entire structure. Always start with the fewest terms possible (1 to 3 words AT MOST); if the tool returns a lot of results (more than 20) or the results are not relevant, then narrow it down by increasing the number of search words one at a time and calling the tool again. Start VERY broad, then narrow the focus only if needed!",
                     inputSchema={
                         "type": "object",
                         "properties": {
