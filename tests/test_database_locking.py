@@ -18,7 +18,7 @@ import aiosqlite
 
 from src.mcp_code_indexer.database.database import DatabaseManager
 from src.mcp_code_indexer.database.models import Project, FileDescription
-from src.mcp_code_indexer.database.retry_handler import RetryHandler, DatabaseLockError
+from src.mcp_code_indexer.database.exceptions import DatabaseLockError
 
 
 class TestDatabaseLocking:
@@ -128,42 +128,7 @@ class TestDatabaseLocking:
             async with temp_db_manager.get_immediate_transaction("test_timeout", timeout_seconds=0.1):
                 await asyncio.sleep(0.2)  # Sleep longer than timeout
     
-    @pytest.mark.asyncio
-    async def test_retry_handler_with_mocked_errors(self):
-        """Test retry handler with simulated database locking errors."""
-        retry_handler = RetryHandler()
-        call_count = 0
-        
-        async def failing_operation():
-            nonlocal call_count
-            call_count += 1
-            
-            if call_count <= 2:
-                # Simulate database locked error for first two attempts
-                raise aiosqlite.OperationalError("database is locked")
-            
-            return "success"
-        
-        # Test successful retry
-        async with retry_handler.with_retry("test_operation"):
-            result = await failing_operation()
-        
-        assert result == "success"
-        assert call_count == 3  # Failed twice, succeeded on third attempt
-    
-    @pytest.mark.asyncio
-    async def test_retry_exhaustion(self):
-        """Test retry handler when all attempts are exhausted."""
-        retry_handler = RetryHandler()
-        
-        async def always_failing_operation():
-            raise aiosqlite.OperationalError("database is locked")
-        
-        # Test that DatabaseLockError is raised after exhausting retries
-        with pytest.raises(DatabaseLockError):
-            async with retry_handler.with_retry("test_operation"):
-                await always_failing_operation()
-    
+    # Retry handler tests removed - comprehensive retry testing is now in test_retry_executor.py
     @pytest.mark.asyncio
     async def test_concurrent_reads_during_write(self, temp_db_manager, sample_project):
         """Test that reads can proceed during writes (WAL mode benefit)."""

@@ -21,9 +21,6 @@ from mcp_code_indexer.database.models import (
     Project, FileDescription, MergeConflict, SearchResult,
     CodebaseSizeInfo, ProjectOverview, WordFrequencyResult, WordFrequencyTerm
 )
-from mcp_code_indexer.database.retry_handler import (
-    RetryHandler, ConnectionRecoveryManager, create_retry_handler
-)
 from mcp_code_indexer.database.retry_executor import (
     RetryExecutor, create_retry_executor
 )
@@ -70,14 +67,12 @@ class DatabaseManager:
         self._write_lock = None  # Write serialization lock, initialized in async context
         
         # Retry and recovery components - configure with provided settings
-        self._retry_handler = create_retry_handler(max_attempts=retry_count)
         self._retry_executor = create_retry_executor(
             max_attempts=retry_count,
             min_wait_seconds=retry_min_wait,
             max_wait_seconds=retry_max_wait,
             jitter_max_seconds=retry_jitter
         )
-        self._recovery_manager = None  # Initialized in async context
         
         # Health monitoring and metrics
         self._health_monitor = None  # Initialized in async context
@@ -91,8 +86,7 @@ class DatabaseManager:
         self._pool_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
         
-        # Initialize connection recovery manager
-        self._recovery_manager = ConnectionRecoveryManager(self)
+        # Connection recovery is now handled by the retry executor
         
         # Initialize health monitoring with configured interval
         self._health_monitor = ConnectionHealthMonitor(
@@ -105,16 +99,7 @@ class DatabaseManager:
         # Ensure database directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Check and apply migrations for retry executor compatibility
-        from mcp_code_indexer.database.migration_utils import DatabaseMigrationManager
-        migration_manager = DatabaseMigrationManager(self.db_path)
-        migration_results = await migration_manager.check_and_migrate()
-        
-        if migration_results["migrations_applied"]:
-            logger.info(
-                f"Applied database migrations: {migration_results['migrations_applied']}",
-                extra={"structured_data": {"migration_results": migration_results}}
-            )
+        # Database initialization now uses the modern retry executor directly
         
         # Apply migrations in order
         migrations_dir = Path(__file__).parent.parent.parent.parent / "migrations"
@@ -271,14 +256,10 @@ class DatabaseManager:
             try:
                 yield connection
                 
-                # Reset failure count on successful operation
-                if self._recovery_manager:
-                    self._recovery_manager.reset_failure_count()
+                # Success - retry executor handles all failure tracking
                     
             except Exception as e:
-                # Handle persistent failures during operation
-                if self._recovery_manager:
-                    await self._recovery_manager.handle_persistent_failure(operation_name, e)
+                # Error handling is managed by the retry executor
                 raise
                 
         except DatabaseError:
@@ -308,11 +289,7 @@ class DatabaseManager:
             "retry_executor": self._retry_executor.get_retry_stats() if self._retry_executor else {},
         }
         
-        if self._retry_handler:
-            stats["retry_stats"] = self._retry_handler.get_retry_stats()
-        
-        if self._recovery_manager:
-            stats["recovery_stats"] = self._recovery_manager.get_recovery_stats()
+        # Legacy retry handler removed - retry executor stats are included above
         
         if self._health_monitor:
             stats["health_status"] = self._health_monitor.get_health_status()

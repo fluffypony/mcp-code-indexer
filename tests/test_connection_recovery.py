@@ -17,7 +17,7 @@ import aiosqlite
 
 from src.mcp_code_indexer.database.database import DatabaseManager
 from src.mcp_code_indexer.database.connection_health import ConnectionHealthMonitor, DatabaseMetricsCollector
-from src.mcp_code_indexer.database.retry_handler import ConnectionRecoveryManager
+# ConnectionRecoveryManager removed - recovery is now handled by RetryExecutor
 
 
 class TestConnectionRecovery:
