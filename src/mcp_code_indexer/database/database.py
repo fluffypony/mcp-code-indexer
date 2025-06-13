@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, AsyncIterator
 
+import asyncio
+import random
 import aiosqlite
 
 from mcp_code_indexer.database.models import (
@@ -271,6 +273,144 @@ class DatabaseManager:
             "overall_status": self._health_monitor.get_health_status(),
             "recent_history": self._health_monitor.get_recent_history()
         }
+    
+    @asynccontextmanager
+    async def get_immediate_transaction(
+        self, 
+        operation_name: str = "immediate_transaction",
+        timeout_seconds: float = 10.0
+    ) -> AsyncIterator[aiosqlite.Connection]:
+        """
+        Get a database connection with BEGIN IMMEDIATE transaction and timeout.
+        
+        This ensures write locks are acquired immediately, preventing lock escalation
+        failures that can occur with DEFERRED transactions.
+        
+        Args:
+            operation_name: Name of the operation for monitoring
+            timeout_seconds: Transaction timeout in seconds
+        """
+        async with self.get_write_connection_with_retry(operation_name) as conn:
+            try:
+                # Start immediate transaction with timeout
+                async with asyncio.timeout(timeout_seconds):
+                    await conn.execute("BEGIN IMMEDIATE")
+                    yield conn
+                    await conn.commit()
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Transaction timeout after {timeout_seconds}s for {operation_name}",
+                    extra={
+                        "structured_data": {
+                            "transaction_timeout": {
+                                "operation": operation_name,
+                                "timeout_seconds": timeout_seconds
+                            }
+                        }
+                    }
+                )
+                await conn.rollback()
+                raise
+            except Exception as e:
+                logger.error(f"Transaction failed for {operation_name}: {e}")
+                await conn.rollback()
+                raise
+    
+    async def execute_transaction_with_retry(
+        self,
+        operation_func,
+        operation_name: str = "transaction_operation",
+        max_retries: int = 3,
+        timeout_seconds: float = 10.0
+    ) -> Any:
+        """
+        Execute a database operation within a transaction with automatic retry.
+        
+        Args:
+            operation_func: Async function that takes a connection and performs the operation
+            operation_name: Name of the operation for logging
+            max_retries: Maximum retry attempts
+            timeout_seconds: Transaction timeout in seconds
+            
+        Returns:
+            Result from operation_func
+            
+        Example:
+            async def my_operation(conn):
+                await conn.execute("INSERT INTO ...", (...))
+                return "success"
+            
+            result = await db.execute_transaction_with_retry(my_operation, "insert_data")
+        """
+        last_error = None
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with self.get_immediate_transaction(operation_name, timeout_seconds) as conn:
+                    result = await operation_func(conn)
+                    
+                # Record successful operation metrics
+                if self._metrics_collector:
+                    self._metrics_collector.record_operation(
+                        operation_name, 
+                        timeout_seconds * 1000,  # Convert to ms
+                        True,
+                        len(self._connection_pool)
+                    )
+                
+                return result
+                
+            except (aiosqlite.OperationalError, asyncio.TimeoutError) as e:
+                last_error = e
+                
+                # Record locking event for metrics
+                if self._metrics_collector and "locked" in str(e).lower():
+                    self._metrics_collector.record_locking_event(operation_name, str(e))
+                
+                if attempt < max_retries:
+                    # Exponential backoff with jitter
+                    delay = 0.1 * (2 ** (attempt - 1))
+                    jitter = delay * 0.1 * (2 * random.random() - 1)  # ±10% jitter
+                    wait_time = max(0.05, delay + jitter)
+                    
+                    logger.warning(
+                        f"Transaction attempt {attempt} failed for {operation_name}, retrying in {wait_time:.2f}s: {e}",
+                        extra={
+                            "structured_data": {
+                                "transaction_retry": {
+                                    "operation": operation_name,
+                                    "attempt": attempt,
+                                    "delay_seconds": wait_time,
+                                    "error": str(e)
+                                }
+                            }
+                        }
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    # Record failed operation metrics
+                    if self._metrics_collector:
+                        self._metrics_collector.record_operation(
+                            operation_name,
+                            timeout_seconds * 1000,
+                            False,
+                            len(self._connection_pool)
+                        )
+                    
+                    logger.error(
+                        f"Transaction failed after {max_retries} attempts for {operation_name}: {e}",
+                        extra={
+                            "structured_data": {
+                                "transaction_failure": {
+                                    "operation": operation_name,
+                                    "max_retries": max_retries,
+                                    "final_error": str(e)
+                                }
+                            }
+                        }
+                    )
+        
+        raise last_error
     
     # Project operations
     
@@ -617,11 +757,11 @@ class DatabaseManager:
             ]
     
     async def batch_create_file_descriptions(self, file_descriptions: List[FileDescription]) -> None:
-        """Batch create multiple file descriptions efficiently."""
+        """Batch create multiple file descriptions efficiently with optimized transactions."""
         if not file_descriptions:
             return
-            
-        async with self.get_write_connection() as db:
+        
+        async def batch_operation(conn: aiosqlite.Connection) -> None:
             data = [
                 (
                     fd.project_id,
@@ -636,7 +776,7 @@ class DatabaseManager:
                 for fd in file_descriptions
             ]
             
-            await db.executemany(
+            await conn.executemany(
                 """
                 INSERT OR REPLACE INTO file_descriptions 
                 (project_id, branch, file_path, description, file_hash, last_modified, version, source_project_id)
@@ -644,8 +784,13 @@ class DatabaseManager:
                 """,
                 data
             )
-            await db.commit()
             logger.debug(f"Batch created {len(file_descriptions)} file descriptions")
+        
+        await self.execute_transaction_with_retry(
+            batch_operation,
+            f"batch_create_file_descriptions_{len(file_descriptions)}_files",
+            timeout_seconds=30.0  # Longer timeout for batch operations
+        )
     
     # Search operations
     
@@ -877,9 +1022,9 @@ class DatabaseManager:
         """
         removed_files = []
         
-        async with self.get_write_connection() as db:
+        async def cleanup_operation(conn: aiosqlite.Connection) -> List[str]:
             # Get all file descriptions for this project/branch
-            cursor = await db.execute(
+            cursor = await conn.execute(
                 "SELECT file_path FROM file_descriptions WHERE project_id = ? AND branch = ?",
                 (project_id, branch)
             )
@@ -894,16 +1039,22 @@ class DatabaseManager:
                 
                 if not full_path.exists():
                     to_remove.append(file_path)
-                    removed_files.append(file_path)
             
             # Remove descriptions for missing files
             if to_remove:
-                await db.executemany(
+                await conn.executemany(
                     "DELETE FROM file_descriptions WHERE project_id = ? AND branch = ? AND file_path = ?",
                     [(project_id, branch, path) for path in to_remove]
                 )
-                await db.commit()
                 logger.info(f"Cleaned up {len(to_remove)} missing files from {project_id}/{branch}")
+            
+            return to_remove
+        
+        removed_files = await self.execute_transaction_with_retry(
+            cleanup_operation,
+            f"cleanup_missing_files_{project_id}_{branch}",
+            timeout_seconds=60.0  # Longer timeout for file system operations
+        )
         
         return removed_files
     
