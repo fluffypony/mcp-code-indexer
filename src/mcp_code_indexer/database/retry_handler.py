@@ -97,6 +97,11 @@ class RetryHandler:
                     )
                 return
                 
+            except GeneratorExit:
+                # Handle cleanup properly when context manager is being torn down
+                logger.debug(f"Retry context manager for '{operation_name}' being cleaned up")
+                raise
+                
             except Exception as e:
                 last_error = e
                 

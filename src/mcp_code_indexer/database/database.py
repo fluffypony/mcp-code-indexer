@@ -223,10 +223,15 @@ class DatabaseManager:
         Args:
             operation_name: Name of the operation for logging and monitoring
         """
-        if self._write_lock is None or self._retry_handler is None:
+        if self._write_lock is None:
             raise RuntimeError("DatabaseManager not initialized - call initialize() first")
         
-        async with self._retry_handler.with_retry(operation_name):
+        # TEMPORARY FIX: Use simple write connection until retry context manager is fixed
+        # TODO: Implement proper retry logic without context manager issues
+        max_retries = self.retry_count
+        last_error = None
+        
+        for attempt in range(max_retries):
             try:
                 async with self._write_lock:
                     async with self.get_connection() as conn:
@@ -235,12 +240,29 @@ class DatabaseManager:
                 # Reset failure count on success
                 if self._recovery_manager:
                     self._recovery_manager.reset_failure_count()
-                    
+                return
+                        
             except Exception as e:
+                last_error = e
+                error_str = str(e).lower()
+                
+                # Check if it's a retryable database lock error
+                if "database is locked" in error_str or "locked" in error_str:
+                    if attempt < max_retries - 1:  # Not the last attempt
+                        wait_time = 0.1 * (2 ** attempt)  # Exponential backoff
+                        logger.warning(f"Database locked for {operation_name}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(wait_time)
+                        continue
+                
                 # Handle persistent failures
                 if self._recovery_manager:
                     await self._recovery_manager.handle_persistent_failure(operation_name, e)
                 raise
+        
+        # If we get here, all retries failed
+        if last_error:
+            logger.error(f"Database operation {operation_name} failed after {max_retries} attempts: {last_error}")
+            raise last_error
     
     def get_database_stats(self) -> Dict[str, Any]:
         """
