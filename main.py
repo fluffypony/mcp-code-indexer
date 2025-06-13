@@ -102,6 +102,28 @@ def parse_arguments() -> argparse.Namespace:
         help="Database health check interval in seconds (default: 30.0, env: DB_HEALTH_CHECK_INTERVAL)"
     )
     
+    # Retry executor configuration options
+    parser.add_argument(
+        "--retry-min-wait",
+        type=float,
+        default=float(os.getenv("DB_RETRY_MIN_WAIT", "0.1")),
+        help="Minimum wait time between retries in seconds (default: 0.1, env: DB_RETRY_MIN_WAIT)"
+    )
+    
+    parser.add_argument(
+        "--retry-max-wait",
+        type=float,
+        default=float(os.getenv("DB_RETRY_MAX_WAIT", "2.0")),
+        help="Maximum wait time between retries in seconds (default: 2.0, env: DB_RETRY_MAX_WAIT)"
+    )
+    
+    parser.add_argument(
+        "--retry-jitter",
+        type=float,
+        default=float(os.getenv("DB_RETRY_JITTER", "0.2")),
+        help="Maximum jitter to add to retry delays in seconds (default: 0.2, env: DB_RETRY_JITTER)"
+    )
+    
     return parser.parse_args()
 
 
@@ -119,7 +141,17 @@ async def handle_githook(args: argparse.Namespace) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
         
-        db_manager = DatabaseManager(db_path)
+        db_manager = DatabaseManager(
+            db_path,
+            pool_size=args.db_pool_size,
+            retry_count=args.db_retry_count,
+            timeout=args.db_timeout,
+            enable_wal_mode=args.enable_wal_mode,
+            health_check_interval=args.health_check_interval,
+            retry_min_wait=args.retry_min_wait,
+            retry_max_wait=args.retry_max_wait,
+            retry_jitter=args.retry_jitter
+        )
         await db_manager.initialize()
         
         # Initialize git hook handler
@@ -168,7 +200,17 @@ async def main() -> None:
                 "token_limit": args.token_limit,
                 "db_path": str(db_path),
                 "cache_dir": str(cache_dir),
-                "log_level": args.log_level
+                "log_level": args.log_level,
+                "database_config": {
+                    "pool_size": args.db_pool_size,
+                    "retry_count": args.db_retry_count,
+                    "timeout": args.db_timeout,
+                    "wal_mode": args.enable_wal_mode,
+                    "health_check_interval": args.health_check_interval,
+                    "retry_min_wait": args.retry_min_wait,
+                    "retry_max_wait": args.retry_max_wait,
+                    "retry_jitter": args.retry_jitter
+                }
             }
         }
     })
@@ -185,7 +227,10 @@ async def main() -> None:
             db_retry_count=args.db_retry_count,
             db_timeout=args.db_timeout,
             enable_wal_mode=args.enable_wal_mode,
-            health_check_interval=args.health_check_interval
+            health_check_interval=args.health_check_interval,
+            retry_min_wait=args.retry_min_wait,
+            retry_max_wait=args.retry_max_wait,
+            retry_jitter=args.retry_jitter
         )
         
         await server.run()

@@ -54,7 +54,10 @@ class MCPCodeIndexServer:
         db_retry_count: int = 5,
         db_timeout: float = 10.0,
         enable_wal_mode: bool = True,
-        health_check_interval: float = 30.0
+        health_check_interval: float = 30.0,
+        retry_min_wait: float = 0.1,
+        retry_max_wait: float = 2.0,
+        retry_jitter: float = 0.2
     ):
         """
         Initialize the MCP Code Index Server.
@@ -68,6 +71,9 @@ class MCPCodeIndexServer:
             db_timeout: Database transaction timeout in seconds
             enable_wal_mode: Enable WAL mode for better concurrent access
             health_check_interval: Database health check interval in seconds
+            retry_min_wait: Minimum wait time between retries in seconds
+            retry_max_wait: Maximum wait time between retries in seconds
+            retry_jitter: Maximum jitter to add to retry delays in seconds
         """
         self.token_limit = token_limit
         self.db_path = db_path or Path.home() / ".mcp-code-index" / "tracker.db"
@@ -79,7 +85,10 @@ class MCPCodeIndexServer:
             "retry_count": db_retry_count,
             "timeout": db_timeout,
             "enable_wal_mode": enable_wal_mode,
-            "health_check_interval": health_check_interval
+            "health_check_interval": health_check_interval,
+            "retry_min_wait": retry_min_wait,
+            "retry_max_wait": retry_max_wait,
+            "retry_jitter": retry_jitter
         }
         
         # Initialize components
@@ -89,7 +98,10 @@ class MCPCodeIndexServer:
             retry_count=db_retry_count,
             timeout=db_timeout,
             enable_wal_mode=enable_wal_mode,
-            health_check_interval=health_check_interval
+            health_check_interval=health_check_interval,
+            retry_min_wait=retry_min_wait,
+            retry_max_wait=retry_max_wait,
+            retry_jitter=retry_jitter
         )
         self.token_counter = TokenCounter(token_limit)
         self.merge_handler = MergeHandler(self.db_manager)
@@ -312,7 +324,7 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="search_descriptions",
-                    description="Searches through all file descriptions in a project to find files related to specific functionality. Use this for large codebases instead of loading the entire structure.",
+                    description="Searches through all file descriptions in a project to find files related to specific functionality. Use this for large codebases instead of loading the entire structure. Always start with the fewest terms possible; if the tool returns a lot of results (more than 20) or the results are not relevant, then narrow it down by increasing the number of search terms. Start broad, then narrow the focus only if needed!",
                     inputSchema={
                         "type": "object",
                         "properties": {

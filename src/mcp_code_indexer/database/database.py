@@ -51,7 +51,10 @@ class DatabaseManager:
                  retry_count: int = 5,
                  timeout: float = 10.0,
                  enable_wal_mode: bool = True,
-                 health_check_interval: float = 30.0):
+                 health_check_interval: float = 30.0,
+                 retry_min_wait: float = 0.1,
+                 retry_max_wait: float = 2.0,
+                 retry_jitter: float = 0.2):
         """Initialize database manager with path to SQLite database."""
         self.db_path = db_path
         self.pool_size = pool_size
@@ -59,6 +62,9 @@ class DatabaseManager:
         self.timeout = timeout
         self.enable_wal_mode = enable_wal_mode
         self.health_check_interval = health_check_interval
+        self.retry_min_wait = retry_min_wait
+        self.retry_max_wait = retry_max_wait
+        self.retry_jitter = retry_jitter
         self._connection_pool: List[aiosqlite.Connection] = []
         self._pool_lock = None  # Will be initialized in async context
         self._write_lock = None  # Write serialization lock, initialized in async context
@@ -67,8 +73,9 @@ class DatabaseManager:
         self._retry_handler = create_retry_handler(max_attempts=retry_count)
         self._retry_executor = create_retry_executor(
             max_attempts=retry_count,
-            min_wait_seconds=0.1,
-            max_wait_seconds=2.0
+            min_wait_seconds=retry_min_wait,
+            max_wait_seconds=retry_max_wait,
+            jitter_max_seconds=retry_jitter
         )
         self._recovery_manager = None  # Initialized in async context
         
