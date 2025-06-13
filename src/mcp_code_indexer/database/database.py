@@ -105,6 +105,17 @@ class DatabaseManager:
         # Ensure database directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
+        # Check and apply migrations for retry executor compatibility
+        from mcp_code_indexer.database.migration_utils import DatabaseMigrationManager
+        migration_manager = DatabaseMigrationManager(self.db_path)
+        migration_results = await migration_manager.check_and_migrate()
+        
+        if migration_results["migrations_applied"]:
+            logger.info(
+                f"Applied database migrations: {migration_results['migrations_applied']}",
+                extra={"structured_data": {"migration_results": migration_results}}
+            )
+        
         # Apply migrations in order
         migrations_dir = Path(__file__).parent.parent.parent.parent / "migrations"
         migration_files = sorted(migrations_dir.glob("*.sql"))
