@@ -95,30 +95,33 @@ class DatabaseManager:
             
         logger.info(f"Database initialized at {self.db_path} with {len(migration_files)} migrations")
     
-    async def _configure_database_optimizations(self, db: aiosqlite.Connection) -> None:
+    async def _configure_database_optimizations(self, db: aiosqlite.Connection, include_wal_mode: bool = True) -> None:
         """
         Configure SQLite optimizations for concurrent access and performance.
         
         Args:
             db: Database connection to configure
+            include_wal_mode: Whether to set WAL mode (only needed once per database)
         """
-        optimizations = [
-            # Enable WAL mode for better concurrent access
-            "PRAGMA journal_mode = WAL",
-            
-            # Optimize performance settings
+        optimizations = []
+        
+        # WAL mode is database-level, only set during initialization
+        if include_wal_mode:
+            optimizations.append("PRAGMA journal_mode = WAL")
+        
+        # Connection-level optimizations that can be set per connection
+        optimizations.extend([
             "PRAGMA synchronous = NORMAL",      # Balance durability/performance  
             "PRAGMA cache_size = -64000",       # 64MB cache
             "PRAGMA temp_store = MEMORY",       # Use memory for temp tables
             "PRAGMA mmap_size = 268435456",     # 256MB memory mapping
-            
-            # Reduce lock contention
             "PRAGMA busy_timeout = 10000",      # 10 second timeout (reduced from 30s)
-            "PRAGMA wal_autocheckpoint = 1000", # Checkpoint after 1000 pages
-            
-            # Enable query planner optimizations
-            "PRAGMA optimize"
-        ]
+            "PRAGMA optimize"                   # Enable query planner optimizations
+        ])
+        
+        # WAL-specific settings (only if WAL mode is being set)
+        if include_wal_mode:
+            optimizations.append("PRAGMA wal_autocheckpoint = 1000")  # Checkpoint after 1000 pages
         
         for pragma in optimizations:
             try:
@@ -128,7 +131,10 @@ class DatabaseManager:
                 logger.warning(f"Failed to apply optimization '{pragma}': {e}")
         
         await db.commit()
-        logger.info("Database optimizations configured for concurrent access")
+        if include_wal_mode:
+            logger.info("Database optimizations configured for concurrent access with WAL mode")
+        else:
+            logger.debug("Connection optimizations applied")
     
     @asynccontextmanager
     async def get_connection(self) -> AsyncIterator[aiosqlite.Connection]:
@@ -146,8 +152,8 @@ class DatabaseManager:
             conn = await aiosqlite.connect(self.db_path)
             conn.row_factory = aiosqlite.Row
             
-            # Apply optimizations to new connections
-            await self._configure_database_optimizations(conn)
+            # Apply connection-level optimizations (WAL mode already set during initialization)
+            await self._configure_database_optimizations(conn, include_wal_mode=False)
         
         try:
             yield conn
