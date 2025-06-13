@@ -21,6 +21,8 @@ Complete reference for all 11 MCP tools provided by the Code Indexer server. Whe
 - [Advanced Features](#advanced-features)
   - [merge_branch_descriptions](#merge_branch_descriptions)
   - [update_codebase_overview](#update_codebase_overview)
+- [System Monitoring](#system-monitoring)
+  - [check_database_health](#check_database_health)
 - [Common Parameters](#common-parameters)
 - [Error Handling](#error-handling)
 
@@ -637,6 +639,135 @@ const result = await mcp.callTool("merge_branch_descriptions", {
 5. **Document changes**: Note why you chose specific resolutions
 
 ---
+
+## System Monitoring
+
+### check_database_health
+
+🏥 **Real-time database health monitoring and diagnostics**
+
+Monitor database performance, connection pool status, and system health in production environments. Essential for maintaining high-availability deployments and troubleshooting performance issues.
+
+#### Parameters
+
+```typescript
+interface CheckDatabaseHealthParams {
+  // No parameters required
+}
+```
+
+#### Response
+
+```typescript
+interface CheckDatabaseHealthResponse {
+  health_status: {
+    overall_health: 'healthy' | 'degraded' | 'unhealthy';
+    database: {
+      pool_healthy: boolean;
+      active_connections: number;
+      total_connections: number;
+      failed_connections: number;
+      avg_response_time_ms: number;
+      wal_size_mb: number;
+    };
+    performance: {
+      current_throughput: number;
+      target_throughput: number;
+      p95_latency_ms: number;
+      error_rate: number;
+      operations_last_minute: number;
+    };
+    system: {
+      memory_usage_mb: number;
+      cpu_usage_percent: number;
+      disk_usage_percent: number;
+      uptime_seconds: number;
+    };
+  };
+  recommendations: string[];
+  last_check: string;  // ISO timestamp
+}
+```
+
+#### Usage Examples
+
+##### 👨‍💻 Basic Health Check
+
+```python
+# Check current system health
+health_result = await mcp_client.call_tool("check_database_health", {})
+
+if health_result["health_status"]["overall_health"] != "healthy":
+    print("⚠️ System health issue detected!")
+    for rec in health_result["recommendations"]:
+        print(f"💡 {rec}")
+```
+
+##### 🔧 Production Monitoring
+
+```python
+# Automated health monitoring
+async def monitor_health():
+    while True:
+        health = await mcp_client.call_tool("check_database_health", {})
+        
+        # Check critical metrics
+        db_status = health["health_status"]["database"]
+        if db_status["failed_connections"] > 2:
+            send_alert("Database connection failures detected")
+        
+        perf_status = health["health_status"]["performance"]
+        if perf_status["error_rate"] > 0.05:
+            send_alert(f"High error rate: {perf_status['error_rate']:.2%}")
+        
+        await asyncio.sleep(30)  # Check every 30 seconds
+```
+
+##### 📊 Performance Dashboard
+
+```python
+# Gather metrics for dashboard
+health_data = await mcp_client.call_tool("check_database_health", {})
+
+metrics = {
+    'throughput': health_data["health_status"]["performance"]["current_throughput"],
+    'latency_p95': health_data["health_status"]["performance"]["p95_latency_ms"],
+    'error_rate': health_data["health_status"]["performance"]["error_rate"],
+    'pool_utilization': (
+        health_data["health_status"]["database"]["active_connections"] /
+        health_data["health_status"]["database"]["total_connections"]
+    )
+}
+
+# Send to monitoring system
+await send_metrics_to_grafana(metrics)
+```
+
+#### 🎯 Use Cases
+
+- **Production Monitoring**: Continuous health checks in production deployments
+- **Performance Debugging**: Identify bottlenecks and optimization opportunities  
+- **Capacity Planning**: Monitor resource utilization trends
+- **Incident Response**: Quick diagnostics during performance issues
+- **Load Testing**: Validate system behavior under stress
+
+#### 🔍 Health Status Indicators
+
+| Status | Database | Performance | System | Action Required |
+|--------|----------|-------------|--------|-----------------|
+| `healthy` | All connections working | <2% error rate | <80% resource usage | None |
+| `degraded` | Some connection issues | 2-5% error rate | 80-90% resource usage | Monitor closely |
+| `unhealthy` | Pool failures | >5% error rate | >90% resource usage | Immediate action |
+
+#### 🚨 Common Issues & Recommendations
+
+The tool provides intelligent recommendations based on current system state:
+
+- **"Increase connection pool size"** - When pool utilization >90%
+- **"Enable WAL mode for better concurrency"** - When lock contention detected
+- **"Consider scaling resources"** - When system resources >85%
+- **"Check for database corruption"** - When integrity issues found
+- **"Review recent configuration changes"** - When performance regression detected
 
 ## Common Parameters
 

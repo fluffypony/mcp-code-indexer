@@ -453,7 +453,7 @@ src/
                 ),
                 types.Tool(
                     name="check_database_health",
-                    description="Perform database health diagnostics and get connection statistics. Returns health status, connection metrics, retry statistics, and recent performance data for monitoring database locking resilience.",
+                    description="Perform health diagnostics for the MCP Code Indexer's SQLite database and connection pool. Returns database resilience metrics, connection pool status, WAL mode performance, and file description storage statistics for monitoring the code indexer's database locking improvements.",
                     inputSchema={
                         "type": "object",
                         "properties": {},

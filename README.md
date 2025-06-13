@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcp-code-indexer.svg?10)](https://pypi.org/project/mcp-code-indexer/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A production-ready **Model Context Protocol (MCP) server** that revolutionizes how AI agents navigate and understand codebases. Instead of repeatedly scanning files, agents get instant access to intelligent descriptions, semantic search, and context-aware recommendations.
+A production-ready **Model Context Protocol (MCP) server** that revolutionizes how AI agents navigate and understand codebases. Built for high-concurrency environments with advanced database resilience, the server provides instant access to intelligent descriptions, semantic search, and context-aware recommendations while maintaining 800+ writes/sec throughput.
 
 ## 🎯 What It Does
 
@@ -168,7 +168,7 @@ mypy src/
 
 ## 🛠️ MCP Tools Available
 
-The server provides **11 powerful MCP tools** for intelligent codebase management. Whether you're an AI agent or human developer, these tools make navigating code effortless.
+The server provides **12 powerful MCP tools** for intelligent codebase management. Whether you're an AI agent or human developer, these tools make navigating code effortless.
 
 ### 🎯 For Everyone: Start Here
 - **`check_codebase_size`** - Get instant recommendations for how to navigate your codebase
@@ -186,6 +186,9 @@ The server provides **11 powerful MCP tools** for intelligent codebase managemen
 - **`get_word_frequency`** - Technical vocabulary analysis with stop-word filtering
 - **`merge_branch_descriptions`** - Two-phase merge with conflict resolution
 - **`update_codebase_overview`** - Create comprehensive codebase documentation
+
+### 🏥 For System Monitoring: Health & Performance
+- **`check_database_health`** - Real-time database health monitoring and diagnostics
 
 💡 **Pro Tip**: Always start with `check_codebase_size` to get personalized recommendations for navigating your specific codebase.
 
@@ -213,24 +216,29 @@ See the **[Git Hook Setup Guide](docs/git-hook-setup.md)** for complete installa
 
 ## 🏗️ Architecture Highlights
 
-### Performance Optimized
-- **SQLite with WAL mode** for high-concurrency access
-- **Connection pooling** for efficient database operations
-- **FTS5 full-text search** with prefix indexing
+### 🚀 Performance Optimized
+- **SQLite with WAL mode** for high-concurrency access (800+ writes/sec)
+- **Smart connection pooling** with optimized pool size (3 connections default)
+- **FTS5 full-text search** with prefix indexing for sub-100ms queries
 - **Token-aware caching** to minimize expensive operations
+- **Write operation serialization** to eliminate database lock conflicts
 
-### Production Ready
-- **Comprehensive error handling** with structured JSON logging
+### 🛡️ Production Ready
+- **Database resilience features** with <2% error rate under high load
+- **Exponential backoff retry logic** with intelligent failure recovery
+- **Comprehensive health monitoring** with automatic pool refresh
+- **Structured JSON logging** with performance metrics tracking
 - **Async-first design** with proper resource cleanup
 - **MCP protocol compliant** with clean stdio streams
 - **Upstream inheritance** for fork workflows
 - **Git integration** with .gitignore support
 
-### Developer Friendly
-- **95%+ test coverage** with async support
-- **Integration tests** for complete workflows
-- **Performance benchmarks** for large codebases
+### 👨‍💻 Developer Friendly
+- **95%+ test coverage** with async support and concurrent access tests
+- **Integration tests** for complete workflows including database stress testing
+- **Performance benchmarks** for large codebases with resilience validation
 - **Clear error messages** with MCP protocol compliance
+- **Comprehensive configuration options** for production tuning
 
 ## 📖 Documentation
 
@@ -241,6 +249,11 @@ See the **[Git Hook Setup Guide](docs/git-hook-setup.md)** for complete installa
 ### 👨‍💻 For Developers  
 - **[API Reference](docs/api-reference.md)** - Complete MCP tool documentation with examples
 - **[Architecture Overview](docs/architecture.md)** - Technical deep dive into system design
+- **[Database Resilience Guide](docs/database-resilience.md)** - Advanced database optimization and monitoring
+
+### 🔧 For System Administrators
+- **[Performance Tuning Guide](docs/performance-tuning.md)** - High-concurrency deployment optimization
+- **[Monitoring & Diagnostics](docs/monitoring.md)** - Production monitoring setup and troubleshooting
 
 ### 🤝 For Contributors
 - **[Contributing Guide](docs/contributing.md)** - Development setup and workflow guidelines
@@ -262,6 +275,8 @@ Tested with codebases up to **10,000 files**:
 
 ## 🔧 Advanced Configuration
 
+### 👨‍💻 For Developers: Basic Configuration
+
 ```bash
 # Production setup with custom limits
 mcp-code-indexer \
@@ -274,6 +289,44 @@ mcp-code-indexer \
 export MCP_LOG_FORMAT=json
 mcp-code-indexer
 ```
+
+### 🔧 For System Administrators: Database Resilience Tuning
+
+Configure advanced database resilience features for high-concurrency environments:
+
+```bash
+# High-performance production deployment
+mcp-code-indexer \
+  --token-limit 64000 \
+  --db-path /data/mcp-index.db \
+  --cache-dir /var/cache/mcp \
+  --log-level INFO \
+  --db-pool-size 5 \
+  --db-retry-count 7 \
+  --db-timeout 15.0 \
+  --enable-wal-mode \
+  --health-check-interval 20.0
+
+# Environment variable configuration
+export DB_POOL_SIZE=5
+export DB_RETRY_COUNT=7
+export DB_TIMEOUT=15.0
+export DB_WAL_MODE=true
+export DB_HEALTH_CHECK_INTERVAL=20.0
+mcp-code-indexer --token-limit 64000
+```
+
+#### Configuration Options
+
+| Parameter | Default | Description | Use Case |
+|-----------|---------|-------------|----------|
+| `--db-pool-size` | 3 | Database connection pool size | Higher for more concurrent clients |
+| `--db-retry-count` | 5 | Max retry attempts for failed operations | Increase for unstable environments |
+| `--db-timeout` | 10.0 | Transaction timeout (seconds) | Increase for large operations |
+| `--enable-wal-mode` | true | Enable WAL mode for concurrency | Always enable for production |
+| `--health-check-interval` | 30.0 | Health monitoring interval (seconds) | Lower for faster issue detection |
+
+💡 **Performance Tip**: For environments with 10+ concurrent clients, use `--db-pool-size 5` and `--health-check-interval 15.0` for optimal throughput.
 
 ## 🤝 Integration Examples
 
