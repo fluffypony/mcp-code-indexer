@@ -112,10 +112,10 @@ class RetryExecutor:
                 max=self.config.max_wait_seconds,
                 jitter=self.config.jitter_max_seconds
             ),
-            retry=retry_if_exception_type(self.config.retry_on_errors),
+            retry=self._should_retry_exception,
             before_sleep=before_sleep_log(logger, logging.WARNING),
             after=after_log(logger, logging.DEBUG),
-            reraise=True
+            reraise=False
         )
     
     async def execute_with_retry(self, 
@@ -140,43 +140,13 @@ class RetryExecutor:
         
         attempt_count = 0
         operation_start = datetime.now(timezone.utc)
+        operation_had_retries = False
         
         try:
             async for attempt in self._tenacity_retrying:
                 with attempt:
                     attempt_count += 1
                     self._stats.total_attempts += 1
-                    
-                    # Check if this error is retryable for SQLite specifically
-                    if attempt_count > 1:
-                        last_error = attempt.retry_state.outcome.exception()
-                        if not self._is_sqlite_retryable_error(last_error):
-                            logger.error(
-                                f"Non-retryable SQLite error in '{operation_name}': {last_error}",
-                                extra={"structured_data": {
-                                    "non_retryable_error": {
-                                        "operation": operation_name,
-                                        "error_type": type(last_error).__name__,
-                                        "error_message": str(last_error),
-                                        "attempt": attempt_count
-                                    }
-                                }}
-                            )
-                            # Re-raise immediately for non-retryable errors
-                            raise last_error
-                        
-                        self._stats.retried_operations += 1
-                        logger.warning(
-                            f"Retrying '{operation_name}' (attempt {attempt_count})",
-                            extra={"structured_data": {
-                                "retry_attempt": {
-                                    "operation": operation_name,
-                                    "attempt": attempt_count,
-                                    "error_type": type(last_error).__name__,
-                                    "error_message": str(last_error)
-                                }
-                            }}
-                        )
                     
                     # Execute the operation
                     result = await operation()
@@ -187,6 +157,9 @@ class RetryExecutor:
                     self._stats.last_operation_time = datetime.now(timezone.utc)
                     
                     if attempt_count > 1:
+                        if not operation_had_retries:
+                            self._stats.retried_operations += 1
+                            operation_had_retries = True
                         self._stats.total_retry_time += operation_time
                         logger.info(
                             f"Operation '{operation_name}' succeeded after {attempt_count} attempts",
@@ -280,6 +253,27 @@ class RetryExecutor:
             # Connection cleanup is handled by the original context manager
             # in the connection_factory, so nothing to do here
             pass
+    
+    def _should_retry_exception(self, retry_state) -> bool:
+        """
+        Determine if an exception should trigger a retry.
+        
+        This is used by tenacity to decide whether to retry.
+        
+        Args:
+            retry_state: Tenacity retry state
+            
+        Returns:
+            True if the exception should trigger a retry
+        """
+        if retry_state.outcome is None:
+            return False
+        
+        exception = retry_state.outcome.exception()
+        if exception is None:
+            return False
+        
+        return self._is_sqlite_retryable_error(exception)
     
     def _is_sqlite_retryable_error(self, error: Exception) -> bool:
         """
