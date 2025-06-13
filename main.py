@@ -208,12 +208,24 @@ async def handle_ask(args: argparse.Namespace) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Setup command-specific logger
+        # Setup command-specific logger with file output
         logger = logging.getLogger("ask_command")
-        logger.setLevel(getattr(logging, args.log_level))
-        handler = logging.StreamHandler(sys.stderr)
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        
+        # Clear any existing handlers
+        logger.handlers = []
+        
+        # Add file handler
+        log_file = cache_dir / "ask.log"
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(file_handler)
+        
+        # Only add console handler for ERROR level and above
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(logging.ERROR)
+        console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        logger.addHandler(console_handler)
         
         db_manager = DatabaseManager(
             db_path,
@@ -242,10 +254,13 @@ async def handle_ask(args: argparse.Namespace) -> None:
         # Process the question
         result = await ask_handler.ask_question(project_info, args.ask)
         
-        # Format and output response
-        output_format = "json" if args.json else "text"
-        formatted_response = ask_handler.format_response(result, output_format)
-        print(formatted_response)
+        # Format and output response - clean output for CLI
+        if args.json:
+            import json
+            print(json.dumps(result, indent=2))
+        else:
+            # Just print the answer, no metadata
+            print(result["answer"])
         
         # Stop background tasks
         await db_manager._health_monitor.stop_monitoring()
@@ -275,12 +290,24 @@ async def handle_deepask(args: argparse.Namespace) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Setup command-specific logger
+        # Setup command-specific logger with file output
         logger = logging.getLogger("deepask_command")
-        logger.setLevel(getattr(logging, args.log_level))
-        handler = logging.StreamHandler(sys.stderr)
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        
+        # Clear any existing handlers
+        logger.handlers = []
+        
+        # Add file handler
+        log_file = cache_dir / "deepask.log"
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(file_handler)
+        
+        # Only add console handler for ERROR level and above
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(logging.ERROR)
+        console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        logger.addHandler(console_handler)
         
         db_manager = DatabaseManager(
             db_path,
@@ -309,10 +336,13 @@ async def handle_deepask(args: argparse.Namespace) -> None:
         # Process the question
         result = await deepask_handler.deepask_question(project_info, args.deepask)
         
-        # Format and output response
-        output_format = "json" if args.json else "text"
-        formatted_response = deepask_handler.format_response(result, output_format)
-        print(formatted_response)
+        # Format and output response - clean output for CLI
+        if args.json:
+            import json
+            print(json.dumps(result, indent=2))
+        else:
+            # Just print the answer, no metadata
+            print(result["answer"])
         
         # Stop background tasks
         await db_manager._health_monitor.stop_monitoring()
