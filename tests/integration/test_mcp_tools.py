@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from src.server.mcp_server import MCPCodeIndexServer
-from src.database.models import Project, FileDescription
+from src.mcp_code_indexer.server.mcp_server import MCPCodeIndexServer
+from src.mcp_code_indexer.database.models import Project, FileDescription
 from tests.conftest import MockGitRepository
 
 
@@ -154,6 +154,137 @@ class TestMCPServerIntegration:
         assert result["totalResults"] >= 1
         assert any("auth.py" in r["filePath"] for r in result["results"])
         assert result["query"] == "authentication"
+    
+    async def test_intelligent_multi_word_search(self, mcp_server):
+        """Test intelligent multi-word search with query preprocessing."""
+        # Add individual file descriptions for testing
+        project_name = "multi-word-test"
+        folder_path = "/tmp/multi-word-test"
+        branch = "main"
+        
+        # Add multiple files with descriptions containing target terms
+        files_to_add = [
+            ("grpc_server.py", "gRPC server implementation with protocol buffers"),
+            ("proto_handler.py", "Protocol buffer message handling and validation"),
+            ("auth_middleware.py", "Authentication middleware for API requests"),
+            ("config_parser.py", "Configuration file parser with YAML support"),
+            ("error_handler.py", "Error handling AND logging utilities")
+        ]
+        
+        for file_path, description in files_to_add:
+            args = {
+                "projectName": project_name,
+                "folderPath": folder_path,
+                "branch": branch,
+                "filePath": file_path,
+                "description": description
+            }
+            await mcp_server._handle_update_file_description(args)
+        
+        # Test multi-word query (should find files containing both words)
+        search_args = {
+            "projectName": project_name,
+            "folderPath": folder_path,
+            "branch": branch,
+            "query": "grpc proto",
+            "maxResults": 10
+        }
+        
+        result = await mcp_server._handle_search_descriptions(search_args)
+        
+        # Should find files containing both 'grpc' and 'proto'
+        assert result["totalResults"] >= 2
+        file_paths = [r["filePath"] for r in result["results"]]
+        assert "grpc_server.py" in file_paths
+        assert "proto_handler.py" in file_paths
+    
+    async def test_fts5_operator_literal_search(self, mcp_server):
+        """Test FTS5 operators are treated as literal search terms."""
+        project_name = "operator-test"
+        folder_path = "/tmp/operator-test"
+        branch = "main"
+        
+        files_to_add = [
+            ("error_handler.py", "Error handling AND logging utilities"),
+            ("backup_service.py", "Database backup OR restore service"),
+            ("config.py", "Configuration NOT secrets management")
+        ]
+        
+        for file_path, description in files_to_add:
+            args = {
+                "projectName": project_name,
+                "folderPath": folder_path,
+                "branch": branch,
+                "filePath": file_path,
+                "description": description
+            }
+            await mcp_server._handle_update_file_description(args)
+        
+        # Search for 'AND' as a literal term (not as FTS5 operator)
+        search_args = {
+            "projectName": project_name,
+            "folderPath": folder_path,
+            "branch": branch,
+            "query": "error AND logging",
+            "maxResults": 10
+        }
+        
+        result = await mcp_server._handle_search_descriptions(search_args)
+        
+        # Should find the file containing all three terms: 'error', 'AND', 'logging'
+        assert result["totalResults"] >= 1
+        assert any("error_handler.py" in r["filePath"] for r in result["results"])
+    
+    async def test_order_agnostic_search(self, mcp_server):
+        """Test that multi-word search is order-agnostic."""
+        project_name = "order-test"
+        folder_path = "/tmp/order-test"
+        branch = "main"
+        
+        files_to_add = [
+            ("proto_grpc.py", "Protocol buffer gRPC service definitions"),
+            ("config_yaml.py", "YAML configuration file parser")
+        ]
+        
+        for file_path, description in files_to_add:
+            args = {
+                "projectName": project_name,
+                "folderPath": folder_path,
+                "branch": branch,
+                "filePath": file_path,
+                "description": description
+            }
+            await mcp_server._handle_update_file_description(args)
+        
+        # Test both orders should find the same results
+        search_args_1 = {
+            "projectName": project_name,
+            "folderPath": folder_path,
+            "branch": branch,
+            "query": "grpc protocol",
+            "maxResults": 10
+        }
+        
+        search_args_2 = {
+            "projectName": project_name,
+            "folderPath": folder_path,
+            "branch": branch,
+            "query": "protocol grpc",
+            "maxResults": 10
+        }
+        
+        result_1 = await mcp_server._handle_search_descriptions(search_args_1)
+        result_2 = await mcp_server._handle_search_descriptions(search_args_2)
+        
+        # Both queries should find the same file
+        assert result_1["totalResults"] >= 1
+        assert result_2["totalResults"] >= 1
+        assert result_1["totalResults"] == result_2["totalResults"]
+        
+        file_paths_1 = [r["filePath"] for r in result_1["results"]]
+        file_paths_2 = [r["filePath"] for r in result_2["results"]]
+        assert "proto_grpc.py" in file_paths_1
+        assert "proto_grpc.py" in file_paths_2
     
     async def test_get_codebase_overview_small(self, mcp_server):
         """Test getting codebase overview for small codebase."""
