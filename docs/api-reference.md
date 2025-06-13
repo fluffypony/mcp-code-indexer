@@ -327,7 +327,14 @@ const result = await mcp.callTool("update_missing_descriptions", {
 
 ### search_descriptions
 
-Searches through all file descriptions in a project to find files related to specific functionality. Use this for large codebases instead of loading the entire structure. Returns files ranked by relevance.
+Searches through all file descriptions in a project to find files related to specific functionality using intelligent query preprocessing. Features include:
+
+- **Multi-word search**: `"grpc proto"` finds files containing both terms regardless of order
+- **Operator escaping**: FTS5 operators (`AND`, `OR`, `NOT`, `NEAR`) are treated as literal search terms
+- **Whole word matching**: Prevents partial matches for more precise results
+- **Case insensitive**: Works regardless of case in query or descriptions
+
+Use this for large codebases instead of loading the entire structure. Returns files ranked by relevance using BM25 scoring.
 
 #### Parameters
 
@@ -394,10 +401,50 @@ const result = await mcp.callTool("search_descriptions", {
 }
 ```
 
+#### Enhanced Search Examples
+
+**Multi-word search (order-agnostic):**
+```javascript
+// Both queries find the same results
+await mcp.callTool("search_descriptions", {
+  projectName: "api-service",
+  folderPath: "/projects/api-service", 
+  branch: "main",
+  query: "grpc proto"        // Finds files with both "grpc" AND "proto"
+});
+
+await mcp.callTool("search_descriptions", {
+  projectName: "api-service",
+  folderPath: "/projects/api-service",
+  branch: "main", 
+  query: "proto grpc"        // Same results as above
+});
+```
+
+**FTS5 operator escaping:**
+```javascript
+// Search for files containing literal "AND" as a term
+await mcp.callTool("search_descriptions", {
+  projectName: "error-handling",
+  folderPath: "/projects/error-handling",
+  branch: "main",
+  query: "logging AND error"  // Finds files with all three: "logging", "AND", "error"
+});
+```
+
+**Case insensitive matching:**
+```javascript
+// All variations return same results
+const queries = ["HTTP client", "http CLIENT", "Http Client"];
+// Each finds files containing both "http" and "client" regardless of case
+```
+
 🔍 **Search Tips**:
+- **Use multiple words**: "grpc proto" finds files with both terms
+- **Try different orders**: "api client" vs "client api" yield same results  
 - **Be descriptive**: "authentication logic" vs "auth"
-- **Combine concepts**: "database connection pooling"
-- **Try variations**: If no results, try different terms
+- **Don't worry about operators**: "AND", "OR" are treated as literal search terms
+- **Case doesn't matter**: "HTTP", "http", "Http" all work the same
 - **Use technical terms**: "middleware", "controller", "utils"
 - **Search by purpose**: "error handling", "data validation"
 
