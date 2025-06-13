@@ -66,6 +66,30 @@ def parse_arguments() -> argparse.Namespace:
         help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API"
     )
     
+    parser.add_argument(
+        "--ask",
+        type=str,
+        help="Ask a question about the project (requires PROJECT_NAME as positional argument)"
+    )
+    
+    parser.add_argument(
+        "--deepask",
+        type=str,
+        help="Ask an enhanced question with file search (requires PROJECT_NAME as positional argument)"
+    )
+    
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output response in JSON format (for --ask and --deepask commands)"
+    )
+    
+    parser.add_argument(
+        "project_name",
+        nargs="?",
+        help="Project name for --ask and --deepask commands"
+    )
+    
     # Database configuration options
     parser.add_argument(
         "--db-pool-size",
@@ -165,13 +189,151 @@ async def handle_githook(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+async def handle_ask(args: argparse.Namespace) -> None:
+    """Handle --ask command."""
+    try:
+        from src.mcp_code_indexer.database.database import DatabaseManager
+        from src.mcp_code_indexer.ask_handler import AskHandler
+        
+        # Validate arguments
+        if not args.project_name:
+            print("Error: PROJECT_NAME is required for --ask command", file=sys.stderr)
+            sys.exit(1)
+        
+        # Initialize database
+        db_path = Path(args.db_path).expanduser()
+        cache_dir = Path(args.cache_dir).expanduser()
+        
+        # Create directories if they don't exist
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Setup command-specific logger
+        logger = logging.getLogger("ask_command")
+        logger.setLevel(getattr(logging, args.log_level))
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+        
+        db_manager = DatabaseManager(
+            db_path,
+            pool_size=args.db_pool_size,
+            retry_count=args.db_retry_count,
+            timeout=args.db_timeout,
+            enable_wal_mode=args.enable_wal_mode,
+            health_check_interval=args.health_check_interval,
+            retry_min_wait=args.retry_min_wait,
+            retry_max_wait=args.retry_max_wait,
+            retry_jitter=args.retry_jitter
+        )
+        await db_manager.initialize()
+        
+        # Initialize ask handler
+        ask_handler = AskHandler(db_manager, cache_dir, logger)
+        
+        # Resolve project info (simplified - assume project_name is the actual name)
+        # In a full implementation, you might want to search by name or ID
+        project_info = {
+            "projectName": args.project_name,
+            "folderPath": str(Path.cwd()),  # Default to current directory
+            "branch": "main",  # Default branch
+            "remoteOrigin": None,
+            "upstreamOrigin": None
+        }
+        
+        # Process the question
+        result = await ask_handler.ask_question(project_info, args.ask)
+        
+        # Format and output response
+        output_format = "json" if args.json else "text"
+        formatted_response = ask_handler.format_response(result, output_format)
+        print(formatted_response)
+        
+    except Exception as e:
+        print(f"Ask command error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+async def handle_deepask(args: argparse.Namespace) -> None:
+    """Handle --deepask command."""
+    try:
+        from src.mcp_code_indexer.database.database import DatabaseManager
+        from src.mcp_code_indexer.deepask_handler import DeepAskHandler
+        
+        # Validate arguments
+        if not args.project_name:
+            print("Error: PROJECT_NAME is required for --deepask command", file=sys.stderr)
+            sys.exit(1)
+        
+        # Initialize database
+        db_path = Path(args.db_path).expanduser()
+        cache_dir = Path(args.cache_dir).expanduser()
+        
+        # Create directories if they don't exist
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Setup command-specific logger
+        logger = logging.getLogger("deepask_command")
+        logger.setLevel(getattr(logging, args.log_level))
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+        
+        db_manager = DatabaseManager(
+            db_path,
+            pool_size=args.db_pool_size,
+            retry_count=args.db_retry_count,
+            timeout=args.db_timeout,
+            enable_wal_mode=args.enable_wal_mode,
+            health_check_interval=args.health_check_interval,
+            retry_min_wait=args.retry_min_wait,
+            retry_max_wait=args.retry_max_wait,
+            retry_jitter=args.retry_jitter
+        )
+        await db_manager.initialize()
+        
+        # Initialize deepask handler
+        deepask_handler = DeepAskHandler(db_manager, cache_dir, logger)
+        
+        # Resolve project info (simplified - assume project_name is the actual name)
+        # In a full implementation, you might want to search by name or ID
+        project_info = {
+            "projectName": args.project_name,
+            "folderPath": str(Path.cwd()),  # Default to current directory
+            "branch": "main",  # Default branch
+            "remoteOrigin": None,
+            "upstreamOrigin": None
+        }
+        
+        # Process the question
+        result = await deepask_handler.deepask_question(project_info, args.deepask)
+        
+        # Format and output response
+        output_format = "json" if args.json else "text"
+        formatted_response = deepask_handler.format_response(result, output_format)
+        print(formatted_response)
+        
+    except Exception as e:
+        print(f"DeepAsk command error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
     
-    # Handle git hook command
+    # Handle command modes
     if args.githook:
         await handle_githook(args)
+        return
+    
+    if args.ask:
+        await handle_ask(args)
+        return
+    
+    if args.deepask:
+        await handle_deepask(args)
         return
     
     # Setup structured logging
