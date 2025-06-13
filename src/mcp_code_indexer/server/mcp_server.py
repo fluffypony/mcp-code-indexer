@@ -49,7 +49,12 @@ class MCPCodeIndexServer:
         self,
         token_limit: int = 32000,
         db_path: Optional[Path] = None,
-        cache_dir: Optional[Path] = None
+        cache_dir: Optional[Path] = None,
+        db_pool_size: int = 3,
+        db_retry_count: int = 5,
+        db_timeout: float = 10.0,
+        enable_wal_mode: bool = True,
+        health_check_interval: float = 30.0
     ):
         """
         Initialize the MCP Code Index Server.
@@ -58,13 +63,27 @@ class MCPCodeIndexServer:
             token_limit: Maximum tokens before recommending search over overview
             db_path: Path to SQLite database
             cache_dir: Directory for caching
+            db_pool_size: Database connection pool size
+            db_retry_count: Maximum database operation retry attempts
+            db_timeout: Database transaction timeout in seconds
+            enable_wal_mode: Enable WAL mode for better concurrent access
+            health_check_interval: Database health check interval in seconds
         """
         self.token_limit = token_limit
         self.db_path = db_path or Path.home() / ".mcp-code-index" / "tracker.db"
         self.cache_dir = cache_dir or Path.home() / ".mcp-code-index" / "cache"
         
+        # Store database configuration
+        self.db_config = {
+            "pool_size": db_pool_size,
+            "retry_count": db_retry_count,
+            "timeout": db_timeout,
+            "enable_wal_mode": enable_wal_mode,
+            "health_check_interval": health_check_interval
+        }
+        
         # Initialize components
-        self.db_manager = DatabaseManager(self.db_path)
+        self.db_manager = DatabaseManager(self.db_path, pool_size=db_pool_size)
         self.token_counter = TokenCounter(token_limit)
         self.merge_handler = MergeHandler(self.db_manager)
         
@@ -1176,6 +1195,12 @@ src/
         return {
             "health_check": health_check,
             "database_stats": database_stats,
+            "configuration": self.db_config,
+            "server_info": {
+                "token_limit": self.token_limit,
+                "db_path": str(self.db_path),
+                "cache_dir": str(self.cache_dir)
+            },
             "timestamp": datetime.utcnow().isoformat()
         }
     

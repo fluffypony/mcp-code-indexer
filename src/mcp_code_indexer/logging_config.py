@@ -255,6 +255,35 @@ def log_performance_metrics(
     )
 
 
+def log_database_metrics(
+    logger: logging.Logger,
+    operation_name: str,
+    metrics: dict,
+    health_status: Optional[dict] = None
+) -> None:
+    """
+    Log database performance and health metrics.
+    
+    Args:
+        logger: Logger instance
+        operation_name: Name of the database operation
+        metrics: Database performance metrics
+        health_status: Current health status (optional)
+    """
+    log_data = {
+        "operation": operation_name,
+        "metrics": metrics
+    }
+    
+    if health_status:
+        log_data["health_status"] = health_status
+    
+    logger.info(
+        f"Database metrics for {operation_name}",
+        extra={"structured_data": {"database_metrics": log_data}}
+    )
+
+
 def log_tool_usage(
     logger: logging.Logger,
     tool_name: str,

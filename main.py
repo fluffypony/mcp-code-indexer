@@ -9,6 +9,7 @@ options for token limits, database paths, and cache directories.
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -63,6 +64,42 @@ def parse_arguments() -> argparse.Namespace:
         "--githook",
         action="store_true",
         help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API"
+    )
+    
+    # Database configuration options
+    parser.add_argument(
+        "--db-pool-size",
+        type=int,
+        default=int(os.getenv("DB_POOL_SIZE", "3")),
+        help="Database connection pool size (default: 3, env: DB_POOL_SIZE)"
+    )
+    
+    parser.add_argument(
+        "--db-retry-count",
+        type=int,
+        default=int(os.getenv("DB_RETRY_COUNT", "5")),
+        help="Maximum database operation retry attempts (default: 5, env: DB_RETRY_COUNT)"
+    )
+    
+    parser.add_argument(
+        "--db-timeout",
+        type=float,
+        default=float(os.getenv("DB_TIMEOUT", "10.0")),
+        help="Database transaction timeout in seconds (default: 10.0, env: DB_TIMEOUT)"
+    )
+    
+    parser.add_argument(
+        "--enable-wal-mode",
+        action="store_true",
+        default=os.getenv("DB_WAL_MODE", "true").lower() == "true",
+        help="Enable WAL mode for better concurrent access (default: True, env: DB_WAL_MODE)"
+    )
+    
+    parser.add_argument(
+        "--health-check-interval",
+        type=float,
+        default=float(os.getenv("DB_HEALTH_CHECK_INTERVAL", "30.0")),
+        help="Database health check interval in seconds (default: 30.0, env: DB_HEALTH_CHECK_INTERVAL)"
     )
     
     return parser.parse_args()
@@ -143,7 +180,12 @@ async def main() -> None:
         server = MCPCodeIndexServer(
             token_limit=args.token_limit,
             db_path=db_path,
-            cache_dir=cache_dir
+            cache_dir=cache_dir,
+            db_pool_size=args.db_pool_size,
+            db_retry_count=args.db_retry_count,
+            db_timeout=args.db_timeout,
+            enable_wal_mode=args.enable_wal_mode,
+            health_check_interval=args.health_check_interval
         )
         
         await server.run()
