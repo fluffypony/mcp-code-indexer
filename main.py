@@ -236,7 +236,7 @@ async def handle_ask(args: argparse.Namespace) -> None:
         project_info = {
             "projectName": args.project_name,
             "folderPath": str(Path.cwd()),  # Default to current directory
-            "branch": "main",  # Default branch
+            "branch": "master",  # Default branch (many projects use master)
             "remoteOrigin": None,
             "upstreamOrigin": None
         }
@@ -248,6 +248,10 @@ async def handle_ask(args: argparse.Namespace) -> None:
         output_format = "json" if args.json else "text"
         formatted_response = ask_handler.format_response(result, output_format)
         print(formatted_response)
+        
+        # Stop background tasks
+        await db_manager._health_monitor.stop_monitoring()
+        await db_manager.close_pool()
         
     except Exception as e:
         print(f"Ask command error: {e}", file=sys.stderr)
@@ -301,7 +305,7 @@ async def handle_deepask(args: argparse.Namespace) -> None:
         project_info = {
             "projectName": args.project_name,
             "folderPath": str(Path.cwd()),  # Default to current directory
-            "branch": "main",  # Default branch
+            "branch": "master",  # Default branch (many projects use master)
             "remoteOrigin": None,
             "upstreamOrigin": None
         }
@@ -313,6 +317,10 @@ async def handle_deepask(args: argparse.Namespace) -> None:
         output_format = "json" if args.json else "text"
         formatted_response = deepask_handler.format_response(result, output_format)
         print(formatted_response)
+        
+        # Stop background tasks
+        await db_manager._health_monitor.stop_monitoring()
+        await db_manager.close_pool()
         
     except Exception as e:
         print(f"DeepAsk command error: {e}", file=sys.stderr)

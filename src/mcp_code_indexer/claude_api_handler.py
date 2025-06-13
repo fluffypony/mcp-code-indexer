@@ -88,7 +88,7 @@ class ClaudeAPIHandler:
             model=os.getenv("MCP_CLAUDE_MODEL", "anthropic/claude-sonnet-4"),
             max_tokens=int(os.getenv("MCP_CLAUDE_MAX_TOKENS", "24000")),
             temperature=float(os.getenv("MCP_CLAUDE_TEMPERATURE", "0.3")),
-            timeout=int(os.getenv("MCP_CLAUDE_TIMEOUT", "300")),
+            timeout=int(os.getenv("MCP_CLAUDE_TIMEOUT", "600")),  # 10 minutes
             token_limit=int(os.getenv("MCP_CLAUDE_TOKEN_LIMIT", "180000"))
         )
         
@@ -313,15 +313,15 @@ class ClaudeAPIHandler:
         """
         try:
             # Get or create project first
-            project_id = await self.db_manager.get_or_create_project(
+            project = await self.db_manager.get_or_create_project(
                 project_name=project_info["projectName"],
                 remote_origin=project_info.get("remoteOrigin"),
                 upstream_origin=project_info.get("upstreamOrigin"),
                 folder_path=project_info["folderPath"]
             )
             
-            # Get overview for the project
-            overview_result = await self.db_manager.get_project_overview(project_id, project_info["branch"])
+            # Get overview for the project using project.id
+            overview_result = await self.db_manager.get_project_overview(project.id, project_info["branch"])
             if overview_result:
                 return overview_result.overview
             else:

@@ -197,7 +197,7 @@ class DeepAskHandler(ClaudeAPIHandler):
         
         try:
             # Get or create project first
-            project_id = await self.db_manager.get_or_create_project(
+            project = await self.db_manager.get_or_create_project(
                 project_name=project_info["projectName"],
                 remote_origin=project_info.get("remoteOrigin"),
                 upstream_origin=project_info.get("upstreamOrigin"),
@@ -207,7 +207,7 @@ class DeepAskHandler(ClaudeAPIHandler):
             for search_term in search_terms:
                 try:
                     search_results = await self.db_manager.search_file_descriptions(
-                        project_id=project_id,
+                        project_id=project.id,
                         branch=project_info["branch"],
                         query=search_term,
                         max_results=max_file_results
