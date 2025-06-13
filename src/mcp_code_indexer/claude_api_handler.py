@@ -301,6 +301,31 @@ class ClaudeAPIHandler:
         else:
             return f"Unexpected error during {context}: {str(error)}"
     
+    async def find_existing_project_by_name(self, project_name: str) -> Optional[Any]:
+        """
+        Find existing project by name for CLI usage.
+        
+        Args:
+            project_name: Name of the project to find
+            
+        Returns:
+            Project object if found, None otherwise
+        """
+        try:
+            all_projects = await self.db_manager.get_all_projects()
+            normalized_name = project_name.lower()
+            
+            for project in all_projects:
+                if project.name.lower() == normalized_name:
+                    self.logger.info(f"Found existing project: {project.name} (ID: {project.id})")
+                    return project
+            
+            self.logger.warning(f"No existing project found with name: {project_name}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error finding project by name: {e}")
+            return None
+
     async def get_project_overview(self, project_info: Dict[str, str]) -> str:
         """
         Get project overview from database.
@@ -312,13 +337,12 @@ class ClaudeAPIHandler:
             Project overview text or empty string if not found
         """
         try:
-            # Get or create project first
-            project = await self.db_manager.get_or_create_project(
-                project_name=project_info["projectName"],
-                remote_origin=project_info.get("remoteOrigin"),
-                upstream_origin=project_info.get("upstreamOrigin"),
-                folder_path=project_info["folderPath"]
-            )
+            # Try to find existing project by name first
+            project = await self.find_existing_project_by_name(project_info["projectName"])
+            
+            if not project:
+                self.logger.warning(f"Project '{project_info['projectName']}' not found in database")
+                return ""
             
             # Get overview for the project using project.id
             overview_result = await self.db_manager.get_project_overview(project.id, project_info["branch"])

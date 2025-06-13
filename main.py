@@ -231,11 +231,9 @@ async def handle_ask(args: argparse.Namespace) -> None:
         # Initialize ask handler
         ask_handler = AskHandler(db_manager, cache_dir, logger)
         
-        # Resolve project info (simplified - assume project_name is the actual name)
-        # In a full implementation, you might want to search by name or ID
+        # Resolve project info - search by name only for CLI Q&A
         project_info = {
             "projectName": args.project_name,
-            "folderPath": str(Path.cwd()),  # Default to current directory
             "branch": "master",  # Default branch (many projects use master)
             "remoteOrigin": None,
             "upstreamOrigin": None
@@ -300,11 +298,9 @@ async def handle_deepask(args: argparse.Namespace) -> None:
         # Initialize deepask handler
         deepask_handler = DeepAskHandler(db_manager, cache_dir, logger)
         
-        # Resolve project info (simplified - assume project_name is the actual name)
-        # In a full implementation, you might want to search by name or ID
+        # Resolve project info - search by name only for CLI Q&A
         project_info = {
             "projectName": args.project_name,
-            "folderPath": str(Path.cwd()),  # Default to current directory
             "branch": "master",  # Default branch (many projects use master)
             "remoteOrigin": None,
             "upstreamOrigin": None

@@ -40,6 +40,31 @@ class DeepAskHandler(ClaudeAPIHandler):
         super().__init__(db_manager, cache_dir, logger)
         self.logger = logger if logger is not None else logging.getLogger(__name__)
     
+    async def find_existing_project_by_name(self, project_name: str) -> Optional[Any]:
+        """
+        Find existing project by name for CLI usage.
+        
+        Args:
+            project_name: Name of the project to find
+            
+        Returns:
+            Project object if found, None otherwise
+        """
+        try:
+            all_projects = await self.db_manager.get_all_projects()
+            normalized_name = project_name.lower()
+            
+            for project in all_projects:
+                if project.name.lower() == normalized_name:
+                    self.logger.info(f"Found existing project: {project.name} (ID: {project.id})")
+                    return project
+            
+            self.logger.warning(f"No existing project found with name: {project_name}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error finding project by name: {e}")
+            return None
+
     async def deepask_question(
         self, 
         project_info: Dict[str, str], 
@@ -196,13 +221,17 @@ class DeepAskHandler(ClaudeAPIHandler):
         total_files_found = 0
         
         try:
-            # Get or create project first
-            project = await self.db_manager.get_or_create_project(
-                project_name=project_info["projectName"],
-                remote_origin=project_info.get("remoteOrigin"),
-                upstream_origin=project_info.get("upstreamOrigin"),
-                folder_path=project_info["folderPath"]
-            )
+            # Find existing project by name only (don't create new ones for Q&A)
+            project = await self.find_existing_project_by_name(project_info["projectName"])
+            
+            if not project:
+                self.logger.warning(f"Project '{project_info['projectName']}' not found in database")
+                return {
+                    "answer": f"Project '{project_info['projectName']}' not found in database. Please check the project name.",
+                    "relevant_files": [],
+                    "total_files_found": 0,
+                    "token_usage": {"prompt_tokens": 0, "response_tokens": 0, "total_tokens": 0}
+                }
             
             for search_term in search_terms:
                 try:
