@@ -10,6 +10,7 @@ import functools
 import time
 from typing import Any, Callable, Dict, List
 
+import aiosqlite
 from mcp import types
 
 from mcp_code_indexer.error_handler import ErrorHandler, MCPError
@@ -77,6 +78,22 @@ class ToolMiddleware:
                 except Exception as e:
                     duration = time.time() - start_time
                     
+                    # Enhanced SQLite error handling
+                    if self._is_database_locking_error(e):
+                        logger.warning(
+                            f"Database locking error in tool {tool_name}: {e}",
+                            extra={
+                                "structured_data": {
+                                    "database_locking_error": {
+                                        "tool_name": tool_name,
+                                        "error_type": type(e).__name__,
+                                        "error_message": str(e),
+                                        "duration": duration
+                                    }
+                                }
+                            }
+                        )
+                    
                     # Log the error
                     self.error_handler.log_error(
                         e,
@@ -143,6 +160,30 @@ class ToolMiddleware:
             
             return wrapper
         return decorator
+    
+    def _is_database_locking_error(self, error: Exception) -> bool:
+        """
+        Check if an error is related to database locking.
+        
+        Args:
+            error: Exception to check
+            
+        Returns:
+            True if this is a database locking error
+        """
+        # Check for SQLite locking errors
+        if isinstance(error, aiosqlite.OperationalError):
+            error_message = str(error).lower()
+            locking_keywords = [
+                "database is locked",
+                "database is busy",
+                "sqlite_busy",
+                "sqlite_locked",
+                "cannot start a transaction within a transaction"
+            ]
+            return any(keyword in error_message for keyword in locking_keywords)
+        
+        return False
 
 
 class AsyncTaskManager:

@@ -19,6 +19,9 @@ from mcp_code_indexer.database.models import (
     Project, FileDescription, MergeConflict, SearchResult,
     CodebaseSizeInfo, ProjectOverview, WordFrequencyResult, WordFrequencyTerm
 )
+from mcp_code_indexer.database.retry_handler import (
+    RetryHandler, ConnectionRecoveryManager, create_retry_handler
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,10 @@ class DatabaseManager:
         self._pool_lock = None  # Will be initialized in async context
         self._write_lock = None  # Write serialization lock, initialized in async context
         
+        # Retry and recovery components
+        self._retry_handler = create_retry_handler()
+        self._recovery_manager = None  # Initialized in async context
+        
     async def initialize(self) -> None:
         """Initialize database schema and configuration."""
         import asyncio
@@ -46,6 +53,9 @@ class DatabaseManager:
         # Initialize locks
         self._pool_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
+        
+        # Initialize connection recovery manager
+        self._recovery_manager = ConnectionRecoveryManager(self)
         
         # Ensure database directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -162,6 +172,58 @@ class DatabaseManager:
         async with self._write_lock:
             async with self.get_connection() as conn:
                 yield conn
+    
+    @asynccontextmanager
+    async def get_write_connection_with_retry(self, operation_name: str = "write_operation") -> AsyncIterator[aiosqlite.Connection]:
+        """
+        Get a database connection with write serialization and automatic retry logic.
+        
+        This combines write serialization with retry handling for maximum resilience
+        against database locking issues.
+        
+        Args:
+            operation_name: Name of the operation for logging and monitoring
+        """
+        if self._write_lock is None or self._retry_handler is None:
+            raise RuntimeError("DatabaseManager not initialized - call initialize() first")
+        
+        async with self._retry_handler.with_retry(operation_name):
+            try:
+                async with self._write_lock:
+                    async with self.get_connection() as conn:
+                        yield conn
+                        
+                # Reset failure count on success
+                if self._recovery_manager:
+                    self._recovery_manager.reset_failure_count()
+                    
+            except Exception as e:
+                # Handle persistent failures
+                if self._recovery_manager:
+                    await self._recovery_manager.handle_persistent_failure(operation_name, e)
+                raise
+    
+    def get_database_stats(self) -> Dict[str, Any]:
+        """
+        Get database performance and reliability statistics.
+        
+        Returns:
+            Dictionary with retry stats, recovery stats, and connection info
+        """
+        stats = {
+            "connection_pool": {
+                "configured_size": self.pool_size,
+                "current_size": len(self._connection_pool)
+            }
+        }
+        
+        if self._retry_handler:
+            stats["retry_stats"] = self._retry_handler.get_retry_stats()
+        
+        if self._recovery_manager:
+            stats["recovery_stats"] = self._recovery_manager.get_recovery_stats()
+        
+        return stats
     
     # Project operations
     
