@@ -6,7 +6,7 @@ with specific exceptions for different types of SQLite errors and
 comprehensive error context for monitoring and debugging.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 
@@ -18,7 +18,7 @@ class DatabaseError(Exception):
         self.message = message
         self.operation_name = operation_name
         self.error_context = error_context or {}
-        self.timestamp = datetime.utcnow()
+        self.timestamp = datetime.now(timezone.utc)
         super().__init__(f"{operation_name}: {message}" if operation_name else message)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -38,7 +38,7 @@ class DatabaseLockError(DatabaseError):
     def __init__(self, message: str, retry_count: int = 0, operation_name: str = "",
                  last_attempt: Optional[datetime] = None, lock_type: str = "unknown"):
         self.retry_count = retry_count
-        self.last_attempt = last_attempt or datetime.utcnow()
+        self.last_attempt = last_attempt or datetime.now(timezone.utc)
         self.lock_type = lock_type  # 'read', 'write', 'exclusive'
         
         error_context = {

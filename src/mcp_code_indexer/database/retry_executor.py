@@ -10,7 +10,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, Callable, Dict, Optional, Type, TypeVar, Union
 
 import aiosqlite
@@ -80,7 +80,7 @@ class DatabaseLockError(Exception):
         self.message = message
         self.retry_count = retry_count
         self.operation_name = operation_name
-        self.last_attempt = last_attempt or datetime.utcnow()
+        self.last_attempt = last_attempt or datetime.now(timezone.utc)
         super().__init__(f"{operation_name}: {message} (after {retry_count} attempts)")
 
 
@@ -136,10 +136,10 @@ class RetryExecutor:
             Exception: For non-retryable errors
         """
         self._stats.total_operations += 1
-        self._operation_start_times[operation_name] = datetime.utcnow()
+        self._operation_start_times[operation_name] = datetime.now(timezone.utc)
         
         attempt_count = 0
-        operation_start = datetime.utcnow()
+        operation_start = datetime.now(timezone.utc)
         
         try:
             async for attempt in self._tenacity_retrying:
@@ -182,9 +182,9 @@ class RetryExecutor:
                     result = await operation()
                     
                     # Success - update statistics
-                    operation_time = (datetime.utcnow() - operation_start).total_seconds()
+                    operation_time = (datetime.now(timezone.utc) - operation_start).total_seconds()
                     self._stats.successful_operations += 1
-                    self._stats.last_operation_time = datetime.utcnow()
+                    self._stats.last_operation_time = datetime.now(timezone.utc)
                     
                     if attempt_count > 1:
                         self._stats.total_retry_time += operation_time
@@ -203,7 +203,7 @@ class RetryExecutor:
                     
         except RetryError as e:
             # All retry attempts exhausted
-            operation_time = (datetime.utcnow() - operation_start).total_seconds()
+            operation_time = (datetime.now(timezone.utc) - operation_start).total_seconds()
             self._stats.failed_operations += 1
             self._stats.total_retry_time += operation_time
             
@@ -224,7 +224,7 @@ class RetryExecutor:
                 f"Database operation failed after {attempt_count} attempts: {original_error}",
                 retry_count=attempt_count,
                 operation_name=operation_name,
-                last_attempt=datetime.utcnow()
+                last_attempt=datetime.now(timezone.utc)
             )
             
         except Exception as e:
