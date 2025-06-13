@@ -262,12 +262,15 @@ class ConnectionHealthMonitor:
             }
         )
     
-    def get_health_status(self) -> Dict:
+    def get_health_status(self, include_retry_stats: bool = True) -> Dict:
         """
         Get current health status and metrics.
         
+        Args:
+            include_retry_stats: Whether to include retry executor statistics
+        
         Returns:
-            Dictionary with health status, metrics, and recent history
+            Dictionary with health status, metrics, recent history, and retry stats
         """
         # Get recent health status (last 5 checks)
         recent_checks = self._health_history[-5:] if self._health_history else []
@@ -276,7 +279,7 @@ class ConnectionHealthMonitor:
             if recent_checks else 0
         )
         
-        return {
+        health_status = {
             "is_monitoring": self._is_monitoring,
             "current_status": {
                 "is_healthy": (
@@ -301,6 +304,22 @@ class ConnectionHealthMonitor:
                 "timeout_seconds": self.timeout_seconds
             }
         }
+        
+        # Include retry executor statistics if available
+        if include_retry_stats and hasattr(self.database_manager, '_retry_executor'):
+            retry_executor = self.database_manager._retry_executor
+            if retry_executor:
+                health_status["retry_statistics"] = retry_executor.get_retry_stats()
+        
+        # Include database-level statistics if available
+        if hasattr(self.database_manager, 'get_database_stats'):
+            try:
+                db_stats = self.database_manager.get_database_stats()
+                health_status["database_statistics"] = db_stats
+            except Exception as e:
+                logger.warning(f"Failed to get database statistics: {e}")
+        
+        return health_status
     
     def get_recent_history(self, count: int = 10) -> List[Dict]:
         """
@@ -322,6 +341,171 @@ class ConnectionHealthMonitor:
             }
             for check in recent_checks
         ]
+    
+    def get_comprehensive_diagnostics(self) -> Dict:
+        """
+        Get comprehensive database health diagnostics for monitoring.
+        
+        This method provides detailed diagnostics suitable for the 
+        check_database_health MCP tool.
+        
+        Returns:
+            Comprehensive health diagnostics including retry metrics, 
+            performance data, and resilience statistics
+        """
+        # Get base health status with retry stats
+        base_status = self.get_health_status(include_retry_stats=True)
+        
+        # Add detailed performance analysis
+        diagnostics = {
+            **base_status,
+            "performance_analysis": {
+                "health_check_performance": {
+                    "avg_response_time_ms": self.metrics.avg_response_time_ms,
+                    "response_time_threshold_exceeded": self.metrics.avg_response_time_ms > 100,
+                    "recent_performance_trend": self._get_performance_trend()
+                },
+                "failure_analysis": {
+                    "failure_rate_percent": (
+                        (self.metrics.failed_checks / self.metrics.total_checks * 100)
+                        if self.metrics.total_checks > 0 else 0
+                    ),
+                    "consecutive_failures": self.metrics.consecutive_failures,
+                    "approaching_failure_threshold": (
+                        self.metrics.consecutive_failures >= self.failure_threshold - 1
+                    ),
+                    "pool_refresh_frequency": self.metrics.pool_refreshes
+                }
+            },
+            "resilience_indicators": {
+                "overall_health_score": self._calculate_health_score(),
+                "retry_effectiveness": self._analyze_retry_effectiveness(),
+                "connection_stability": self._assess_connection_stability(),
+                "recommendations": self._generate_health_recommendations()
+            },
+            "recent_history": self.get_recent_history(count=5)
+        }
+        
+        return diagnostics
+    
+    def _get_performance_trend(self) -> str:
+        """Analyze recent performance trend."""
+        if len(self._health_history) < 5:
+            return "insufficient_data"
+        
+        recent_times = [
+            check.response_time_ms for check in self._health_history[-5:]
+            if check.is_healthy
+        ]
+        
+        if len(recent_times) < 2:
+            return "insufficient_healthy_checks"
+        
+        # Simple trend analysis
+        if recent_times[-1] > recent_times[0] * 1.5:
+            return "degrading"
+        elif recent_times[-1] < recent_times[0] * 0.7:
+            return "improving"
+        else:
+            return "stable"
+    
+    def _calculate_health_score(self) -> float:
+        """Calculate overall health score (0-100)."""
+        if self.metrics.total_checks == 0:
+            return 100.0
+        
+        # Base score from success rate
+        success_rate = (self.metrics.successful_checks / self.metrics.total_checks) * 100
+        
+        # Penalize consecutive failures
+        failure_penalty = min(self.metrics.consecutive_failures * 10, 50)
+        
+        # Penalize high response times
+        response_penalty = min(max(0, self.metrics.avg_response_time_ms - 50) / 10, 20)
+        
+        # Calculate final score
+        score = success_rate - failure_penalty - response_penalty
+        return max(0.0, min(100.0, score))
+    
+    def _analyze_retry_effectiveness(self) -> Dict:
+        """Analyze retry mechanism effectiveness."""
+        if not hasattr(self.database_manager, '_retry_executor'):
+            return {"status": "no_retry_executor"}
+        
+        retry_executor = self.database_manager._retry_executor
+        if not retry_executor:
+            return {"status": "retry_executor_not_initialized"}
+        
+        retry_stats = retry_executor.get_retry_stats()
+        
+        return {
+            "status": "active",
+            "effectiveness_score": retry_stats.get("success_rate_percent", 0),
+            "retry_frequency": retry_stats.get("retry_rate_percent", 0),
+            "avg_attempts_per_operation": retry_stats.get("average_attempts_per_operation", 0),
+            "is_effective": retry_stats.get("success_rate_percent", 0) > 85
+        }
+    
+    def _assess_connection_stability(self) -> Dict:
+        """Assess connection stability."""
+        stability_score = 100.0
+        
+        # Penalize pool refreshes
+        if self.metrics.pool_refreshes > 0:
+            stability_score -= min(self.metrics.pool_refreshes * 15, 60)
+        
+        # Penalize consecutive failures
+        if self.metrics.consecutive_failures > 0:
+            stability_score -= min(self.metrics.consecutive_failures * 20, 80)
+        
+        return {
+            "stability_score": max(0.0, stability_score),
+            "pool_refreshes": self.metrics.pool_refreshes,
+            "consecutive_failures": self.metrics.consecutive_failures,
+            "is_stable": stability_score > 70
+        }
+    
+    def _generate_health_recommendations(self) -> List[str]:
+        """Generate health recommendations based on current metrics."""
+        recommendations = []
+        
+        # High failure rate
+        if self.metrics.total_checks > 0:
+            failure_rate = (self.metrics.failed_checks / self.metrics.total_checks) * 100
+            if failure_rate > 20:
+                recommendations.append(
+                    f"High failure rate ({failure_rate:.1f}%) - check database configuration"
+                )
+        
+        # High response times
+        if self.metrics.avg_response_time_ms > 100:
+            recommendations.append(
+                f"High response times ({self.metrics.avg_response_time_ms:.1f}ms) - consider optimizing queries"
+            )
+        
+        # Approaching failure threshold
+        if self.metrics.consecutive_failures >= self.failure_threshold - 1:
+            recommendations.append(
+                "Approaching failure threshold - pool refresh imminent"
+            )
+        
+        # Frequent pool refreshes
+        if self.metrics.pool_refreshes > 3:
+            recommendations.append(
+                "Frequent pool refreshes detected - investigate underlying connection issues"
+            )
+        
+        # No recent successful checks
+        if (self.metrics.last_success_time and 
+            datetime.utcnow() - self.metrics.last_success_time > timedelta(minutes=5)):
+            recommendations.append(
+                "No successful health checks in last 5 minutes - database may be unavailable"
+            )
+        
+        if not recommendations:
+            recommendations.append("Database health is optimal")
+        
+        return recommendations
 
 
 class DatabaseMetricsCollector:

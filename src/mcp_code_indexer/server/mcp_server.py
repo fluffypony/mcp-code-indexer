@@ -1194,21 +1194,76 @@ src/
         }
     
     async def _handle_check_database_health(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle check_database_health tool calls."""
-        # Get comprehensive database health and statistics
-        health_check = await self.db_manager.check_health()
+        """
+        Handle check_database_health tool calls with comprehensive diagnostics.
+        
+        Returns detailed database health information including retry statistics,
+        performance analysis, and resilience indicators.
+        """
+        # Get comprehensive health diagnostics from the enhanced monitor
+        if hasattr(self.db_manager, '_health_monitor') and self.db_manager._health_monitor:
+            comprehensive_diagnostics = self.db_manager._health_monitor.get_comprehensive_diagnostics()
+        else:
+            # Fallback to basic health check if monitor not available
+            health_check = await self.db_manager.check_health()
+            comprehensive_diagnostics = {
+                "basic_health_check": health_check,
+                "note": "Enhanced health monitoring not available"
+            }
+        
+        # Get additional database-level statistics
         database_stats = self.db_manager.get_database_stats()
         
         return {
-            "health_check": health_check,
-            "database_stats": database_stats,
-            "configuration": self.db_config,
+            "comprehensive_diagnostics": comprehensive_diagnostics,
+            "database_statistics": database_stats,
+            "configuration": {
+                **self.db_config,
+                "retry_executor_config": (
+                    self.db_manager._retry_executor.config.__dict__ 
+                    if hasattr(self.db_manager, '_retry_executor') and self.db_manager._retry_executor 
+                    else {}
+                )
+            },
             "server_info": {
                 "token_limit": self.token_limit,
                 "db_path": str(self.db_path),
-                "cache_dir": str(self.cache_dir)
+                "cache_dir": str(self.cache_dir),
+                "health_monitoring_enabled": (
+                    hasattr(self.db_manager, '_health_monitor') and 
+                    self.db_manager._health_monitor is not None
+                )
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "status_summary": self._generate_health_summary(comprehensive_diagnostics)
+        }
+    
+    def _generate_health_summary(self, diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate a concise health summary from comprehensive diagnostics."""
+        if "resilience_indicators" not in diagnostics:
+            return {"status": "limited_diagnostics_available"}
+        
+        resilience = diagnostics["resilience_indicators"]
+        performance = diagnostics.get("performance_analysis", {})
+        
+        # Overall status based on health score
+        health_score = resilience.get("overall_health_score", 0)
+        if health_score >= 90:
+            status = "excellent"
+        elif health_score >= 75:
+            status = "good"  
+        elif health_score >= 50:
+            status = "fair"
+        else:
+            status = "poor"
+        
+        return {
+            "overall_status": status,
+            "health_score": health_score,
+            "retry_effectiveness": resilience.get("retry_effectiveness", {}).get("is_effective", False),
+            "connection_stability": resilience.get("connection_stability", {}).get("is_stable", False),
+            "key_recommendations": resilience.get("recommendations", [])[:3],  # Top 3 recommendations
+            "performance_trend": performance.get("health_check_performance", {}).get("recent_performance_trend", "unknown")
         }
     
     async def _run_session_with_retry(self, read_stream, write_stream, initialization_options) -> None:
