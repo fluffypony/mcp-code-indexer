@@ -431,6 +431,15 @@ src/
                         "required": ["projectName", "folderPath", "branch"],
                         "additionalProperties": False
                     }
+                ),
+                types.Tool(
+                    name="check_database_health",
+                    description="Perform database health diagnostics and get connection statistics. Returns health status, connection metrics, retry statistics, and recent performance data for monitoring database locking resilience.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False
+                    }
                 )
             ]
         
@@ -455,6 +464,7 @@ src/
                 "update_codebase_overview": self._handle_update_codebase_overview,
                 "get_word_frequency": self._handle_get_word_frequency,
                 "merge_branch_descriptions": self._handle_merge_branch_descriptions,
+                "check_database_health": self._handle_check_database_health,
             }
             
             if name not in tool_handlers:
@@ -1155,6 +1165,18 @@ src/
             "topTerms": [{"term": term.term, "frequency": term.frequency} for term in result.top_terms],
             "totalTermsAnalyzed": result.total_terms_analyzed,
             "totalUniqueTerms": result.total_unique_terms
+        }
+    
+    async def _handle_check_database_health(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle check_database_health tool calls."""
+        # Get comprehensive database health and statistics
+        health_check = await self.db_manager.check_health()
+        database_stats = self.db_manager.get_database_stats()
+        
+        return {
+            "health_check": health_check,
+            "database_stats": database_stats,
+            "timestamp": datetime.utcnow().isoformat()
         }
     
     async def _run_session_with_retry(self, read_stream, write_stream, initialization_options) -> None:

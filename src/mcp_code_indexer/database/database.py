@@ -22,6 +22,9 @@ from mcp_code_indexer.database.models import (
 from mcp_code_indexer.database.retry_handler import (
     RetryHandler, ConnectionRecoveryManager, create_retry_handler
 )
+from mcp_code_indexer.database.connection_health import (
+    ConnectionHealthMonitor, DatabaseMetricsCollector
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,10 @@ class DatabaseManager:
         self._retry_handler = create_retry_handler()
         self._recovery_manager = None  # Initialized in async context
         
+        # Health monitoring and metrics
+        self._health_monitor = None  # Initialized in async context
+        self._metrics_collector = DatabaseMetricsCollector()
+        
     async def initialize(self) -> None:
         """Initialize database schema and configuration."""
         import asyncio
@@ -56,6 +63,10 @@ class DatabaseManager:
         
         # Initialize connection recovery manager
         self._recovery_manager = ConnectionRecoveryManager(self)
+        
+        # Initialize health monitoring
+        self._health_monitor = ConnectionHealthMonitor(self)
+        await self._health_monitor.start_monitoring()
         
         # Ensure database directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,7 +162,12 @@ class DatabaseManager:
                 await conn.close()
     
     async def close_pool(self) -> None:
-        """Close all connections in the pool."""
+        """Close all connections in the pool and stop monitoring."""
+        # Stop health monitoring
+        if self._health_monitor:
+            await self._health_monitor.stop_monitoring()
+        
+        # Close connections
         if self._pool_lock:
             async with self._pool_lock:
                 for conn in self._connection_pool:
@@ -208,7 +224,7 @@ class DatabaseManager:
         Get database performance and reliability statistics.
         
         Returns:
-            Dictionary with retry stats, recovery stats, and connection info
+            Dictionary with retry stats, recovery stats, health status, and metrics
         """
         stats = {
             "connection_pool": {
@@ -223,7 +239,38 @@ class DatabaseManager:
         if self._recovery_manager:
             stats["recovery_stats"] = self._recovery_manager.get_recovery_stats()
         
+        if self._health_monitor:
+            stats["health_status"] = self._health_monitor.get_health_status()
+        
+        if self._metrics_collector:
+            stats["operation_metrics"] = self._metrics_collector.get_operation_metrics()
+            stats["locking_frequency"] = self._metrics_collector.get_locking_frequency()
+        
         return stats
+    
+    async def check_health(self) -> Dict[str, Any]:
+        """
+        Perform an immediate health check and return detailed status.
+        
+        Returns:
+            Dictionary with health check result and current metrics
+        """
+        if not self._health_monitor:
+            return {"error": "Health monitoring not initialized"}
+        
+        # Perform immediate health check
+        health_result = await self._health_monitor.check_health()
+        
+        return {
+            "health_check": {
+                "is_healthy": health_result.is_healthy,
+                "response_time_ms": health_result.response_time_ms,
+                "error_message": health_result.error_message,
+                "timestamp": health_result.timestamp.isoformat()
+            },
+            "overall_status": self._health_monitor.get_health_status(),
+            "recent_history": self._health_monitor.get_recent_history()
+        }
     
     # Project operations
     
