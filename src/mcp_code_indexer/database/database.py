@@ -24,6 +24,12 @@ from mcp_code_indexer.database.models import (
 from mcp_code_indexer.database.retry_handler import (
     RetryHandler, ConnectionRecoveryManager, create_retry_handler
 )
+from mcp_code_indexer.database.retry_executor import (
+    RetryExecutor, create_retry_executor
+)
+from mcp_code_indexer.database.exceptions import (
+    DatabaseError, DatabaseLockError, classify_sqlite_error, is_retryable_error
+)
 from mcp_code_indexer.database.connection_health import (
     ConnectionHealthMonitor, DatabaseMetricsCollector
 )
@@ -59,6 +65,11 @@ class DatabaseManager:
         
         # Retry and recovery components - configure with provided settings
         self._retry_handler = create_retry_handler(max_attempts=retry_count)
+        self._retry_executor = create_retry_executor(
+            max_attempts=retry_count,
+            min_wait_seconds=0.1,
+            max_wait_seconds=2.0
+        )
         self._recovery_manager = None  # Initialized in async context
         
         # Health monitoring and metrics
@@ -217,8 +228,8 @@ class DatabaseManager:
         """
         Get a database connection with write serialization and automatic retry logic.
         
-        This combines write serialization with retry handling for maximum resilience
-        against database locking issues.
+        This uses the new RetryExecutor to properly handle retry logic without
+        the broken yield-in-retry-loop pattern that caused generator errors.
         
         Args:
             operation_name: Name of the operation for logging and monitoring
@@ -226,43 +237,43 @@ class DatabaseManager:
         if self._write_lock is None:
             raise RuntimeError("DatabaseManager not initialized - call initialize() first")
         
-        # TEMPORARY FIX: Use simple write connection until retry context manager is fixed
-        # TODO: Implement proper retry logic without context manager issues
-        max_retries = self.retry_count
-        last_error = None
+        async def get_write_connection():
+            """Inner function to get connection - will be retried by executor."""
+            async with self._write_lock:
+                async with self.get_connection() as conn:
+                    return conn
         
-        for attempt in range(max_retries):
+        try:
+            # Use retry executor to handle connection acquisition with retries
+            connection = await self._retry_executor.execute_with_retry(
+                get_write_connection, 
+                operation_name
+            )
+            
             try:
-                async with self._write_lock:
-                    async with self.get_connection() as conn:
-                        yield conn
-                        
-                # Reset failure count on success
+                yield connection
+                
+                # Reset failure count on successful operation
                 if self._recovery_manager:
                     self._recovery_manager.reset_failure_count()
-                return
-                        
+                    
             except Exception as e:
-                last_error = e
-                error_str = str(e).lower()
-                
-                # Check if it's a retryable database lock error
-                if "database is locked" in error_str or "locked" in error_str:
-                    if attempt < max_retries - 1:  # Not the last attempt
-                        wait_time = 0.1 * (2 ** attempt)  # Exponential backoff
-                        logger.warning(f"Database locked for {operation_name}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
-                        await asyncio.sleep(wait_time)
-                        continue
-                
-                # Handle persistent failures
+                # Handle persistent failures during operation
                 if self._recovery_manager:
                     await self._recovery_manager.handle_persistent_failure(operation_name, e)
                 raise
-        
-        # If we get here, all retries failed
-        if last_error:
-            logger.error(f"Database operation {operation_name} failed after {max_retries} attempts: {last_error}")
-            raise last_error
+                
+        except DatabaseError:
+            # Re-raise our custom database errors as-is
+            raise
+        except Exception as e:
+            # Classify and wrap other exceptions
+            classified_error = classify_sqlite_error(e, operation_name)
+            logger.error(
+                f"Database operation '{operation_name}' failed: {classified_error.message}",
+                extra={"structured_data": classified_error.to_dict()}
+            )
+            raise classified_error
     
     def get_database_stats(self) -> Dict[str, Any]:
         """
@@ -275,7 +286,8 @@ class DatabaseManager:
             "connection_pool": {
                 "configured_size": self.pool_size,
                 "current_size": len(self._connection_pool)
-            }
+            },
+            "retry_executor": self._retry_executor.get_retry_stats() if self._retry_executor else {},
         }
         
         if self._retry_handler:
@@ -369,10 +381,13 @@ class DatabaseManager:
         """
         Execute a database operation within a transaction with automatic retry.
         
+        Uses the new RetryExecutor for robust retry handling with proper error
+        classification and exponential backoff.
+        
         Args:
             operation_func: Async function that takes a connection and performs the operation
             operation_name: Name of the operation for logging
-            max_retries: Maximum retry attempts
+            max_retries: Maximum retry attempts (overrides default retry executor config)
             timeout_seconds: Transaction timeout in seconds
             
         Returns:
@@ -385,9 +400,9 @@ class DatabaseManager:
             
             result = await db.execute_transaction_with_retry(my_operation, "insert_data")
         """
-        last_error = None
         
-        for attempt in range(1, max_retries + 1):
+        async def execute_transaction():
+            """Inner function to execute transaction - will be retried by executor."""
             try:
                 async with self.get_immediate_transaction(operation_name, timeout_seconds) as conn:
                     result = await operation_func(conn)
@@ -404,34 +419,15 @@ class DatabaseManager:
                 return result
                 
             except (aiosqlite.OperationalError, asyncio.TimeoutError) as e:
-                last_error = e
-                
                 # Record locking event for metrics
                 if self._metrics_collector and "locked" in str(e).lower():
                     self._metrics_collector.record_locking_event(operation_name, str(e))
                 
-                if attempt < max_retries:
-                    # Exponential backoff with jitter
-                    delay = 0.1 * (2 ** (attempt - 1))
-                    jitter = delay * 0.1 * (2 * random.random() - 1)  # ±10% jitter
-                    wait_time = max(0.05, delay + jitter)
-                    
-                    logger.warning(
-                        f"Transaction attempt {attempt} failed for {operation_name}, retrying in {wait_time:.2f}s: {e}",
-                        extra={
-                            "structured_data": {
-                                "transaction_retry": {
-                                    "operation": operation_name,
-                                    "attempt": attempt,
-                                    "delay_seconds": wait_time,
-                                    "error": str(e)
-                                }
-                            }
-                        }
-                    )
-                    await asyncio.sleep(wait_time)
-                else:
-                    # Record failed operation metrics
+                # Classify the error for better handling
+                classified_error = classify_sqlite_error(e, operation_name)
+                
+                # Record failed operation metrics for non-retryable errors
+                if not is_retryable_error(classified_error):
                     if self._metrics_collector:
                         self._metrics_collector.record_operation(
                             operation_name,
@@ -439,21 +435,34 @@ class DatabaseManager:
                             False,
                             len(self._connection_pool)
                         )
-                    
-                    logger.error(
-                        f"Transaction failed after {max_retries} attempts for {operation_name}: {e}",
-                        extra={
-                            "structured_data": {
-                                "transaction_failure": {
-                                    "operation": operation_name,
-                                    "max_retries": max_retries,
-                                    "final_error": str(e)
-                                }
-                            }
-                        }
-                    )
+                
+                raise classified_error
         
-        raise last_error
+        try:
+            # Create a temporary retry executor with custom max_retries if different from default
+            if max_retries != self._retry_executor.config.max_attempts:
+                from mcp_code_indexer.database.retry_executor import RetryConfig, RetryExecutor
+                temp_config = RetryConfig(
+                    max_attempts=max_retries,
+                    min_wait_seconds=self._retry_executor.config.min_wait_seconds,
+                    max_wait_seconds=self._retry_executor.config.max_wait_seconds,
+                    jitter_max_seconds=self._retry_executor.config.jitter_max_seconds
+                )
+                temp_executor = RetryExecutor(temp_config)
+                return await temp_executor.execute_with_retry(execute_transaction, operation_name)
+            else:
+                return await self._retry_executor.execute_with_retry(execute_transaction, operation_name)
+                
+        except DatabaseError as e:
+            # Record failed operation metrics for final failure
+            if self._metrics_collector:
+                self._metrics_collector.record_operation(
+                    operation_name,
+                    timeout_seconds * 1000,
+                    False,
+                    len(self._connection_pool)
+                )
+            raise
     
     # Project operations
     
