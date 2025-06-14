@@ -15,13 +15,11 @@ class Project(BaseModel):
     """
     Represents a tracked project/repository.
     
-    Projects are identified by a combination of git remotes and local paths,
-    allowing tracking across forks, renames, and different local copies.
+    Projects are identified by project name and folder paths,
+    allowing tracking across different local copies without git coupling.
     """
     id: str = Field(..., description="Generated unique identifier")
     name: str = Field(..., description="User-provided project name")
-    remote_origin: Optional[str] = Field(None, description="Git remote origin URL")
-    upstream_origin: Optional[str] = Field(None, description="Upstream repository URL for forks")
     aliases: List[str] = Field(default_factory=list, description="Alternative identifiers")
     created: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     last_accessed: datetime = Field(default_factory=datetime.utcnow, description="Last access timestamp")

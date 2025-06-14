@@ -509,14 +509,12 @@ class DatabaseManager:
         async with self.get_write_connection_with_retry("create_project") as db:
             await db.execute(
                 """
-                INSERT INTO projects (id, name, remote_origin, upstream_origin, aliases, created, last_accessed)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO projects (id, name, aliases, created, last_accessed)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     project.id,
                     project.name,
-                    project.remote_origin,
-                    project.upstream_origin,
                     json.dumps(project.aliases),
                     project.created,
                     project.last_accessed
@@ -538,44 +536,15 @@ class DatabaseManager:
                 return Project(
                     id=row['id'],
                     name=row['name'],
-                    remote_origin=row['remote_origin'],
-                    upstream_origin=row['upstream_origin'],
                     aliases=json.loads(row['aliases']),
                     created=datetime.fromisoformat(row['created']),
                     last_accessed=datetime.fromisoformat(row['last_accessed'])
                 )
             return None
     
-    async def find_project_by_origin(self, origin_url: str) -> Optional[Project]:
-        """Find project by remote or upstream origin URL."""
-        async with self.get_connection() as db:
-            cursor = await db.execute(
-                """
-                SELECT * FROM projects 
-                WHERE remote_origin = ? OR upstream_origin = ?
-                LIMIT 1
-                """,
-                (origin_url, origin_url)
-            )
-            row = await cursor.fetchone()
-            
-            if row:
-                return Project(
-                    id=row['id'],
-                    name=row['name'],
-                    remote_origin=row['remote_origin'],
-                    upstream_origin=row['upstream_origin'],
-                    aliases=json.loads(row['aliases']),
-                    created=datetime.fromisoformat(row['created']),
-                    last_accessed=datetime.fromisoformat(row['last_accessed'])
-                )
-            return None
-
     async def find_matching_project(
         self, 
         project_name: str, 
-        remote_origin: Optional[str] = None,
-        upstream_origin: Optional[str] = None,
         folder_path: Optional[str] = None
     ) -> Optional[Project]:
         """
@@ -583,8 +552,6 @@ class DatabaseManager:
         
         Args:
             project_name: Name of the project
-            remote_origin: Remote origin URL
-            upstream_origin: Upstream origin URL  
             folder_path: Project folder path
             
         Returns:
@@ -602,48 +569,27 @@ class DatabaseManager:
             
             # Check name match (case-insensitive)
             if project.name.lower() == normalized_name:
-                score += 1
+                score += 2  # Name match is primary identifier
                 match_factors.append("name")
-            
-            # Check remote origin match
-            if remote_origin and project.remote_origin == remote_origin:
-                score += 1
-                match_factors.append("remote_origin")
-            
-            # Check upstream origin match
-            if upstream_origin and project.upstream_origin == upstream_origin:
-                score += 1
-                match_factors.append("upstream_origin")
             
             # Check folder path in aliases
             if folder_path and folder_path in project.aliases:
                 score += 1
                 match_factors.append("folder_path")
             
-            # Enhanced matching: If name matches and no remote origins are provided,
-            # consider it a strong match to prevent duplicates
-            if (score == 1 and "name" in match_factors and 
-                not remote_origin and not project.remote_origin and
-                not upstream_origin and not project.upstream_origin):
-                logger.info(f"Name-only match with no remotes for project {project.name} - treating as strong match")
-                score = 2  # Boost score to strong match level
-                match_factors.append("no_remotes_boost")
-            
-            # If we have 2+ matches, this is a strong candidate
+            # If we have a name match, it's a strong candidate
             if score >= 2:
                 if score > best_score:
                     best_score = score
                     best_match = project
-                    logger.info(f"Strong match for project {project.name} (score: {score}, factors: {match_factors})")
+                    logger.info(f"Match for project {project.name} (score: {score}, factors: {match_factors})")
         
         return best_match
 
     async def get_or_create_project(
         self,
         project_name: str,
-        folder_path: str,
-        remote_origin: Optional[str] = None,
-        upstream_origin: Optional[str] = None
+        folder_path: str
     ) -> Project:
         """
         Get or create a project using intelligent matching.
@@ -651,15 +597,13 @@ class DatabaseManager:
         Args:
             project_name: Name of the project
             folder_path: Project folder path
-            remote_origin: Remote origin URL
-            upstream_origin: Upstream origin URL
             
         Returns:
             Existing or newly created project
         """
         # Try to find existing project
         project = await self.find_matching_project(
-            project_name, remote_origin, upstream_origin, folder_path
+            project_name, folder_path
         )
         
         if project:
@@ -680,8 +624,6 @@ class DatabaseManager:
         new_project = Project(
             id=str(uuid.uuid4()),
             name=project_name,
-            remote_origin=remote_origin,
-            upstream_origin=upstream_origin,
             aliases=[folder_path],
             created=datetime.utcnow(),
             last_accessed=datetime.utcnow()
@@ -706,13 +648,11 @@ class DatabaseManager:
             await db.execute(
                 """
                 UPDATE projects 
-                SET name = ?, remote_origin = ?, upstream_origin = ?, aliases = ?, last_accessed = ?
+                SET name = ?, aliases = ?, last_accessed = ?
                 WHERE id = ?
                 """,
                 (
                     project.name,
-                    project.remote_origin,
-                    project.upstream_origin,
                     json.dumps(project.aliases),
                     project.last_accessed,
                     project.id
@@ -725,21 +665,19 @@ class DatabaseManager:
         """Get all projects in the database."""
         async with self.get_connection() as db:
             cursor = await db.execute(
-                "SELECT id, name, remote_origin, upstream_origin, aliases, created, last_accessed FROM projects"
+                "SELECT id, name, aliases, created, last_accessed FROM projects"
             )
             rows = await cursor.fetchall()
             
             projects = []
             for row in rows:
-                aliases = json.loads(row[4]) if row[4] else []
+                aliases = json.loads(row[2]) if row[2] else []
                 project = Project(
                     id=row[0],
                     name=row[1],
-                    remote_origin=row[2],
-                    upstream_origin=row[3],
                     aliases=aliases,
-                    created=row[5],
-                    last_accessed=row[6]
+                    created=row[3],
+                    last_accessed=row[4]
                 )
                 projects.append(project)
             
@@ -1031,22 +969,7 @@ class DatabaseManager:
         
         return len(inherited_descriptions)
     
-    async def check_upstream_inheritance_needed(self, project: Project) -> bool:
-        """
-        Check if a project needs upstream inheritance.
-        
-        Args:
-            project: Project to check
-            
-        Returns:
-            True if project has upstream but no descriptions yet
-        """
-        if not project.upstream_origin:
-            return False
-        
-        # Check if project has any descriptions
-        file_count = await self.get_file_count(project.id, "main")
-        return file_count == 0
+
     
     # Project Overview operations
     
