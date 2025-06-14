@@ -75,7 +75,7 @@ class DeepAskHandler(ClaudeAPIHandler):
         Ask an enhanced question about the project using two-stage Claude API processing.
         
         Args:
-            project_info: Project information dict with projectName, folderPath, branch, etc.
+            project_info: Project information dict with projectName, folderPath, etc.
             question: User's question about the project
             max_file_results: Maximum number of file descriptions to include
             
@@ -118,8 +118,7 @@ class DeepAskHandler(ClaudeAPIHandler):
                     "stage1_tokens": stage1_result["token_usage"],
                     "stage2_tokens": stage2_result["token_usage"],
                     "total_files_found": stage2_result["total_files_found"],
-                    "files_included": len(stage2_result["relevant_files"]),
-                    "branch": project_info.get("branch", "unknown")
+                    "files_included": len(stage2_result["relevant_files"])
                 }
             }
             
@@ -237,7 +236,6 @@ class DeepAskHandler(ClaudeAPIHandler):
                 try:
                     search_results = await self.db_manager.search_file_descriptions(
                         project_id=project.id,
-                        branch=project_info["branch"],
                         query=search_term,
                         max_results=max_file_results
                     )
@@ -322,9 +320,8 @@ class DeepAskHandler(ClaudeAPIHandler):
     ) -> str:
         """Build stage 1 prompt for extracting search terms."""
         project_name = project_info["projectName"]
-        branch = project_info.get("branch", "unknown")
         
-        return f"""I need to answer a question about the codebase "{project_name}" (branch: {branch}). To provide the best answer, I need to search for relevant files and then answer the question.
+        return f"""I need to answer a question about the codebase "{project_name}". To provide the best answer, I need to search for relevant files and then answer the question.
 
 PROJECT OVERVIEW:
 {overview}
@@ -352,7 +349,6 @@ Respond with valid JSON in this format:
     ) -> str:
         """Build stage 2 prompt for enhanced answer."""
         project_name = project_info["projectName"]
-        branch = project_info.get("branch", "unknown")
         
         # Format file descriptions
         file_context = ""
@@ -365,7 +361,7 @@ Respond with valid JSON in this format:
         else:
             file_context = "\n\nNo relevant files found in the search."
         
-        return f"""Please answer the following question about the codebase "{project_name}" (branch: {branch}).
+        return f"""Please answer the following question about the codebase "{project_name}".
 
 PROJECT OVERVIEW (COMPRESSED):
 {compressed_overview}
@@ -432,7 +428,7 @@ Your answer should be comprehensive but focused on the specific question asked."
         
         output = []
         output.append(f"Question: {result['question']}")
-        output.append(f"Project: {result['project_name']} (branch: {metadata['branch']})")
+        output.append(f"Project: {result['project_name']}")
         output.append("")
         output.append("Answer:")
         output.append(answer)

@@ -51,7 +51,7 @@ class AskHandler(ClaudeAPIHandler):
         Ask a question about the project using Claude API.
         
         Args:
-            project_info: Project information dict with projectName, folderPath, branch, etc.
+            project_info: Project information dict with projectName, folderPath, etc.
             question: User's question about the project
             include_overview: Whether to include project overview in context
             
@@ -112,8 +112,7 @@ class AskHandler(ClaudeAPIHandler):
                         "response_tokens": response.usage.get("completion_tokens") if response.usage else None,
                         "total_tokens": response.usage.get("total_tokens") if response.usage else None
                     },
-                    "include_overview": include_overview,
-                    "branch": project_info.get("branch", "unknown")
+                    "include_overview": include_overview
                 }
             }
             
@@ -141,10 +140,9 @@ class AskHandler(ClaudeAPIHandler):
             Formatted prompt string
         """
         project_name = project_info["projectName"]
-        branch = project_info.get("branch", "unknown")
         
         if overview.strip():
-            prompt = f"""Please answer the following question about the codebase "{project_name}" (branch: {branch}).
+            prompt = f"""Please answer the following question about the codebase "{project_name}".
 
 PROJECT OVERVIEW:
 {overview}
@@ -154,7 +152,7 @@ QUESTION:
 
 Please provide a clear, detailed answer based on the project overview above. If the overview doesn't contain enough information to fully answer the question, please say so and suggest what additional information might be needed."""
         else:
-            prompt = f"""Please answer the following question about the codebase "{project_name}" (branch: {branch}).
+            prompt = f"""Please answer the following question about the codebase "{project_name}".
 
 Note: No project overview is available for this codebase.
 
@@ -200,7 +198,7 @@ If the project overview is insufficient to answer the question completely, expla
         
         output = []
         output.append(f"Question: {result['question']}")
-        output.append(f"Project: {result['project_name']} (branch: {metadata['branch']})")
+        output.append(f"Project: {result['project_name']}")
         output.append("")
         output.append("Answer:")
         output.append(answer)

@@ -307,17 +307,12 @@ Return ONLY a JSON object:
             except subprocess.CalledProcessError:
                 pass  # No upstream remote
             
-            # Get current branch
-            branch_result = await self._run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
-            branch = branch_result.strip() if branch_result else "main"
-            
             # Extract project name from remote URL or use directory name
             project_name = self._extract_project_name(remote_origin, project_root)
             
             return {
                 "projectName": project_name,
                 "folderPath": str(project_root),
-                "branch": branch,
                 "remoteOrigin": remote_origin,
                 "upstreamOrigin": upstream_origin
             }
@@ -515,7 +510,7 @@ Return ONLY a JSON object:
             
             if project:
                 overview = await self.db_manager.get_project_overview(
-                    project.id, project_info["branch"]
+                    project.id
                 )
                 return overview.overview if overview else ""
             
@@ -538,7 +533,7 @@ Return ONLY a JSON object:
             
             if project:
                 descriptions = await self.db_manager.get_all_file_descriptions(
-                    project.id, project_info["branch"]
+                    project.id
                 )
                 return {desc.file_path: desc.description for desc in descriptions}
             
@@ -883,7 +878,6 @@ Return ONLY a JSON object:
                 
                 file_desc = FileDescription(
                     project_id=project.id,
-                    branch=project_info["branch"],
                     file_path=file_path,
                     description=description,
                     file_hash=None,
@@ -901,7 +895,6 @@ Return ONLY a JSON object:
                 
                 overview = ProjectOverview(
                     project_id=project.id,
-                    branch=project_info["branch"],
                     overview=overview_update,
                     last_modified=datetime.utcnow(),
                     total_files=len(file_updates),

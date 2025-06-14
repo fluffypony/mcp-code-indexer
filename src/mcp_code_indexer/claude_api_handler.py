@@ -331,7 +331,7 @@ class ClaudeAPIHandler:
         Get project overview from database.
         
         Args:
-            project_info: Project information dict with projectName, folderPath, branch, etc.
+            project_info: Project information dict with projectName, folderPath, etc.
             
         Returns:
             Project overview text or empty string if not found
@@ -345,7 +345,7 @@ class ClaudeAPIHandler:
                 return ""
             
             # Get overview for the project using project.id
-            overview_result = await self.db_manager.get_project_overview(project.id, project_info["branch"])
+            overview_result = await self.db_manager.get_project_overview(project.id)
             if overview_result:
                 return overview_result.overview
             else:
