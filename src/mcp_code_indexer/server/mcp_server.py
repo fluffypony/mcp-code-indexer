@@ -248,10 +248,7 @@ class MCPCodeIndexServer:
                                 "type": "string", 
                                 "description": "Absolute path to the project folder on disk"
                             },
-                            "branch": {
-                                "type": "string",
-                                "description": "Git branch name (e.g., 'main', 'develop')"
-                            },
+
                             "remoteOrigin": {
                                 "type": "string",
                                 "description": "Git remote origin URL if available"
@@ -265,7 +262,7 @@ class MCPCodeIndexServer:
                                 "description": "Relative path to the file from project root"
                             }
                         },
-                        "required": ["projectName", "folderPath", "branch", "filePath"],
+                        "required": ["projectName", "folderPath", "filePath"],
                         "additionalProperties": False
                     }
                 ),
@@ -277,31 +274,29 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "filePath": {"type": "string", "description": "Relative path to the file from project root"},
                             "description": {"type": "string", "description": "Detailed description of the file's contents"},
                             "fileHash": {"type": "string", "description": "SHA-256 hash of the file contents (optional)"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "filePath", "description"],
+                        "required": ["projectName", "folderPath", "filePath", "description"],
                         "additionalProperties": False
                     }
                 ),
                 types.Tool(
                     name="check_codebase_size",
-                    description="Checks the total token count of a codebase's file structure and descriptions - if you're in a git repo be sure to run `git rev-parse --abbrev-ref HEAD` to see what branch you're on before running this tool. Returns whether the codebase is 'large' and recommends using search instead of the full overview.",
+                    description="Checks the total token count of a codebase's file structure and descriptions. Returns whether the codebase is 'large' and recommends using search instead of the full overview.",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "tokenLimit": {"type": "integer", "description": "Optional token limit override (defaults to server configuration)"}
                         },
-                        "required": ["projectName", "folderPath", "branch"],
+                        "required": ["projectName", "folderPath"],
                         "additionalProperties": False
                     }
                 ),
@@ -313,12 +308,11 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "limit": {"type": "integer", "description": "Maximum number of missing files to return (optional)"}
                         },
-                        "required": ["projectName", "folderPath", "branch"],
+                        "required": ["projectName", "folderPath"],
                         "additionalProperties": False
                     }
                 ),
@@ -330,13 +324,12 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch to search in"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "query": {"type": "string", "description": "Search query (e.g., 'authentication middleware', 'database models')"},
                             "maxResults": {"type": "integer", "default": 20, "description": "Maximum number of results to return"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "query"],
+                        "required": ["projectName", "folderPath", "query"],
                         "additionalProperties": False
                     }
                 ),
@@ -348,57 +341,25 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
                         },
-                        "required": ["projectName", "folderPath", "branch"],
-                        "additionalProperties": False
-                    }
-                ),
-                types.Tool(
-                    name="merge_branch_descriptions",
-                    description="Merges file descriptions from one branch to another. This is a two-stage process: first call without resolutions returns conflicts where the same file has different descriptions in each branch. Second call with resolutions completes the merge.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "projectName": {"type": "string", "description": "The name of the project"},
-                            "folderPath": {"type": "string", "description": "Absolute path to the project folder"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
-                            "sourceBranch": {"type": "string", "description": "Branch to merge from (e.g., 'feature/new-ui')"},
-                            "targetBranch": {"type": "string", "description": "Branch to merge into (e.g., 'main')"},
-                            "conflictResolutions": {
-                                "type": ["array", "null"],
-                                "description": "Array of resolved conflicts (only for second stage)",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "conflictId": {"type": "string", "description": "ID of the conflict to resolve"},
-                                        "resolvedDescription": {"type": "string", "description": "Final description to use after merge"}
-                                    },
-                                    "required": ["conflictId", "resolvedDescription"],
-                                    "additionalProperties": False
-                                }
-                            }
-                        },
-                        "required": ["projectName", "folderPath", "sourceBranch", "targetBranch"],
+                        "required": ["projectName", "folderPath"],
                         "additionalProperties": False
                     }
                 ),
                 types.Tool(
                     name="get_codebase_overview",
-                    description="Returns a condensed, interpretive overview of the entire codebase - if you're in a git repo be sure to run `git rev-parse --abbrev-ref HEAD` to see what branch you're on before running this tool. This is a single comprehensive narrative that captures the architecture, key components, relationships, and design patterns. Unlike get_all_descriptions which lists every file, this provides a holistic view suitable for understanding the codebase's structure and purpose. If no overview exists, returns empty string.",
+                    description="Returns a condensed, interpretive overview of the entire codebase. This is a single comprehensive narrative that captures the architecture, key components, relationships, and design patterns. Unlike get_all_descriptions which lists every file, this provides a holistic view suitable for understanding the codebase's structure and purpose. If no overview exists, returns empty string.",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
                         },
-                        "required": ["projectName", "folderPath", "branch"],
+                        "required": ["projectName", "folderPath"],
                         "additionalProperties": False
                     }
                 ),
@@ -444,29 +405,27 @@ src/
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "overview": {"type": "string", "description": "Comprehensive narrative overview of the codebase (10-30k tokens recommended)"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "overview"],
+                        "required": ["projectName", "folderPath", "overview"],
                         "additionalProperties": False
                     }
                 ),
                 types.Tool(
                     name="get_word_frequency",
-                    description="Analyzes all file descriptions to find the most frequently used technical terms - if you're in a git repo be sure to run `git rev-parse --abbrev-ref HEAD` to see what branch you're on before running this tool. Filters out common English stop words and symbols, returning the top 200 meaningful terms. Useful for understanding the codebase's domain vocabulary and finding all functions/files related to specific concepts.",
+                    description="Analyzes all file descriptions to find the most frequently used technical terms. Filters out common English stop words and symbols, returning the top 200 meaningful terms. Useful for understanding the codebase's domain vocabulary and finding all functions/files related to specific concepts.",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "limit": {"type": "integer", "default": 200, "description": "Number of top terms to return"}
                         },
-                        "required": ["projectName", "folderPath", "branch"],
+                        "required": ["projectName", "folderPath"],
                         "additionalProperties": False
                     }
                 ),
@@ -487,12 +446,11 @@ src/
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "branch": {"type": "string", "description": "Git branch name"},
                             "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
                             "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
                             "searchWord": {"type": "string", "description": "Single word to search for in the overview"}
                         },
-                        "required": ["projectName", "folderPath", "branch", "searchWord"],
+                        "required": ["projectName", "folderPath", "searchWord"],
                         "additionalProperties": False
                     }
                 )
@@ -518,7 +476,7 @@ src/
                 "get_codebase_overview": self._handle_get_condensed_overview,
                 "update_codebase_overview": self._handle_update_codebase_overview,
                 "get_word_frequency": self._handle_get_word_frequency,
-                "merge_branch_descriptions": self._handle_merge_branch_descriptions,
+
                 "check_database_health": self._handle_check_database_health,
                 "search_codebase_overview": self._handle_search_codebase_overview,
             }
@@ -574,7 +532,7 @@ src/
         remote_origin = arguments.get("remoteOrigin")
         upstream_origin = arguments.get("upstreamOrigin")
         folder_path = arguments["folderPath"]
-        branch = arguments.get("branch", "main")
+
         
         # Normalize project name for case-insensitive matching
         normalized_name = project_name.lower()
@@ -590,7 +548,7 @@ src/
             # Check if upstream inheritance is needed
             if upstream_origin and await self.db_manager.check_upstream_inheritance_needed(project):
                 try:
-                    inherited_count = await self.db_manager.inherit_from_upstream(project, branch)
+                    inherited_count = await self.db_manager.inherit_from_upstream(project)
                     if inherited_count > 0:
                         logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {normalized_name}")
                 except Exception as e:
@@ -613,7 +571,7 @@ src/
             # Auto-inherit from upstream if needed
             if upstream_origin:
                 try:
-                    inherited_count = await self.db_manager.inherit_from_upstream(project, branch)
+                    inherited_count = await self.db_manager.inherit_from_upstream(project)
                     if inherited_count > 0:
                         logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {normalized_name}")
                 except Exception as e:
@@ -818,11 +776,9 @@ src/
     async def _handle_get_file_description(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_file_description tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
         file_desc = await self.db_manager.get_file_description(
             project_id=project_id,
-            branch=resolved_branch,
             file_path=arguments["filePath"]
         )
         
@@ -844,19 +800,16 @@ src/
         """Handle update_file_description tool calls."""
         logger.info(f"Updating file description for: {arguments['filePath']}")
         logger.info(f"Project: {arguments.get('projectName', 'Unknown')}")
-        logger.info(f"Branch: {arguments.get('branch', 'Unknown')}")
         
         description_length = len(arguments.get("description", ""))
         logger.info(f"Description length: {description_length} characters")
         
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
-        logger.info(f"Resolved project_id: {project_id}, branch: {resolved_branch}")
+        logger.info(f"Resolved project_id: {project_id}")
         
         file_desc = FileDescription(
             project_id=project_id,
-            branch=resolved_branch,
             file_path=arguments["filePath"],
             description=arguments["description"],
             file_hash=arguments.get("fileHash"),
