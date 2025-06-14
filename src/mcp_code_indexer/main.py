@@ -294,6 +294,7 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
             "update_codebase_overview": server._handle_update_codebase_overview,
             "get_word_frequency": server._handle_get_word_frequency,
             "merge_branch_descriptions": server._handle_merge_branch_descriptions,
+            "search_codebase_overview": server._handle_search_codebase_overview,
         }
         
         if tool_name not in tool_handlers:

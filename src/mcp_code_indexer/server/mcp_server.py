@@ -478,6 +478,23 @@ src/
                         "properties": {},
                         "additionalProperties": False
                     }
+                ),
+                types.Tool(
+                    name="search_codebase_overview",
+                    description="Search for a single word in the codebase overview and return 2 sentences before and after where the word is found. Useful for quickly finding specific information in large overviews.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {"type": "string", "description": "The name of the project"},
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
+                            "branch": {"type": "string", "description": "Git branch name"},
+                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
+                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+                            "searchWord": {"type": "string", "description": "Single word to search for in the overview"}
+                        },
+                        "required": ["projectName", "folderPath", "branch", "searchWord"],
+                        "additionalProperties": False
+                    }
                 )
             ]
         
@@ -503,6 +520,7 @@ src/
                 "get_word_frequency": self._handle_get_word_frequency,
                 "merge_branch_descriptions": self._handle_merge_branch_descriptions,
                 "check_database_health": self._handle_check_database_health,
+                "search_codebase_overview": self._handle_search_codebase_overview,
             }
             
             if name not in tool_handlers:
@@ -889,18 +907,28 @@ src/
         # Use provided token limit or fall back to server default
         token_limit = arguments.get("tokenLimit", self.token_limit)
         
-        # Calculate total tokens
+        # Calculate total tokens for descriptions
         logger.info("Calculating total token count...")
-        total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
+        descriptions_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
+        
+        # Get overview tokens if available
+        overview = await self.db_manager.get_project_overview(project_id, resolved_branch)
+        overview_tokens = 0
+        if overview and overview.overview:
+            overview_tokens = self.token_counter.count_tokens(overview.overview)
+        
+        total_tokens = descriptions_tokens + overview_tokens
         is_large = total_tokens > token_limit
         recommendation = "use_search" if is_large else "use_overview"
         
-        logger.info(f"Codebase analysis complete: {total_tokens} tokens, {len(file_descriptions)} files")
+        logger.info(f"Codebase analysis complete: {total_tokens} tokens total ({descriptions_tokens} descriptions + {overview_tokens} overview), {len(file_descriptions)} files")
         logger.info(f"Size assessment: {'LARGE' if is_large else 'SMALL'} (limit: {token_limit})")
         logger.info(f"Recommendation: {recommendation}")
         
         return {
             "totalTokens": total_tokens,
+            "descriptionsTokens": descriptions_tokens,
+            "overviewTokens": overview_tokens,
             "isLarge": is_large,
             "recommendation": recommendation,
             "tokenLimit": token_limit,
@@ -1205,6 +1233,54 @@ src/
             "totalUniqueTerms": result.total_unique_terms
         }
     
+    async def _handle_search_codebase_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle search_codebase_overview tool calls."""
+        project_id = await self._get_or_create_project_id(arguments)
+        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
+        search_word = arguments["searchWord"].lower()
+        
+        # Get the overview
+        overview = await self.db_manager.get_project_overview(project_id, resolved_branch)
+        
+        if not overview or not overview.overview:
+            return {
+                "found": False,
+                "message": "No overview found for this project",
+                "searchWord": arguments["searchWord"]
+            }
+        
+        # Split overview into sentences
+        import re
+        sentences = re.split(r'[.!?]+', overview.overview)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        # Find matches
+        matches = []
+        for i, sentence in enumerate(sentences):
+            if search_word in sentence.lower():
+                # Get context: 2 sentences before and after
+                start_idx = max(0, i - 2)
+                end_idx = min(len(sentences), i + 3)
+                
+                context_sentences = sentences[start_idx:end_idx]
+                context = '. '.join(context_sentences) + '.'
+                
+                matches.append({
+                    "matchIndex": i,
+                    "matchSentence": sentence,
+                    "context": context,
+                    "contextStartIndex": start_idx,
+                    "contextEndIndex": end_idx - 1
+                })
+        
+        return {
+            "found": len(matches) > 0,
+            "searchWord": arguments["searchWord"],
+            "matches": matches,
+            "totalMatches": len(matches),
+            "totalSentences": len(sentences)
+        }
+
     async def _handle_check_database_health(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle check_database_health tool calls with comprehensive diagnostics.
