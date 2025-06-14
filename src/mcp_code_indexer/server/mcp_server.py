@@ -32,7 +32,7 @@ from mcp_code_indexer.database.models import (
 from mcp_code_indexer.error_handler import setup_error_handling, ErrorHandler
 from mcp_code_indexer.middleware.error_middleware import create_tool_middleware, AsyncTaskManager
 from mcp_code_indexer.logging_config import get_logger
-from mcp_code_indexer.merge_handler import MergeHandler
+
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,6 @@ class MCPCodeIndexServer:
             retry_jitter=retry_jitter
         )
         self.token_counter = TokenCounter(token_limit)
-        self.merge_handler = MergeHandler(self.db_manager)
         
         # Setup error handling
         self.logger = get_logger(__name__)
@@ -665,7 +664,7 @@ src/
                 return False
             
             # Get files already indexed for this project
-            indexed_files = await self.db_manager.get_all_file_descriptions(project.id, "main")
+            indexed_files = await self.db_manager.get_all_file_descriptions(project.id)
             indexed_basenames = {Path(fd.file_path).name for fd in indexed_files}
             
             if not indexed_basenames:
@@ -722,56 +721,7 @@ src/
             await self.db_manager.update_project(project)
             logger.debug(f"Updated project metadata for {project.name}")
     
-    async def _resolve_branch(self, project_id: str, requested_branch: str) -> str:
-        """
-        Resolve the actual branch to use for operations.
-        
-        For new projects or branches with no existing files, uses the requested branch.
-        For existing projects, tries to find a consistent branch to avoid data fragmentation.
-        
-        Returns the resolved branch name.
-        """
-        try:
-            # Get all branches and their file counts for this project
-            branch_counts = await self.db_manager.get_branch_file_counts(project_id)
-            
-            # If no existing data, use the requested branch
-            if not branch_counts:
-                return requested_branch
-            
-            # If requested branch has files, use it
-            if requested_branch in branch_counts and branch_counts[requested_branch] > 0:
-                return requested_branch
-            
-            # Try common branch name variations to find existing data
-            common_variations = {
-                'main': ['master', 'develop', 'development', 'dev'],
-                'master': ['main', 'develop', 'development', 'dev'], 
-                'develop': ['development', 'main', 'master', 'dev'],
-                'development': ['develop', 'main', 'master', 'dev'],
-                'dev': ['develop', 'development', 'main', 'master']
-            }
-            
-            # Try variations of the requested branch
-            if requested_branch.lower() in common_variations:
-                for variation in common_variations[requested_branch.lower()]:
-                    if variation in branch_counts and branch_counts[variation] > 0:
-                        logger.info(f"Resolved branch '{requested_branch}' to existing branch '{variation}' with {branch_counts[variation]} files")
-                        return variation
-            
-            # If no variations found, check if we should use the main data branch
-            # (to avoid fragmenting data across multiple branches)
-            best_branch = max(branch_counts.items(), key=lambda x: x[1])
-            if best_branch[1] > 10:  # Only if there's substantial existing data
-                logger.info(f"Using primary branch '{best_branch[0]}' instead of '{requested_branch}' to avoid data fragmentation")
-                return best_branch[0]
-            
-            # Fall back to requested branch for new/small projects
-            return requested_branch
-            
-        except Exception as e:
-            logger.warning(f"Error resolving branch: {e}")
-            return requested_branch
+
     
     async def _handle_get_file_description(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_file_description tool calls."""
@@ -832,28 +782,24 @@ src/
         """Handle check_codebase_size tool calls."""
         logger.info(f"Checking codebase size for: {arguments.get('projectName', 'Unknown')}")
         logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
-        logger.info(f"Branch: {arguments.get('branch', 'Unknown')}")
         
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         folder_path = Path(arguments["folderPath"])
         
-        logger.info(f"Resolved project_id: {project_id}, branch: {resolved_branch}")
+        logger.info(f"Resolved project_id: {project_id}")
         
         # Clean up descriptions for files that no longer exist
         logger.info("Cleaning up descriptions for missing files...")
         cleaned_up_files = await self.db_manager.cleanup_missing_files(
             project_id=project_id,
-            branch=resolved_branch,
             project_root=folder_path
         )
         logger.info(f"Cleaned up {len(cleaned_up_files)} missing files")
         
-        # Get file descriptions for this project/branch (after cleanup)
+        # Get file descriptions for this project (after cleanup)
         logger.info("Retrieving file descriptions...")
         file_descriptions = await self.db_manager.get_all_file_descriptions(
-            project_id=project_id,
-            branch=resolved_branch
+            project_id=project_id
         )
         logger.info(f"Found {len(file_descriptions)} file descriptions")
         
@@ -865,7 +811,7 @@ src/
         descriptions_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
         
         # Get overview tokens if available
-        overview = await self.db_manager.get_project_overview(project_id, resolved_branch)
+        overview = await self.db_manager.get_project_overview(project_id)
         overview_tokens = 0
         if overview and overview.overview:
             overview_tokens = self.token_counter.count_tokens(overview.overview)
@@ -896,16 +842,14 @@ src/
         logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
         
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         folder_path = Path(arguments["folderPath"])
         
-        logger.info(f"Resolved project_id: {project_id}, branch: {resolved_branch}")
+        logger.info(f"Resolved project_id: {project_id}")
         
         # Get existing file descriptions
         logger.info("Retrieving existing file descriptions...")
         existing_descriptions = await self.db_manager.get_all_file_descriptions(
-            project_id=project_id,
-            branch=resolved_branch
+            project_id=project_id
         )
         existing_paths = {desc.file_path for desc in existing_descriptions}
         logger.info(f"Found {len(existing_paths)} existing descriptions")
@@ -946,13 +890,11 @@ src/
     async def _handle_search_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle search_descriptions tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         max_results = arguments.get("maxResults", 20)
         
         # Perform search
         search_results = await self.db_manager.search_file_descriptions(
             project_id=project_id,
-            branch=resolved_branch,
             query=arguments["query"],
             max_results=max_results
         )
@@ -976,12 +918,10 @@ src/
     async def _handle_get_codebase_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_codebase_overview tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
         # Get all file descriptions
         file_descriptions = await self.db_manager.get_all_file_descriptions(
-            project_id=project_id,
-            branch=resolved_branch
+            project_id=project_id
         )
         
         # Calculate total tokens
@@ -993,8 +933,6 @@ src/
         
         return {
             "projectName": arguments["projectName"],
-            "branch": resolved_branch,
-            "requestedBranch": arguments["branch"] if arguments["branch"] != resolved_branch else None,
             "totalFiles": len(file_descriptions),
             "totalTokens": total_tokens,
             "isLarge": is_large,
@@ -1045,77 +983,14 @@ src/
         
         return convert_structure(root)
     
-    async def _handle_merge_branch_descriptions(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle merge_branch_descriptions tool calls."""
-        project_id = await self._get_or_create_project_id(arguments)
-        source_branch = arguments["sourceBranch"]
-        target_branch = arguments["targetBranch"]
-        conflict_resolutions = arguments.get("conflictResolutions")
-        
-        if conflict_resolutions is None:
-            # Phase 1: Detect conflicts
-            session = await self.merge_handler.start_merge_phase1(
-                project_id, source_branch, target_branch
-            )
-            
-            if session.get_conflict_count() == 0:
-                # No conflicts, can merge immediately
-                return {
-                    "phase": "completed",
-                    "conflicts": [],
-                    "message": f"No conflicts detected. Merge from {source_branch} to {target_branch} can proceed automatically.",
-                    "sourceBranch": source_branch,
-                    "targetBranch": target_branch,
-                    "conflictCount": 0
-                }
-            else:
-                # Return conflicts for resolution
-                return {
-                    "phase": "conflicts_detected",
-                    "sessionId": session.session_id,
-                    "conflicts": [conflict.to_dict() for conflict in session.conflicts],
-                    "conflictCount": session.get_conflict_count(),
-                    "sourceBranch": source_branch,
-                    "targetBranch": target_branch,
-                    "message": f"Found {session.get_conflict_count()} conflicts that need resolution."
-                }
-        else:
-            # Phase 2: Apply resolutions
-            # Find the session ID from conflict resolutions
-            if not conflict_resolutions:
-                from ..error_handler import ValidationError
-                raise ValidationError("Conflict resolutions required for phase 2")
-            
-            # For simplicity, create a new session and resolve immediately
-            # In a production system, you'd want to track session IDs properly
-            session = await self.merge_handler.start_merge_phase1(
-                project_id, source_branch, target_branch
-            )
-            
-            if session.get_conflict_count() == 0:
-                return {
-                    "phase": "completed",
-                    "message": "No conflicts to resolve",
-                    "sourceBranch": source_branch,
-                    "targetBranch": target_branch
-                }
-            
-            result = await self.merge_handler.complete_merge_phase2(
-                session.session_id, conflict_resolutions
-            )
-            
-            return {
-                "phase": "completed",
-                **result
-            }
+
     
     async def _handle_get_condensed_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_codebase_overview tool calls for condensed overviews."""
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         
         # Try to get existing overview
-        overview = await self.db_manager.get_project_overview(project_id, resolved_branch)
+        overview = await self.db_manager.get_project_overview(project_id)
         
         if overview:
             return {
@@ -1135,13 +1010,11 @@ src/
     async def _handle_update_codebase_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle update_codebase_overview tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         folder_path = Path(arguments["folderPath"])
         
         # Get current file count and total tokens for context
         file_descriptions = await self.db_manager.get_all_file_descriptions(
-            project_id=project_id,
-            branch=resolved_branch
+            project_id=project_id
         )
         
         total_files = len(file_descriptions)
@@ -1150,7 +1023,6 @@ src/
         # Create overview record
         overview = ProjectOverview(
             project_id=project_id,
-            branch=resolved_branch,
             overview=arguments["overview"],
             last_modified=datetime.utcnow(),
             total_files=total_files,
@@ -1170,13 +1042,11 @@ src/
     async def _handle_get_word_frequency(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle get_word_frequency tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         limit = arguments.get("limit", 200)
         
         # Analyze word frequency
         result = await self.db_manager.analyze_word_frequency(
             project_id=project_id,
-            branch=resolved_branch,
             limit=limit
         )
         
@@ -1189,11 +1059,10 @@ src/
     async def _handle_search_codebase_overview(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Handle search_codebase_overview tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        resolved_branch = await self._resolve_branch(project_id, arguments["branch"])
         search_word = arguments["searchWord"].lower()
         
         # Get the overview
-        overview = await self.db_manager.get_project_overview(project_id, resolved_branch)
+        overview = await self.db_manager.get_project_overview(project_id)
         
         if not overview or not overview.overview:
             return {
