@@ -42,7 +42,6 @@ class TestMCPServerIntegration:
         assert mcp_server.token_limit == 1000
         assert mcp_server.db_manager is not None
         assert mcp_server.token_counter is not None
-        assert mcp_server.merge_handler is not None
         assert mcp_server.error_handler is not None
     
     async def test_get_file_description_not_found(self, mcp_server):
@@ -50,7 +49,6 @@ class TestMCPServerIntegration:
         arguments = {
             "projectName": "test-project",
             "folderPath": "/tmp/test",
-            "branch": "main",
             "filePath": "nonexistent.py"
         }
         
@@ -65,7 +63,7 @@ class TestMCPServerIntegration:
         update_args = {
             "projectName": "test-project",
             "folderPath": "/tmp/test",
-            "branch": "main",
+            
             "filePath": "test.py",
             "description": "Test file for integration testing",
             "fileHash": "abc123"
@@ -80,7 +78,7 @@ class TestMCPServerIntegration:
         get_args = {
             "projectName": "test-project",
             "folderPath": "/tmp/test",
-            "branch": "main",
+            
             "filePath": "test.py"
         }
         
@@ -97,7 +95,7 @@ class TestMCPServerIntegration:
             {
                 "projectName": "size-test",
                 "folderPath": "/tmp/size-test",
-                "branch": "main",
+                
                 "descriptions": [
                     {"filePath": "file1.py", "description": "First file"},
                     {"filePath": "file2.py", "description": "Second file"},
@@ -111,8 +109,7 @@ class TestMCPServerIntegration:
         # Check size
         size_args = {
             "projectName": "size-test",
-            "folderPath": "/tmp/size-test",
-            "branch": "main"
+            "folderPath": "/tmp/size-test"
         }
         
         result = await mcp_server._handle_check_codebase_size(size_args)
@@ -129,7 +126,7 @@ class TestMCPServerIntegration:
         descriptions_args = {
             "projectName": "search-test",
             "folderPath": "/tmp/search-test",
-            "branch": "main",
+            
             "descriptions": [
                 {"filePath": "auth.py", "description": "Authentication and authorization module"},
                 {"filePath": "database.py", "description": "Database connection and models"},
@@ -144,7 +141,7 @@ class TestMCPServerIntegration:
         search_args = {
             "projectName": "search-test",
             "folderPath": "/tmp/search-test",
-            "branch": "main",
+            
             "query": "authentication",
             "maxResults": 10
         }
@@ -292,7 +289,7 @@ class TestMCPServerIntegration:
         descriptions_args = {
             "projectName": "overview-test",
             "folderPath": "/tmp/overview-test",
-            "branch": "main",
+            
             "descriptions": [
                 {"filePath": "src/main.py", "description": "Main application entry point"},
                 {"filePath": "src/utils.py", "description": "Utility functions"},
@@ -331,7 +328,7 @@ class TestMCPServerIntegration:
         source_args = {
             "projectName": "merge-test",
             "folderPath": "/tmp/merge-test",
-            "branch": "feature",
+            
             "descriptions": [
                 {"filePath": "new_feature.py", "description": "New feature implementation"}
             ]
@@ -359,7 +356,7 @@ class TestMCPServerIntegration:
         main_args = {
             "projectName": "conflict-test",
             "folderPath": "/tmp/conflict-test",
-            "branch": "main",
+            
             "descriptions": [
                 {"filePath": "shared.py", "description": "Main version of shared file"}
             ]
@@ -368,7 +365,7 @@ class TestMCPServerIntegration:
         feature_args = {
             "projectName": "conflict-test",
             "folderPath": "/tmp/conflict-test",
-            "branch": "feature",
+            
             "descriptions": [
                 {"filePath": "shared.py", "description": "Feature version of shared file"}
             ]
@@ -423,7 +420,7 @@ class TestMCPServerIntegration:
         upstream_args = {
             "projectName": "upstream-project",
             "folderPath": "/tmp/upstream",
-            "branch": "main",
+            
             "remoteOrigin": "https://github.com/upstream/repo.git",
             "descriptions": [
                 {"filePath": "core.py", "description": "Core functionality from upstream"},
@@ -437,7 +434,7 @@ class TestMCPServerIntegration:
         fork_args = {
             "projectName": "fork-project",
             "folderPath": "/tmp/fork",
-            "branch": "main",
+            
             "remoteOrigin": "https://github.com/user/repo.git",
             "upstreamOrigin": "https://github.com/upstream/repo.git",
             "filePath": "README.md",
@@ -451,7 +448,7 @@ class TestMCPServerIntegration:
         get_args = {
             "projectName": "fork-project",
             "folderPath": "/tmp/fork",
-            "branch": "main",
+            
             "filePath": "core.py"
         }
         
@@ -540,7 +537,7 @@ class TestMCPPerformance:
         large_args = {
             "projectName": "large-project",
             "folderPath": "/tmp/large",
-            "branch": "main",
+            
             "descriptions": descriptions
         }
         
@@ -557,7 +554,7 @@ class TestMCPPerformance:
         search_args = {
             "projectName": "large-project",
             "folderPath": "/tmp/large",
-            "branch": "main",
+            
             "query": "feature",
             "maxResults": 20
         }
@@ -659,7 +656,7 @@ class TestMCPWorkflow:
         feature_files = {
             "projectName": "workflow-test",
             "folderPath": "/tmp/workflow",
-            "branch": "feature/enhancement",
+            
             "descriptions": [
                 {"filePath": "main.py", "description": "Enhanced main application with new features"},
                 {"filePath": "new_feature.py", "description": "New feature implementation"}
