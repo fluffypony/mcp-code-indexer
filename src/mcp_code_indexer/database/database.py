@@ -31,6 +31,7 @@ from mcp_code_indexer.database.connection_health import (
     ConnectionHealthMonitor, DatabaseMetricsCollector
 )
 from mcp_code_indexer.query_preprocessor import preprocess_search_query
+from mcp_code_indexer.cleanup_manager import CleanupManager
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,9 @@ class DatabaseManager:
         self._health_monitor = None  # Initialized in async context
         self._metrics_collector = DatabaseMetricsCollector()
         
+        # Cleanup manager for retention policies
+        self._cleanup_manager = None  # Initialized in async context
+        
     async def initialize(self) -> None:
         """Initialize database schema and configuration."""
         import asyncio
@@ -96,6 +100,9 @@ class DatabaseManager:
             timeout_seconds=self.timeout
         )
         await self._health_monitor.start_monitoring()
+        
+        # Initialize cleanup manager
+        self._cleanup_manager = CleanupManager(self, retention_months=6)
         
         # Ensure database directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -703,20 +710,7 @@ class DatabaseManager:
             
             return projects
     
-    async def get_branch_file_counts(self, project_id: str) -> Dict[str, int]:
-        """Get file counts per branch for a project."""
-        async with self.get_connection() as db:
-            cursor = await db.execute(
-                """
-                SELECT branch, COUNT(*) as file_count 
-                FROM file_descriptions 
-                WHERE project_id = ? 
-                GROUP BY branch
-                """,
-                (project_id,)
-            )
-            rows = await cursor.fetchall()
-            return {row[0]: row[1] for row in rows}
+
     
     # File description operations
     
@@ -726,18 +720,18 @@ class DatabaseManager:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO file_descriptions 
-                (project_id, branch, file_path, description, file_hash, last_modified, version, source_project_id)
+                (project_id, file_path, description, file_hash, last_modified, version, source_project_id, to_be_cleaned)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     file_desc.project_id,
-                    file_desc.branch,
                     file_desc.file_path,
                     file_desc.description,
                     file_desc.file_hash,
                     file_desc.last_modified,
                     file_desc.version,
-                    file_desc.source_project_id
+                    file_desc.source_project_id,
+                    file_desc.to_be_cleaned
                 )
             )
             await db.commit()
@@ -746,60 +740,60 @@ class DatabaseManager:
     async def get_file_description(
         self, 
         project_id: str, 
-        branch: str, 
         file_path: str
     ) -> Optional[FileDescription]:
-        """Get file description by project, branch, and path."""
+        """Get file description by project and path."""
         async with self.get_connection() as db:
             cursor = await db.execute(
                 """
                 SELECT * FROM file_descriptions 
-                WHERE project_id = ? AND branch = ? AND file_path = ?
+                WHERE project_id = ? AND file_path = ? AND to_be_cleaned IS NULL
                 """,
-                (project_id, branch, file_path)
+                (project_id, file_path)
             )
             row = await cursor.fetchone()
             
             if row:
                 return FileDescription(
+                    id=row['id'],
                     project_id=row['project_id'],
-                    branch=row['branch'],
                     file_path=row['file_path'],
                     description=row['description'],
                     file_hash=row['file_hash'],
                     last_modified=datetime.fromisoformat(row['last_modified']),
                     version=row['version'],
-                    source_project_id=row['source_project_id']
+                    source_project_id=row['source_project_id'],
+                    to_be_cleaned=row['to_be_cleaned']
                 )
             return None
     
     async def get_all_file_descriptions(
         self, 
-        project_id: str, 
-        branch: str
+        project_id: str
     ) -> List[FileDescription]:
-        """Get all file descriptions for a project and branch."""
+        """Get all file descriptions for a project."""
         async with self.get_connection() as db:
             cursor = await db.execute(
                 """
                 SELECT * FROM file_descriptions 
-                WHERE project_id = ? AND branch = ?
+                WHERE project_id = ? AND to_be_cleaned IS NULL
                 ORDER BY file_path
                 """,
-                (project_id, branch)
+                (project_id,)
             )
             rows = await cursor.fetchall()
             
             return [
                 FileDescription(
+                    id=row['id'],
                     project_id=row['project_id'],
-                    branch=row['branch'],
                     file_path=row['file_path'],
                     description=row['description'],
                     file_hash=row['file_hash'],
                     last_modified=datetime.fromisoformat(row['last_modified']),
                     version=row['version'],
-                    source_project_id=row['source_project_id']
+                    source_project_id=row['source_project_id'],
+                    to_be_cleaned=row['to_be_cleaned']
                 )
                 for row in rows
             ]
@@ -813,13 +807,13 @@ class DatabaseManager:
             data = [
                 (
                     fd.project_id,
-                    fd.branch,
                     fd.file_path,
                     fd.description,
                     fd.file_hash,
                     fd.last_modified,
                     fd.version,
-                    fd.source_project_id
+                    fd.source_project_id,
+                    fd.to_be_cleaned
                 )
                 for fd in file_descriptions
             ]
@@ -827,7 +821,7 @@ class DatabaseManager:
             await conn.executemany(
                 """
                 INSERT OR REPLACE INTO file_descriptions 
-                (project_id, branch, file_path, description, file_hash, last_modified, version, source_project_id)
+                (project_id, file_path, description, file_hash, last_modified, version, source_project_id, to_be_cleaned)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 data
@@ -845,7 +839,6 @@ class DatabaseManager:
     async def search_file_descriptions(
         self,
         project_id: str,
-        branch: str,
         query: str,
         max_results: int = 20
     ) -> List[SearchResult]:
@@ -864,26 +857,24 @@ class DatabaseManager:
                 """
                 SELECT 
                     fd.project_id,
-                    fd.branch,
                     fd.file_path,
                     fd.description,
                     bm25(file_descriptions_fts) as rank
                 FROM file_descriptions_fts
-                JOIN file_descriptions fd ON fd.rowid = file_descriptions_fts.rowid
+                JOIN file_descriptions fd ON fd.id = file_descriptions_fts.rowid
                 WHERE file_descriptions_fts MATCH ? 
                   AND fd.project_id = ? 
-                  AND fd.branch = ?
+                  AND fd.to_be_cleaned IS NULL
                 ORDER BY bm25(file_descriptions_fts)
                 LIMIT ?
                 """,
-                (preprocessed_query, project_id, branch, max_results)
+                (preprocessed_query, project_id, max_results)
             )
             rows = await cursor.fetchall()
             
             return [
                 SearchResult(
                     project_id=row['project_id'],
-                    branch=row['branch'],
                     file_path=row['file_path'],
                     description=row['description'],
                     relevance_score=row['rank']
@@ -936,12 +927,12 @@ class DatabaseManager:
     
     # Utility operations
     
-    async def get_file_count(self, project_id: str, branch: str) -> int:
-        """Get count of files in a project branch."""
+    async def get_file_count(self, project_id: str) -> int:
+        """Get count of files in a project."""
         async with self.get_connection() as db:
             cursor = await db.execute(
-                "SELECT COUNT(*) as count FROM file_descriptions WHERE project_id = ? AND branch = ?",
-                (project_id, branch)
+                "SELECT COUNT(*) as count FROM file_descriptions WHERE project_id = ? AND to_be_cleaned IS NULL",
+                (project_id,)
             )
             row = await cursor.fetchone()
             return row['count'] if row else 0
@@ -1030,12 +1021,11 @@ class DatabaseManager:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO project_overviews 
-                (project_id, branch, overview, last_modified, total_files, total_tokens)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (project_id, overview, last_modified, total_files, total_tokens)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     overview.project_id,
-                    overview.branch,
                     overview.overview,
                     overview.last_modified,
                     overview.total_files,
@@ -1043,21 +1033,20 @@ class DatabaseManager:
                 )
             )
             await db.commit()
-            logger.debug(f"Created/updated overview for project {overview.project_id}, branch {overview.branch}")
+            logger.debug(f"Created/updated overview for project {overview.project_id}")
     
-    async def get_project_overview(self, project_id: str, branch: str) -> Optional[ProjectOverview]:
-        """Get project overview by ID and branch."""
+    async def get_project_overview(self, project_id: str) -> Optional[ProjectOverview]:
+        """Get project overview by ID."""
         async with self.get_connection() as db:
             cursor = await db.execute(
-                "SELECT * FROM project_overviews WHERE project_id = ? AND branch = ?",
-                (project_id, branch)
+                "SELECT * FROM project_overviews WHERE project_id = ?",
+                (project_id,)
             )
             row = await cursor.fetchone()
             
             if row:
                 return ProjectOverview(
                     project_id=row['project_id'],
-                    branch=row['branch'],
                     overview=row['overview'],
                     last_modified=datetime.fromisoformat(row['last_modified']),
                     total_files=row['total_files'],
@@ -1065,25 +1054,24 @@ class DatabaseManager:
                 )
             return None
     
-    async def cleanup_missing_files(self, project_id: str, branch: str, project_root: Path) -> List[str]:
+    async def cleanup_missing_files(self, project_id: str, project_root: Path) -> List[str]:
         """
-        Remove descriptions for files that no longer exist on disk.
+        Mark descriptions for cleanup for files that no longer exist on disk.
         
         Args:
             project_id: Project identifier
-            branch: Branch name
             project_root: Path to project root directory
             
         Returns:
-            List of file paths that were cleaned up
+            List of file paths that were marked for cleanup
         """
         removed_files = []
         
         async def cleanup_operation(conn: aiosqlite.Connection) -> List[str]:
-            # Get all file descriptions for this project/branch
+            # Get all active file descriptions for this project
             cursor = await conn.execute(
-                "SELECT file_path FROM file_descriptions WHERE project_id = ? AND branch = ?",
-                (project_id, branch)
+                "SELECT file_path FROM file_descriptions WHERE project_id = ? AND to_be_cleaned IS NULL",
+                (project_id,)
             )
             
             rows = await cursor.fetchall()
@@ -1097,31 +1085,32 @@ class DatabaseManager:
                 if not full_path.exists():
                     to_remove.append(file_path)
             
-            # Remove descriptions for missing files
+            # Mark descriptions for cleanup instead of deleting
             if to_remove:
+                import time
+                cleanup_timestamp = int(time.time())
                 await conn.executemany(
-                    "DELETE FROM file_descriptions WHERE project_id = ? AND branch = ? AND file_path = ?",
-                    [(project_id, branch, path) for path in to_remove]
+                    "UPDATE file_descriptions SET to_be_cleaned = ? WHERE project_id = ? AND file_path = ?",
+                    [(cleanup_timestamp, project_id, path) for path in to_remove]
                 )
-                logger.info(f"Cleaned up {len(to_remove)} missing files from {project_id}/{branch}")
+                logger.info(f"Marked {len(to_remove)} missing files for cleanup from {project_id}")
             
             return to_remove
         
         removed_files = await self.execute_transaction_with_retry(
             cleanup_operation,
-            f"cleanup_missing_files_{project_id}_{branch}",
+            f"cleanup_missing_files_{project_id}",
             timeout_seconds=60.0  # Longer timeout for file system operations
         )
         
         return removed_files
     
-    async def analyze_word_frequency(self, project_id: str, branch: str, limit: int = 200) -> WordFrequencyResult:
+    async def analyze_word_frequency(self, project_id: str, limit: int = 200) -> WordFrequencyResult:
         """
-        Analyze word frequency across all file descriptions for a project/branch.
+        Analyze word frequency across all file descriptions for a project.
         
         Args:
             project_id: Project identifier
-            branch: Branch name
             limit: Maximum number of top terms to return
             
         Returns:
@@ -1152,10 +1141,10 @@ class DatabaseManager:
         stop_words.update(programming_keywords)
         
         async with self.get_connection() as db:
-            # Get all descriptions for this project/branch
+            # Get all descriptions for this project
             cursor = await db.execute(
-                "SELECT description FROM file_descriptions WHERE project_id = ? AND branch = ?",
-                (project_id, branch)
+                "SELECT description FROM file_descriptions WHERE project_id = ? AND to_be_cleaned IS NULL",
+                (project_id,)
             )
             
             rows = await cursor.fetchall()
@@ -1218,13 +1207,12 @@ class DatabaseManager:
             await db.commit()
             return removed_count
     
-    async def get_project_map_data(self, project_identifier: str, branch: str = None) -> dict:
+    async def get_project_map_data(self, project_identifier: str) -> dict:
         """
         Get all data needed to generate a project map.
         
         Args:
             project_identifier: Project name or ID
-            branch: Branch name (optional, will use first available if not specified)
             
         Returns:
             Dictionary containing project info, overview, and file descriptions
@@ -1256,39 +1244,43 @@ class DatabaseManager:
             
             project = Project(**project_dict)
             
-            # If no branch specified, find the first available branch
-            if not branch:
-                cursor = await db.execute(
-                    "SELECT DISTINCT branch FROM file_descriptions WHERE project_id = ? LIMIT 1",
-                    (project.id,)
-                )
-                branch_row = await cursor.fetchone()
-                if branch_row:
-                    branch = branch_row['branch']
-                else:
-                    branch = 'main'  # Default fallback
-            
             # Get project overview
             cursor = await db.execute(
-                "SELECT * FROM project_overviews WHERE project_id = ? AND branch = ?",
-                (project.id, branch)
+                "SELECT * FROM project_overviews WHERE project_id = ?",
+                (project.id,)
             )
             overview_row = await cursor.fetchone()
             project_overview = ProjectOverview(**overview_row) if overview_row else None
             
-            # Get all file descriptions for this project/branch
+            # Get all file descriptions for this project
             cursor = await db.execute(
                 """SELECT * FROM file_descriptions 
-                   WHERE project_id = ? AND branch = ? 
+                   WHERE project_id = ? AND to_be_cleaned IS NULL
                    ORDER BY file_path""",
-                (project.id, branch)
+                (project.id,)
             )
             file_rows = await cursor.fetchall()
             file_descriptions = [FileDescription(**row) for row in file_rows]
             
             return {
                 'project': project,
-                'branch': branch,
                 'overview': project_overview,
                 'files': file_descriptions
             }
+    
+    # Cleanup operations
+    
+    @property
+    def cleanup_manager(self) -> CleanupManager:
+        """Get the cleanup manager instance."""
+        if self._cleanup_manager is None:
+            self._cleanup_manager = CleanupManager(self, retention_months=6)
+        return self._cleanup_manager
+    
+    async def mark_file_for_cleanup(self, project_id: str, file_path: str) -> bool:
+        """Mark a file for cleanup. Convenience method."""
+        return await self.cleanup_manager.mark_file_for_cleanup(project_id, file_path)
+    
+    async def perform_cleanup(self, project_id: Optional[str] = None) -> int:
+        """Perform cleanup of old records. Convenience method."""
+        return await self.cleanup_manager.perform_cleanup(project_id)

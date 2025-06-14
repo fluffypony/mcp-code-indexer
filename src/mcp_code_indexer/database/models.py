@@ -29,19 +29,20 @@ class Project(BaseModel):
 
 class FileDescription(BaseModel):
     """
-    Represents a file description within a project branch.
+    Represents a file description within a project.
     
     Stores detailed summaries of file contents including purpose, components,
     and relationships to enable efficient codebase navigation.
     """
+    id: Optional[int] = Field(None, description="Database ID")
     project_id: str = Field(..., description="Reference to project")
-    branch: str = Field(..., description="Git branch name")
     file_path: str = Field(..., description="Relative path from project root")
     description: str = Field(..., description="Detailed content description")
     file_hash: Optional[str] = Field(None, description="SHA-256 of file contents")
     last_modified: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     version: int = Field(default=1, description="For optimistic concurrency control")
     source_project_id: Optional[str] = Field(None, description="Source project if copied from upstream")
+    to_be_cleaned: Optional[int] = Field(None, description="UNIX timestamp for cleanup, NULL = active")
 
 
 class MergeConflict(BaseModel):
@@ -71,7 +72,6 @@ class ProjectOverview(BaseModel):
     individual file descriptions.
     """
     project_id: str = Field(..., description="Reference to project")
-    branch: str = Field(..., description="Git branch name")
     overview: str = Field(..., description="Comprehensive codebase narrative")
     last_modified: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     total_files: int = Field(..., description="Number of files in codebase")
@@ -86,7 +86,6 @@ class CodebaseOverview(BaseModel):
     to help determine whether to use full overview or search-based approach.
     """
     project_name: str = Field(..., description="Project name")
-    branch: str = Field(..., description="Git branch")
     total_files: int = Field(..., description="Total number of tracked files")
     total_tokens: int = Field(..., description="Total token count for all descriptions")
     is_large: bool = Field(..., description="True if exceeds configured token limit")
@@ -121,7 +120,6 @@ class SearchResult(BaseModel):
     description: str = Field(..., description="File description")
     relevance_score: float = Field(..., description="Search relevance score")
     project_id: str = Field(..., description="Project identifier")
-    branch: str = Field(..., description="Git branch")
 
 
 class CodebaseSizeInfo(BaseModel):
