@@ -471,8 +471,6 @@ Return ONLY a JSON object:
             # Try to find existing project
             project = await self.db_manager.find_matching_project(
                 project_info["projectName"],
-                project_info.get("remoteOrigin"),
-                project_info.get("upstreamOrigin"),
                 project_info["folderPath"]
             )
             
@@ -494,8 +492,6 @@ Return ONLY a JSON object:
             # Try to find existing project
             project = await self.db_manager.find_matching_project(
                 project_info["projectName"],
-                project_info.get("remoteOrigin"),
-                project_info.get("upstreamOrigin"),
                 project_info["folderPath"]
             )
             
@@ -833,9 +829,7 @@ Return ONLY a JSON object:
             # Get or create project
             project = await self.db_manager.get_or_create_project(
                 project_info["projectName"],
-                project_info["folderPath"],
-                project_info.get("remoteOrigin"),
-                project_info.get("upstreamOrigin")
+                project_info["folderPath"]
             )
             
             # Update file descriptions

@@ -248,14 +248,7 @@ class MCPCodeIndexServer:
                                 "description": "Absolute path to the project folder on disk"
                             },
 
-                            "remoteOrigin": {
-                                "type": "string",
-                                "description": "Git remote origin URL if available"
-                            },
-                            "upstreamOrigin": {
-                                "type": "string",
-                                "description": "Upstream repository URL if this is a fork"
-                            },
+
                             "filePath": {
                                 "type": "string",
                                 "description": "Relative path to the file from project root"
@@ -273,8 +266,7 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+
                             "filePath": {"type": "string", "description": "Relative path to the file from project root"},
                             "description": {"type": "string", "description": "Detailed description of the file's contents"},
                             "fileHash": {"type": "string", "description": "SHA-256 hash of the file contents (optional)"}
@@ -291,8 +283,7 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+
                             "tokenLimit": {"type": "integer", "description": "Optional token limit override (defaults to server configuration)"}
                         },
                         "required": ["projectName", "folderPath"],
@@ -307,8 +298,7 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+
                             "limit": {"type": "integer", "description": "Maximum number of missing files to return (optional)"}
                         },
                         "required": ["projectName", "folderPath"],
@@ -323,8 +313,7 @@ class MCPCodeIndexServer:
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+
                             "query": {"type": "string", "description": "Search query (e.g., 'authentication middleware', 'database models')"},
                             "maxResults": {"type": "integer", "default": 20, "description": "Maximum number of results to return"}
                         },
@@ -339,9 +328,7 @@ class MCPCodeIndexServer:
                         "type": "object",
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
-                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"}
                         },
                         "required": ["projectName", "folderPath"],
                         "additionalProperties": False
@@ -354,9 +341,7 @@ class MCPCodeIndexServer:
                         "type": "object",
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
-                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"}
+                            "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"}
                         },
                         "required": ["projectName", "folderPath"],
                         "additionalProperties": False
@@ -404,8 +389,7 @@ src/
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+
                             "overview": {"type": "string", "description": "Comprehensive narrative overview of the codebase (10-30k tokens recommended)"}
                         },
                         "required": ["projectName", "folderPath", "overview"],
@@ -420,8 +404,7 @@ src/
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+
                             "limit": {"type": "integer", "default": 200, "description": "Number of top terms to return"}
                         },
                         "required": ["projectName", "folderPath"],
@@ -445,8 +428,7 @@ src/
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-                            "remoteOrigin": {"type": "string", "description": "Git remote origin URL if available"},
-                            "upstreamOrigin": {"type": "string", "description": "Upstream repository URL if this is a fork"},
+
                             "searchWord": {"type": "string", "description": "Single word to search for in the overview"}
                         },
                         "required": ["projectName", "folderPath", "searchWord"],
