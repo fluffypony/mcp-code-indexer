@@ -1,6 +1,6 @@
 # MCP Tools API Reference 📖
 
-Complete reference for all 11 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
+Complete reference for all 10 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
 
 **🎯 New to MCP Code Indexer?** Start with the [Quick Start Guide](../README.md#-quick-start) to set up your server first.
 
@@ -19,7 +19,6 @@ Complete reference for all 11 MCP tools provided by the Code Indexer server. Whe
   - [get_codebase_overview](#get_codebase_overview)
   - [get_word_frequency](#get_word_frequency)
 - [Advanced Features](#advanced-features)
-  - [merge_branch_descriptions](#merge_branch_descriptions)
   - [update_codebase_overview](#update_codebase_overview)
 - [System Monitoring](#system-monitoring)
   - [check_database_health](#check_database_health)
@@ -38,10 +37,7 @@ Retrieves the stored description for a specific file in a codebase. Use this to 
 interface GetFileDescriptionParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder on disk
-  branch: string;            // Git branch name (e.g., 'main', 'develop')
   filePath: string;          // Relative path to the file from project root
-  remoteOrigin?: string;     // Git remote origin URL if available
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
 }
 ```
 
@@ -64,7 +60,6 @@ interface GetFileDescriptionResponse {
 const result = await mcp.callTool("get_file_description", {
   projectName: "my-web-app",
   folderPath: "/home/user/projects/my-web-app",
-  branch: "main",
   filePath: "src/components/UserProfile.tsx"
 });
 
@@ -90,11 +85,8 @@ Creates or updates the description for a file. Use this after analyzing a file's
 interface UpdateFileDescriptionParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder on disk
-  branch: string;            // Git branch name
   filePath: string;          // Relative path to the file from project root
   description: string;       // Detailed description of the file's contents
-  remoteOrigin?: string;     // Git remote origin URL if available
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
   fileHash?: string;         // SHA-256 hash of the file contents (optional)
 }
 ```
@@ -116,7 +108,6 @@ interface UpdateFileDescriptionResponse {
 const result = await mcp.callTool("update_file_description", {
   projectName: "my-web-app",
   folderPath: "/home/user/projects/my-web-app",
-  branch: "main",
   filePath: "src/utils/apiClient.ts",
   description: "HTTP client utility with authentication, retry logic, and error handling for API calls",
   fileHash: "def456ghi789"
@@ -143,9 +134,6 @@ Checks the total token count of a codebase's file structure and descriptions. Re
 interface CheckCodebaseSizeParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
-  branch: string;            // Git branch name
-  remoteOrigin?: string;     // Git remote origin URL if available
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
 }
 ```
 
@@ -166,8 +154,7 @@ interface CheckCodebaseSizeResponse {
 ```javascript
 const result = await mcp.callTool("check_codebase_size", {
   projectName: "large-enterprise-app",
-  folderPath: "/home/user/projects/enterprise-app",
-  branch: "main"
+  folderPath: "/home/user/projects/enterprise-app"
 });
 
 // Response:
@@ -196,9 +183,6 @@ Scans the project folder to find files that don't have descriptions yet. This is
 interface FindMissingDescriptionsParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
-  branch: string;            // Git branch name
-  remoteOrigin?: string;     // Git remote origin URL if available
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
 }
 ```
 
@@ -224,8 +208,7 @@ interface FindMissingDescriptionsResponse {
 ```javascript
 const result = await mcp.callTool("find_missing_descriptions", {
   projectName: "new-project",
-  folderPath: "/home/user/projects/new-project",
-  branch: "main"
+  folderPath: "/home/user/projects/new-project"
 });
 
 // Response:
@@ -264,13 +247,10 @@ Batch updates descriptions for multiple files at once. This is stage 2 after fin
 interface UpdateMissingDescriptionsParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
-  branch: string;            // Git branch name
   descriptions: Array<{      // Array of file paths and their descriptions
     filePath: string;        // Relative path to the file
     description: string;     // Detailed description of the file
   }>;
-  remoteOrigin?: string;     // Git remote origin URL if available
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
 }
 ```
 
@@ -291,7 +271,6 @@ interface UpdateMissingDescriptionsResponse {
 const result = await mcp.callTool("update_missing_descriptions", {
   projectName: "new-project",
   folderPath: "/home/user/projects/new-project",
-  branch: "main",
   descriptions: [
     {
       filePath: "src/components/NewFeature.tsx",
@@ -342,11 +321,8 @@ Use this for large codebases instead of loading the entire structure. Returns fi
 interface SearchDescriptionsParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
-  branch: string;            // Git branch to search in
   query: string;             // Search query (e.g., 'authentication middleware', 'database models')
   maxResults?: number;       // Maximum number of results to return (default: 20)
-  remoteOrigin?: string;     // Git remote origin URL if available
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
 }
 ```
 
@@ -371,7 +347,6 @@ interface SearchDescriptionsResponse {
 const result = await mcp.callTool("search_descriptions", {
   projectName: "large-app",
   folderPath: "/home/user/projects/large-app",
-  branch: "main",
   query: "authentication middleware",
   maxResults: 10
 });
@@ -409,14 +384,12 @@ const result = await mcp.callTool("search_descriptions", {
 await mcp.callTool("search_descriptions", {
   projectName: "api-service",
   folderPath: "/projects/api-service", 
-  branch: "main",
   query: "grpc proto"        // Finds files with both "grpc" AND "proto"
 });
 
 await mcp.callTool("search_descriptions", {
   projectName: "api-service",
   folderPath: "/projects/api-service",
-  branch: "main", 
   query: "proto grpc"        // Same results as above
 });
 ```
@@ -427,7 +400,6 @@ await mcp.callTool("search_descriptions", {
 await mcp.callTool("search_descriptions", {
   projectName: "error-handling",
   folderPath: "/projects/error-handling",
-  branch: "main",
   query: "logging AND error"  // Finds files with all three: "logging", "AND", "error"
 });
 ```
@@ -460,9 +432,6 @@ Returns the complete file and folder structure of a codebase with all descriptio
 interface GetCodebaseOverviewParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
-  branch: string;            // Git branch name
-  remoteOrigin?: string;     // Git remote origin URL if available
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
 }
 ```
 
@@ -471,7 +440,6 @@ interface GetCodebaseOverviewParams {
 ```typescript
 interface GetCodebaseOverviewResponse {
   projectName: string;       // Project name
-  branch: string;           // Git branch
   totalFiles: number;       // Total number of tracked files
   totalTokens: number;      // Total token count for all descriptions
   isLarge: boolean;         // Whether codebase exceeds token limit
@@ -500,14 +468,12 @@ interface FileNode {
 ```javascript
 const result = await mcp.callTool("get_codebase_overview", {
   projectName: "small-app",
-  folderPath: "/home/user/projects/small-app",
-  branch: "main"
+  folderPath: "/home/user/projects/small-app"
 });
 
 // Response:
 {
   "projectName": "small-app",
-  "branch": "main", 
   "totalFiles": 8,
   "totalTokens": 1250,
   "isLarge": false,
@@ -546,7 +512,6 @@ const result = await mcp.callTool("get_codebase_overview", {
 // Response for large codebase:
 {
   "projectName": "enterprise-app",
-  "branch": "main",
   "totalFiles": 500,
   "totalTokens": 45000,
   "isLarge": true,
@@ -560,130 +525,55 @@ const result = await mcp.callTool("get_codebase_overview", {
 
 ## Advanced Features
 
-### merge_branch_descriptions
+### update_codebase_overview
 
-Merges file descriptions from one branch to another. This is a two-stage process: first call without resolutions returns conflicts where the same file has different descriptions in each branch. Second call with resolutions completes the merge.
+Updates the condensed codebase overview. Create a comprehensive narrative that would help a new developer understand this codebase.
 
 #### Parameters
 
 ```typescript
-interface MergeBranchDescriptionsParams {
+interface UpdateCodebaseOverviewParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
-  sourceBranch: string;       // Branch to merge from (e.g., 'feature/new-ui')
-  targetBranch: string;       // Branch to merge into (e.g., 'main')
-  remoteOrigin?: string;     // Git remote origin URL
-  upstreamOrigin?: string;   // Upstream repository URL if this is a fork
-  conflictResolutions?: Array<{  // Array of resolved conflicts (only for stage 2)
-    conflictId: string;       // ID of the conflict to resolve
-    resolvedDescription: string; // Final description to use after merge
-  }>;
+  overview: string;          // Comprehensive narrative overview of the codebase
 }
 ```
 
-#### Response (Stage 1 - Conflicts Detected)
+#### Response
 
 ```typescript
-interface MergeConflictsResponse {
-  phase: "conflicts_detected";
-  sessionId: string;         // Session ID for resolving conflicts
-  conflicts: Array<{        // Array of detected conflicts
-    conflictId: string;     // Unique conflict identifier
-    filePath: string;       // Path to the conflicted file
-    sourceBranch: string;   // Source branch name
-    targetBranch: string;   // Target branch name
-    sourceDescription: string;     // Description from source branch
-    targetDescription: string;     // Description from target branch
-  }>;
-  conflictCount: number;    // Total number of conflicts
-  sourceBranch: string;     // Source branch
-  targetBranch: string;     // Target branch
-  message: string;          // Guidance message
+interface UpdateCodebaseOverviewResponse {
+  success: boolean;          // Whether the update succeeded
+  message: string;           // Success/failure message
+  projectName: string;       // Project that was updated
+  overviewLength: number;    // Length of the overview in characters
 }
 ```
 
-#### Response (Stage 2 - Merge Completed)
-
-```typescript
-interface MergeCompletedResponse {
-  phase: "completed";
-  success: boolean;         // Whether merge succeeded
-  sessionId?: string;       // Session ID that was resolved
-  sourceBranch: string;     // Source branch
-  targetBranch: string;     // Target branch
-  totalConflicts?: number;  // Total conflicts that were resolved
-  resolvedConflicts?: number; // Number of conflicts resolved
-  mergedFiles?: number;     // Total files merged
-  message: string;          // Success message
-}
-```
-
-#### Example (Stage 1 - Detect Conflicts)
+#### Example
 
 ```javascript
-const result = await mcp.callTool("merge_branch_descriptions", {
-  projectName: "feature-development",
-  folderPath: "/home/user/projects/feature-development",
-  sourceBranch: "feature/new-auth",
-  targetBranch: "main"
+const result = await mcp.callTool("update_codebase_overview", {
+  projectName: "my-app",
+  folderPath: "/home/user/projects/my-app",
+  overview: `## Architecture Overview
+This is a modern web application built with React and Node.js...
+
+## Core Components
+- Frontend: React with TypeScript
+- Backend: Express.js API server
+- Database: PostgreSQL with Prisma ORM
+...`
 });
 
 // Response:
 {
-  "phase": "conflicts_detected",
-  "sessionId": "merge_session_abc123",
-  "conflicts": [
-    {
-      "conflictId": "conflict_def456",
-      "filePath": "src/auth/loginController.ts",
-      "sourceBranch": "feature/new-auth", 
-      "targetBranch": "main",
-      "sourceDescription": "Enhanced login controller with OAuth2 support and rate limiting",
-      "targetDescription": "Basic login controller with username/password authentication"
-    }
-  ],
-  "conflictCount": 1,
-  "sourceBranch": "feature/new-auth",
-  "targetBranch": "main",
-  "message": "Found 1 conflicts that need resolution."
-}
-```
-
-#### Example (Stage 2 - Resolve Conflicts)
-
-```javascript
-const result = await mcp.callTool("merge_branch_descriptions", {
-  projectName: "feature-development",
-  folderPath: "/home/user/projects/feature-development", 
-  sourceBranch: "feature/new-auth",
-  targetBranch: "main",
-  conflictResolutions: [
-    {
-      conflictId: "conflict_def456",
-      resolvedDescription: "Login controller supporting both traditional username/password and OAuth2 authentication with rate limiting protection"
-    }
-  ]
-});
-
-// Response:
-{
-  "phase": "completed",
   "success": true,
-  "sourceBranch": "feature/new-auth",
-  "targetBranch": "main", 
-  "totalConflicts": 1,
-  "resolvedConflicts": 1,
-  "mergedFiles": 15,
-  "message": "Successfully merged 15 files from feature/new-auth to main"
+  "message": "Codebase overview updated successfully",
+  "projectName": "my-app",
+  "overviewLength": 2847
 }
 ```
-
-🚀 **Merge Workflow Tips**:
-1. **Start with phase 1**: Always detect conflicts first
-2. **Review carefully**: Understand both descriptions before resolving
-3. **Write comprehensive resolutions**: Capture the best of both versions
-4. **Test accuracy**: Verify merged descriptions make sense
-5. **Document changes**: Note why you chose specific resolutions
 
 ---
 
@@ -818,19 +708,19 @@ The tool provides intelligent recommendations based on current system state:
 
 ## Common Parameters
 
-All tools support these optional parameters for project identification:
+All tools require these standard parameters for project identification:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `remoteOrigin` | `string?` | Git remote origin URL (e.g., "https://github.com/user/repo.git") |
-| `upstreamOrigin` | `string?` | Upstream repository URL for forks |
+| `projectName` | `string` | The name of the project (required) |
+| `folderPath` | `string` | Absolute path to the project folder on disk (required) |
 
 ### Project Identification
 
 The server automatically creates unique project identifiers based on:
-1. **Project name** + **folder path** + **remote origins**
-2. **Upstream inheritance** when `upstreamOrigin` is provided
-3. **Automatic deduplication** across different local copies
+1. **Project name** + **folder path**
+2. **Automatic alias creation** for different path representations
+3. **Project deduplication** across sessions
 
 ## Error Handling
 

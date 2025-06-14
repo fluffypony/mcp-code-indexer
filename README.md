@@ -13,8 +13,7 @@ The MCP Code Indexer solves a critical problem for AI agents working with large 
 - **Query file purposes** instantly with natural language descriptions
 - **Search across codebases** using full-text search
 - **Get intelligent recommendations** based on codebase size (overview vs search)
-- **Merge branch descriptions** with conflict resolution
-- **Inherit descriptions** from upstream repositories automatically
+- **Generate condensed overviews** for project understanding
 
 Perfect for AI-powered code review, refactoring tools, documentation generation, and codebase analysis workflows.
 
@@ -184,7 +183,6 @@ The server provides **12 powerful MCP tools** for intelligent codebase managemen
 ### 🔍 For Advanced Users: Search & Discovery
 - **`get_all_descriptions`** - Complete hierarchical project structure
 - **`get_word_frequency`** - Technical vocabulary analysis with stop-word filtering
-- **`merge_branch_descriptions`** - Two-phase merge with conflict resolution
 - **`update_codebase_overview`** - Create comprehensive codebase documentation
 
 ### 🏥 For System Monitoring: Health & Performance
@@ -194,7 +192,7 @@ The server provides **12 powerful MCP tools** for intelligent codebase managemen
 
 ## 🔗 Git Hook Integration
 
-Keep your codebase documentation automatically synchronized with automated analysis on every commit, rebase, or merge:
+Keep your codebase documentation automatically synchronized with automated analysis on every commit:
 
 ```bash
 # Analyze current staged changes
@@ -337,8 +335,7 @@ async def analyze_codebase(project_path):
     # Check if codebase is large
     size_info = await mcp_client.call_tool("check_codebase_size", {
         "projectName": "my-project",
-        "folderPath": project_path,
-        "branch": "main"
+        "folderPath": project_path
     })
     
     if size_info["isLarge"]:
@@ -346,15 +343,13 @@ async def analyze_codebase(project_path):
         results = await mcp_client.call_tool("search_descriptions", {
             "projectName": "my-project", 
             "folderPath": project_path,
-            "branch": "main",
             "query": "authentication logic"
         })
     else:
         # Get full overview for smaller projects
         overview = await mcp_client.call_tool("get_codebase_overview", {
             "projectName": "my-project",
-            "folderPath": project_path, 
-            "branch": "main"
+            "folderPath": project_path
         })
 ```
 
@@ -373,8 +368,7 @@ async def analyze_codebase(project_path):
         # Find files without descriptions
         missing = await client.call_tool('find_missing_descriptions', {
             'projectName': '${{ github.repository }}',
-            'folderPath': '.',
-            'branch': '${{ github.ref_name }}'
+            'folderPath': '.'
         })
         
         # Process with AI and update...
@@ -443,14 +437,14 @@ mcp-code-indexer --githook [OPTIONS]
 
 ### Utility Commands
 ```bash
-# List all projects and branches
+# List all projects
 mcp-code-indexer --getprojects
 
 # Execute MCP tool directly
 mcp-code-indexer --runcommand '{"method": "tools/call", "params": {...}}'
 
 # Export descriptions for a project
-mcp-code-indexer --dumpdescriptions PROJECT_ID [BRANCH]
+mcp-code-indexer --dumpdescriptions PROJECT_ID
 ```
 
 ## 🛡️ Security Features
