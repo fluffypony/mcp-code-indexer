@@ -5,8 +5,8 @@
 -- Ensure WAL mode is enabled for safe migrations
 PRAGMA journal_mode=WAL;
 
--- Enable foreign key support
-PRAGMA foreign_keys=ON;
+-- Temporarily disable foreign key constraints for migration
+PRAGMA foreign_keys=OFF;
 
 -- Start transaction for atomic migration
 BEGIN TRANSACTION;
@@ -32,6 +32,17 @@ CREATE INDEX idx_file_descriptions_new_project_id ON file_descriptions_new(proje
 CREATE INDEX idx_file_descriptions_new_file_hash ON file_descriptions_new(file_hash);
 CREATE INDEX idx_file_descriptions_new_last_modified ON file_descriptions_new(last_modified);
 CREATE INDEX idx_file_descriptions_new_to_be_cleaned ON file_descriptions_new(to_be_cleaned);
+
+-- Clean up orphaned data before consolidation
+-- Remove file_descriptions that reference non-existent projects
+DELETE FROM file_descriptions 
+WHERE project_id NOT IN (SELECT id FROM projects);
+
+-- Remove file_descriptions with invalid source_project_id
+UPDATE file_descriptions 
+SET source_project_id = NULL 
+WHERE source_project_id IS NOT NULL 
+  AND source_project_id NOT IN (SELECT id FROM projects);
 
 -- Consolidate data from old table - keep most recent description per file
 -- This handles multi-branch scenarios by selecting the newest data
@@ -75,6 +86,10 @@ CREATE TABLE project_overviews_new (
 
 -- Create indexes for the new table
 CREATE INDEX idx_project_overviews_new_last_modified ON project_overviews_new(last_modified);
+
+-- Clean up orphaned project overviews
+DELETE FROM project_overviews 
+WHERE project_id NOT IN (SELECT id FROM projects);
 
 -- Consolidate project overviews - keep the one with most tokens (most comprehensive)
 INSERT INTO project_overviews_new (
@@ -161,6 +176,9 @@ END;
 -- but we'll remove unused indexes that reference branches
 DROP INDEX IF EXISTS idx_merge_conflicts_project;
 CREATE INDEX idx_merge_conflicts_project ON merge_conflicts(project_id, created);
+
+-- Re-enable foreign key constraints
+PRAGMA foreign_keys=ON;
 
 -- Commit the migration
 COMMIT;
