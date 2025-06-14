@@ -172,7 +172,7 @@ class TestMCPServerIntegration:
             args = {
                 "projectName": project_name,
                 "folderPath": folder_path,
-                "branch": branch,
+
                 "filePath": file_path,
                 "description": description
             }
@@ -182,7 +182,6 @@ class TestMCPServerIntegration:
         search_args = {
             "projectName": project_name,
             "folderPath": folder_path,
-            "branch": branch,
             "query": "grpc proto",
             "maxResults": 10
         }
@@ -211,7 +210,7 @@ class TestMCPServerIntegration:
             args = {
                 "projectName": project_name,
                 "folderPath": folder_path,
-                "branch": branch,
+
                 "filePath": file_path,
                 "description": description
             }
@@ -221,7 +220,6 @@ class TestMCPServerIntegration:
         search_args = {
             "projectName": project_name,
             "folderPath": folder_path,
-            "branch": branch,
             "query": "error AND logging",
             "maxResults": 10
         }
@@ -247,7 +245,7 @@ class TestMCPServerIntegration:
             args = {
                 "projectName": project_name,
                 "folderPath": folder_path,
-                "branch": branch,
+
                 "filePath": file_path,
                 "description": description
             }
@@ -257,7 +255,6 @@ class TestMCPServerIntegration:
         search_args_1 = {
             "projectName": project_name,
             "folderPath": folder_path,
-            "branch": branch,
             "query": "grpc protocol",
             "maxResults": 10
         }
@@ -265,7 +262,6 @@ class TestMCPServerIntegration:
         search_args_2 = {
             "projectName": project_name,
             "folderPath": folder_path,
-            "branch": branch,
             "query": "protocol grpc",
             "maxResults": 10
         }
@@ -302,14 +298,12 @@ class TestMCPServerIntegration:
         # Get overview
         overview_args = {
             "projectName": "overview-test",
-            "folderPath": "/tmp/overview-test",
-            "branch": "main"
+            "folderPath": "/tmp/overview-test"
         }
         
         result = await mcp_server._handle_get_codebase_overview(overview_args)
         
         assert result["projectName"] == "overview-test"
-        assert result["branch"] == "main"
         assert result["totalFiles"] == 3
         assert "structure" in result
         
@@ -322,97 +316,7 @@ class TestMCPServerIntegration:
         assert "src" in folder_names
         assert "tests" in folder_names
     
-    async def test_merge_branch_descriptions_no_conflicts(self, mcp_server):
-        """Test merging branches with no conflicts."""
-        # Create files in source branch only
-        source_args = {
-            "projectName": "merge-test",
-            "folderPath": "/tmp/merge-test",
-            
-            "descriptions": [
-                {"filePath": "new_feature.py", "description": "New feature implementation"}
-            ]
-        }
-        
-        await mcp_server._handle_update_missing_descriptions(source_args)
-        
-        # Attempt merge
-        merge_args = {
-            "projectName": "merge-test",
-            "folderPath": "/tmp/merge-test",
-            "sourceBranch": "feature",
-            "targetBranch": "main"
-        }
-        
-        result = await mcp_server._handle_merge_branch_descriptions(merge_args)
-        
-        assert result["phase"] == "completed"
-        assert result["conflictCount"] == 0
-        assert "No conflicts detected" in result["message"]
-    
-    async def test_merge_branch_descriptions_with_conflicts(self, mcp_server):
-        """Test merging branches with conflicts."""
-        # Create conflicting files
-        main_args = {
-            "projectName": "conflict-test",
-            "folderPath": "/tmp/conflict-test",
-            
-            "descriptions": [
-                {"filePath": "shared.py", "description": "Main version of shared file"}
-            ]
-        }
-        
-        feature_args = {
-            "projectName": "conflict-test",
-            "folderPath": "/tmp/conflict-test",
-            
-            "descriptions": [
-                {"filePath": "shared.py", "description": "Feature version of shared file"}
-            ]
-        }
-        
-        await mcp_server._handle_update_missing_descriptions(main_args)
-        await mcp_server._handle_update_missing_descriptions(feature_args)
-        
-        # Phase 1: Detect conflicts
-        merge_args = {
-            "projectName": "conflict-test",
-            "folderPath": "/tmp/conflict-test",
-            "sourceBranch": "feature",
-            "targetBranch": "main"
-        }
-        
-        result = await mcp_server._handle_merge_branch_descriptions(merge_args)
-        
-        assert result["phase"] == "conflicts_detected"
-        assert result["conflictCount"] == 1
-        assert len(result["conflicts"]) == 1
-        
-        conflict = result["conflicts"][0]
-        assert conflict["filePath"] == "shared.py"
-        assert "Feature version" in conflict["sourceDescription"]
-        assert "Main version" in conflict["targetDescription"]
-        
-        # Phase 2: Resolve conflicts
-        resolution_args = {
-            "projectName": "conflict-test",
-            "folderPath": "/tmp/conflict-test",
-            "sourceBranch": "feature",
-            "targetBranch": "main",
-            "conflictResolutions": [
-                {
-                    "conflictId": conflict["conflictId"],
-                    "resolvedDescription": "Merged version combining both main and feature changes"
-                }
-            ]
-        }
-        
-        resolved_result = await mcp_server._handle_merge_branch_descriptions(resolution_args)
-        
-        assert resolved_result["phase"] == "completed"
-        assert resolved_result["success"] is True
-        assert resolved_result["totalConflicts"] == 1
-        assert resolved_result["resolvedConflicts"] == 1
+
     
     async def test_upstream_inheritance(self, mcp_server):
         """Test automatic upstream inheritance."""
@@ -493,20 +397,7 @@ class TestMCPToolErrors:
             # Expected - missing required fields
             pass
     
-    async def test_invalid_merge_same_branch(self, mcp_server):
-        """Test merge error when source and target are same."""
-        merge_args = {
-            "projectName": "test-project",
-            "folderPath": "/tmp/test",
-            "sourceBranch": "main",
-            "targetBranch": "main"  # Same as source
-        }
-        
-        try:
-            await mcp_server._handle_merge_branch_descriptions(merge_args)
-            assert False, "Should have raised ValidationError"
-        except Exception as e:
-            assert "same" in str(e).lower()
+
 
 
 @pytest.mark.performance
@@ -572,8 +463,7 @@ class TestMCPPerformance:
         
         overview_args = {
             "projectName": "large-project",
-            "folderPath": "/tmp/large",
-            "branch": "main"
+            "folderPath": "/tmp/large"
         }
         
         start_time = time.time()
@@ -615,8 +505,7 @@ class TestMCPWorkflow:
         """Test complete workflow from project creation to merge."""
         project_args = {
             "projectName": "workflow-test",
-            "folderPath": "/tmp/workflow",
-            "branch": "main"
+            "folderPath": "/tmp/workflow"
         }
         
         # 1. Check initial size (should be empty)

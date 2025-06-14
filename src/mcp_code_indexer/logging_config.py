@@ -198,7 +198,7 @@ def _setup_component_loggers_for_command(
         "mcp_code_indexer.token_counter",
         "mcp_code_indexer.file_scanner",
         "mcp_code_indexer.error_handler",
-        "mcp_code_indexer.merge_handler"
+
     ]
     
     for component_logger_name in component_loggers:

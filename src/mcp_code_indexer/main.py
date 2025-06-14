@@ -129,8 +129,6 @@ async def handle_getprojects(args: argparse.Namespace) -> None:
         for project in projects:
             print(f"ID: {project.id}")
             print(f"Name: {project.name}")
-            print(f"Remote Origin: {project.remote_origin or 'N/A'}")
-            print(f"Upstream Origin: {project.upstream_origin or 'N/A'}")
             
             # Get branch information
             try:
@@ -293,7 +291,6 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
             "get_codebase_overview": server._handle_get_condensed_overview,
             "update_codebase_overview": server._handle_update_codebase_overview,
             "get_word_frequency": server._handle_get_word_frequency,
-            "merge_branch_descriptions": server._handle_merge_branch_descriptions,
             "search_codebase_overview": server._handle_search_codebase_overview,
         }
         
@@ -706,12 +703,6 @@ def generate_project_markdown(project, branch, overview, files, logger):
     markdown_lines.append("")
     
     # Project metadata
-    if project.remote_origin:
-        markdown_lines.append(f"**Repository:** {project.remote_origin}")
-        markdown_lines.append("")
-    if project.upstream_origin:
-        markdown_lines.append(f"**Upstream:** {project.upstream_origin}")
-        markdown_lines.append("")
     markdown_lines.append(f"**Branch:** {branch}")
     markdown_lines.append("")
     

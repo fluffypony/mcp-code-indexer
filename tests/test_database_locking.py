@@ -47,8 +47,6 @@ class TestDatabaseLocking:
         return Project(
             id="test-project-123",
             name="test-project",
-            remote_origin="https://github.com/test/repo.git",
-            upstream_origin=None,
             aliases=["/test/path"],
             created=datetime.utcnow(),
             last_accessed=datetime.utcnow()
@@ -59,7 +57,6 @@ class TestDatabaseLocking:
         """Create a sample file description for testing."""
         return FileDescription(
             project_id="test-project-123",
-            branch="main",
             file_path="src/test.py",
             description="Test file description",
             file_hash="abc123",
@@ -88,8 +85,6 @@ class TestDatabaseLocking:
             project = Project(
                 id=f"test-project-{project_suffix}",
                 name=f"test-project-{project_suffix}",
-                remote_origin=f"https://github.com/test/repo-{project_suffix}.git",
-                upstream_origin=None,
                 aliases=[f"/test/path/{project_suffix}"],
                 created=datetime.utcnow(),
                 last_accessed=datetime.utcnow()
@@ -148,8 +143,6 @@ class TestDatabaseLocking:
             new_project = Project(
                 id="test-project-456",
                 name="test-project-2",
-                remote_origin="https://github.com/test/repo2.git",
-                upstream_origin=None,
                 aliases=["/test/path2"],
                 created=datetime.utcnow(),
                 last_accessed=datetime.utcnow()
@@ -307,8 +300,6 @@ class TestConcurrentAccess:
                 Project(
                     id=f"project-{batch_id}-{i}",
                     name=f"project-{batch_id}-{i}",
-                    remote_origin=f"https://github.com/test/repo-{batch_id}-{i}.git",
-                    upstream_origin=None,
                     aliases=[f"/test/path/{batch_id}/{i}"],
                     created=datetime.utcnow(),
                     last_accessed=datetime.utcnow()
@@ -345,8 +336,6 @@ class TestConcurrentAccess:
             Project(
                 id=f"initial-project-{i}",
                 name=f"initial-project-{i}",
-                remote_origin=f"https://github.com/test/initial-{i}.git",
-                upstream_origin=None,
                 aliases=[f"/initial/path/{i}"],
                 created=datetime.utcnow(),
                 last_accessed=datetime.utcnow()
@@ -373,8 +362,6 @@ class TestConcurrentAccess:
                 project = Project(
                     id=f"concurrent-project-{op_id}-{i}",
                     name=f"concurrent-project-{op_id}-{i}",
-                    remote_origin=f"https://github.com/test/concurrent-{op_id}-{i}.git",
-                    upstream_origin=None,
                     aliases=[f"/concurrent/path/{op_id}/{i}"],
                     created=datetime.utcnow(),
                     last_accessed=datetime.utcnow()

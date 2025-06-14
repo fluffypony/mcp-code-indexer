@@ -15,7 +15,6 @@ import pytest_asyncio
 from mcp_code_indexer.database.database import DatabaseManager
 from mcp_code_indexer.database.models import Project, FileDescription
 from mcp_code_indexer.token_counter import TokenCounter
-from mcp_code_indexer.merge_handler import MergeHandler
 from mcp_code_indexer.error_handler import setup_error_handling
 from mcp_code_indexer.logging_config import setup_logging
 
@@ -59,8 +58,6 @@ async def sample_project(db_manager: DatabaseManager) -> Project:
     project = Project(
         id="test_project_123",
         name="Test Project",
-        remote_origin="https://github.com/test/repo.git",
-        upstream_origin="https://github.com/upstream/repo.git",
         aliases=["test-project", "/path/to/project"]
     )
     
@@ -77,7 +74,6 @@ async def sample_file_descriptions(
     descriptions = [
         FileDescription(
             project_id=sample_project.id,
-            branch="main",
             file_path="src/main.py",
             description="Main entry point for the application with CLI argument parsing and server initialization.",
             file_hash="abc123",
@@ -85,7 +81,6 @@ async def sample_file_descriptions(
         ),
         FileDescription(
             project_id=sample_project.id,
-            branch="main",
             file_path="src/database/models.py",
             description="Pydantic data models for projects, file descriptions, and search results.",
             file_hash="def456",
@@ -93,7 +88,6 @@ async def sample_file_descriptions(
         ),
         FileDescription(
             project_id=sample_project.id,
-            branch="main",
             file_path="tests/test_main.py",
             description="Unit tests for the main module functionality.",
             file_hash="ghi789",
@@ -101,17 +95,15 @@ async def sample_file_descriptions(
         ),
         FileDescription(
             project_id=sample_project.id,
-            branch="feature/new-ui",
-            file_path="src/main.py",
-            description="Main entry point with enhanced CLI interface and new UI components.",
+            file_path="src/main_enhanced.py",
+            description="Enhanced main entry point with improved CLI interface and extended functionality.",
             file_hash="abc124",
             version=2
         ),
         FileDescription(
             project_id=sample_project.id,
-            branch="feature/new-ui",
             file_path="src/ui/components.py",
-            description="React-like UI components for the new interface.",
+            description="UI components for the enhanced interface.",
             file_hash="jkl012",
             version=1
         )
@@ -127,10 +119,7 @@ def token_counter() -> TokenCounter:
     return TokenCounter(token_limit=1000)  # Lower limit for testing
 
 
-@pytest_asyncio.fixture
-async def merge_handler(db_manager: DatabaseManager) -> MergeHandler:
-    """Create a merge handler for testing."""
-    return MergeHandler(db_manager)
+
 
 
 @pytest.fixture
@@ -206,7 +195,6 @@ def large_file_descriptions(sample_project: Project) -> list[FileDescription]:
     for i in range(1000):
         descriptions.append(FileDescription(
             project_id=sample_project.id,
-            branch="main",
             file_path=f"src/module_{i:03d}.py",
             description=f"Module {i} containing utility functions and classes for feature set {i // 100}.",
             file_hash=f"hash_{i:03d}",
@@ -231,7 +219,6 @@ def performance_markers():
 def assert_file_description_equal(actual: FileDescription, expected: FileDescription) -> None:
     """Assert that two file descriptions are equal (ignoring timestamps)."""
     assert actual.project_id == expected.project_id
-    assert actual.branch == expected.branch
     assert actual.file_path == expected.file_path
     assert actual.description == expected.description
     assert actual.file_hash == expected.file_hash
@@ -241,7 +228,6 @@ def assert_file_description_equal(actual: FileDescription, expected: FileDescrip
 
 def create_test_file_description(
     project_id: str = "test_project",
-    branch: str = "main",
     file_path: str = "test.py",
     description: str = "Test file",
     file_hash: str = "test_hash"
@@ -249,7 +235,6 @@ def create_test_file_description(
     """Create a test file description with default values."""
     return FileDescription(
         project_id=project_id,
-        branch=branch,
         file_path=file_path,
         description=description,
         file_hash=file_hash,
