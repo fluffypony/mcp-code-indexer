@@ -519,17 +519,13 @@ src/
         """
         Get or create a project ID using intelligent matching.
         
-        Matches projects based on 2+ out of 4 identification factors:
+        Matches projects based on identification factors:
         1. Project name (normalized, case-insensitive)
-        2. Remote origin URL
-        3. Upstream origin URL  
-        4. Any folder path in aliases
+        2. Folder path in aliases
         
-        If only 1 factor matches, uses file similarity to determine if it's the same project.
+        Projects are now identified primarily by name without git coupling.
         """
         project_name = arguments["projectName"]
-        remote_origin = arguments.get("remoteOrigin")
-        upstream_origin = arguments.get("upstreamOrigin")
         folder_path = arguments["folderPath"]
 
         
@@ -538,55 +534,33 @@ src/
         
         # Find potential project matches
         project = await self._find_matching_project(
-            normalized_name, remote_origin, upstream_origin, folder_path
+            normalized_name, folder_path
         )
         if project:
             # Update project metadata and aliases
-            await self._update_existing_project(project, normalized_name, remote_origin, upstream_origin, folder_path)
-            
-            # Check if upstream inheritance is needed
-            if upstream_origin and await self.db_manager.check_upstream_inheritance_needed(project):
-                try:
-                    inherited_count = await self.db_manager.inherit_from_upstream(project)
-                    if inherited_count > 0:
-                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {normalized_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to inherit from upstream: {e}")
+            await self._update_existing_project(project, normalized_name, folder_path)
         else:
             # Create new project with UUID
             project_id = str(uuid.uuid4())
             project = Project(
                 id=project_id,
                 name=normalized_name,
-                remote_origin=remote_origin,
-                upstream_origin=upstream_origin,
                 aliases=[folder_path],
                 created=datetime.utcnow(),
                 last_accessed=datetime.utcnow()
             )
             await self.db_manager.create_project(project)
             logger.info(f"Created new project: {normalized_name} ({project_id})")
-            
-            # Auto-inherit from upstream if needed
-            if upstream_origin:
-                try:
-                    inherited_count = await self.db_manager.inherit_from_upstream(project)
-                    if inherited_count > 0:
-                        logger.info(f"Auto-inherited {inherited_count} descriptions from upstream for {normalized_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to inherit from upstream: {e}")
         
         return project.id
     
     async def _find_matching_project(
         self, 
         normalized_name: str, 
-        remote_origin: Optional[str], 
-        upstream_origin: Optional[str], 
         folder_path: str
     ) -> Optional[Project]:
         """
-        Find a matching project using intelligent 2-out-of-4 matching logic.
+        Find a matching project using name and folder path matching.
         
         Returns the best matching project or None if no sufficient match is found.
         """
@@ -599,45 +573,26 @@ src/
             score = 0
             match_factors = []
             
-            # Factor 1: Project name match
+            # Factor 1: Project name match (primary identifier)
             if project.name.lower() == normalized_name:
-                score += 1
+                score += 2  # Higher weight for name match
                 match_factors.append("name")
             
-            # Factor 2: Remote origin match
-            if remote_origin and project.remote_origin == remote_origin:
-                score += 1
-                match_factors.append("remote_origin")
-                
-            # Factor 3: Upstream origin match  
-            if upstream_origin and project.upstream_origin == upstream_origin:
-                score += 1
-                match_factors.append("upstream_origin")
-                
-            # Factor 4: Folder path in aliases
+            # Factor 2: Folder path in aliases
             project_aliases = json.loads(project.aliases) if isinstance(project.aliases, str) else project.aliases
             if folder_path in project_aliases:
                 score += 1
                 match_factors.append("folder_path")
             
-            # Enhanced matching: If name matches and no remote origins are provided,
-            # consider it a strong match to prevent duplicates
-            if (score == 1 and "name" in match_factors and 
-                not remote_origin and not project.remote_origin and
-                not upstream_origin and not project.upstream_origin):
-                logger.info(f"Name-only match with no remotes for project {project.name} - treating as strong match to prevent duplicates")
-                score = 2  # Boost score to strong match level
-                match_factors.append("no_remotes_boost")
-            
-            # If we have 2+ matches, this is a strong candidate
+            # If we have a name match, it's a strong candidate
             if score >= 2:
                 if score > best_score:
                     best_score = score
                     best_match = project
-                    logger.info(f"Strong match for project {project.name} (score: {score}, factors: {match_factors})")
+                    logger.info(f"Match for project {project.name} (score: {score}, factors: {match_factors})")
             
-            # If only 1 match, check file similarity for potential matches
-            elif score == 1:
+            # If only name matches, check file similarity for potential matches
+            elif score == 1 and "name" in match_factors:
                 if await self._check_file_similarity(project, folder_path):
                     logger.info(f"File similarity match for project {project.name} (factor: {match_factors[0]})")
                     if score > best_score:
@@ -685,8 +640,6 @@ src/
         self, 
         project: Project, 
         normalized_name: str,
-        remote_origin: Optional[str], 
-        upstream_origin: Optional[str], 
         folder_path: str
     ) -> None:
         """Update an existing project with new metadata and folder alias."""
@@ -698,15 +651,6 @@ src/
         # Update name if different
         if project.name != normalized_name:
             project.name = normalized_name
-            should_update = True
-            
-        # Update remote/upstream origins if provided and different
-        if remote_origin and project.remote_origin != remote_origin:
-            project.remote_origin = remote_origin
-            should_update = True
-            
-        if upstream_origin and project.upstream_origin != upstream_origin:
-            project.upstream_origin = upstream_origin
             should_update = True
         
         # Add folder path to aliases if not already present

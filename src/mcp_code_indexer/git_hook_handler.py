@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
-from urllib.parse import urlparse
+
 
 import aiohttp
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
@@ -295,50 +295,18 @@ Return ONLY a JSON object:
             # Get current working directory as project root
             project_root = Path.cwd()
             
-            # Get git remote info
-            remote_result = await self._run_git_command(["remote", "get-url", "origin"])
-            remote_origin = remote_result.strip() if remote_result else None
-            
-            # Try to get upstream origin
-            upstream_origin = None
-            try:
-                upstream_result = await self._run_git_command(["remote", "get-url", "upstream"])
-                upstream_origin = upstream_result.strip() if upstream_result else None
-            except subprocess.CalledProcessError:
-                pass  # No upstream remote
-            
-            # Extract project name from remote URL or use directory name
-            project_name = self._extract_project_name(remote_origin, project_root)
+            # Use directory name as project name
+            project_name = project_root.name
             
             return {
                 "projectName": project_name,
-                "folderPath": str(project_root),
-                "remoteOrigin": remote_origin,
-                "upstreamOrigin": upstream_origin
+                "folderPath": str(project_root)
             }
             
         except Exception as e:
             raise GitHookError(f"Failed to identify project from git: {e}")
     
-    def _extract_project_name(self, remote_origin: Optional[str], project_root: Path) -> str:
-        """Extract project name from remote URL or directory name."""
-        if remote_origin:
-            # Parse GitHub/GitLab URL
-            if remote_origin.startswith("git@"):
-                # SSH format: git@github.com:user/repo.git
-                parts = remote_origin.split(":")
-                if len(parts) >= 2:
-                    repo_path = parts[-1].replace(".git", "")
-                    return repo_path.split("/")[-1]
-            else:
-                # HTTPS format
-                parsed = urlparse(remote_origin)
-                if parsed.path:
-                    repo_path = parsed.path.strip("/").replace(".git", "")
-                    return repo_path.split("/")[-1]
-        
-        # Fallback to directory name
-        return project_root.name
+
     
     async def _get_git_diff(self) -> str:
         """
