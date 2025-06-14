@@ -120,16 +120,43 @@ class DatabaseManager:
             # Configure WAL mode and optimizations for concurrent access
             await self._configure_database_optimizations(db, include_wal_mode=self.enable_wal_mode)
             
-            # Apply each migration
+            # Create migrations tracking table
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS migrations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename TEXT UNIQUE NOT NULL,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            await db.commit()
+            
+            # Get list of already applied migrations
+            cursor = await db.execute('SELECT filename FROM migrations')
+            applied_migrations = {row[0] for row in await cursor.fetchall()}
+            
+            # Apply each migration that hasn't been applied yet
             for migration_file in migration_files:
+                if migration_file.name in applied_migrations:
+                    logger.info(f"Skipping already applied migration: {migration_file.name}")
+                    continue
+                    
                 logger.info(f"Applying migration: {migration_file.name}")
                 with open(migration_file, 'r') as f:
                     migration_sql = f.read()
                 
-                await db.executescript(migration_sql)
-                await db.commit()
+                try:
+                    await db.executescript(migration_sql)
+                    
+                    # Record that migration was applied
+                    await db.execute('INSERT INTO migrations (filename) VALUES (?)', (migration_file.name,))
+                    await db.commit()
+                    logger.info(f"Successfully applied migration: {migration_file.name}")
+                except Exception as e:
+                    logger.error(f"Failed to apply migration {migration_file.name}: {e}")
+                    await db.rollback()
+                    raise
             
-        logger.info(f"Database initialized at {self.db_path} with {len(migration_files)} migrations")
+        logger.info(f"Database initialized at {self.db_path} with {len(migration_files)} total migrations")
     
     async def _configure_database_optimizations(self, db: aiosqlite.Connection, include_wal_mode: bool = True) -> None:
         """
