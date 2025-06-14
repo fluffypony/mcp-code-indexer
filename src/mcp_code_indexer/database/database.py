@@ -110,7 +110,10 @@ class DatabaseManager:
         # Database initialization now uses the modern retry executor directly
         
         # Apply migrations in order
-        migrations_dir = Path(__file__).parent.parent.parent.parent / "migrations"
+        # Migrations are now bundled with the package
+        migrations_dir = Path(__file__).parent.parent / "migrations"
+        if not migrations_dir.exists():
+            raise RuntimeError(f"Could not find migrations directory at {migrations_dir}")
         migration_files = sorted(migrations_dir.glob("*.sql"))
         
         async with aiosqlite.connect(self.db_path) as db:
@@ -136,23 +139,28 @@ class DatabaseManager:
             
             # Apply each migration that hasn't been applied yet
             for migration_file in migration_files:
-                if migration_file.name in applied_migrations:
-                    logger.info(f"Skipping already applied migration: {migration_file.name}")
+                migration_name = migration_file.name
+                if migration_name in applied_migrations:
+                    logger.info(f"Skipping already applied migration: {migration_name}")
                     continue
                     
-                logger.info(f"Applying migration: {migration_file.name}")
-                with open(migration_file, 'r') as f:
-                    migration_sql = f.read()
+                logger.info(f"Applying migration: {migration_name}")
+                try:
+                    migration_sql = migration_file.read_text(encoding='utf-8')
+                except AttributeError:
+                    # Fallback for regular file objects
+                    with open(migration_file, 'r', encoding='utf-8') as f:
+                        migration_sql = f.read()
                 
                 try:
                     await db.executescript(migration_sql)
                     
                     # Record that migration was applied
-                    await db.execute('INSERT INTO migrations (filename) VALUES (?)', (migration_file.name,))
+                    await db.execute('INSERT INTO migrations (filename) VALUES (?)', (migration_name,))
                     await db.commit()
-                    logger.info(f"Successfully applied migration: {migration_file.name}")
+                    logger.info(f"Successfully applied migration: {migration_name}")
                 except Exception as e:
-                    logger.error(f"Failed to apply migration {migration_file.name}: {e}")
+                    logger.error(f"Failed to apply migration {migration_name}: {e}")
                     await db.rollback()
                     raise
             
