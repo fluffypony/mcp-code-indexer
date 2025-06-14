@@ -246,7 +246,6 @@ async def handle_ask(args: argparse.Namespace) -> None:
         # Resolve project info - search by name only for CLI Q&A
         project_info = {
             "projectName": args.project_name,
-            "branch": "master",  # Default branch (many projects use master)
             "remoteOrigin": None,
             "upstreamOrigin": None
         }
@@ -328,7 +327,6 @@ async def handle_deepask(args: argparse.Namespace) -> None:
         # Resolve project info - search by name only for CLI Q&A
         project_info = {
             "projectName": args.project_name,
-            "branch": "master",  # Default branch (many projects use master)
             "remoteOrigin": None,
             "upstreamOrigin": None
         }
