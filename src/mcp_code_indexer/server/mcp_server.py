@@ -349,48 +349,49 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="update_codebase_overview",
-                    description="""Updates the condensed codebase overview. Create a comprehensive narrative that would help a new developer understand this codebase. Include: (1) A visual directory tree showing the main folders and their purposes, (2) Overall architecture - how components fit together, (3) Core business logic and main workflows, (4) Key technical patterns and conventions used, (5) Important dependencies and integrations, (6) Database schema overview if applicable, (7) API structure if applicable, (8) Testing approach, (9) Build and deployment notes. Write in a clear, structured format with headers and sections. Be thorough but organized - imagine writing a technical onboarding document. The overview should be substantial (think 10-20 pages of text) but well-structured so specific sections can be found easily.
+                    description="""Creates a concise codebase overview for AI agents. Focus on essential navigation and context in 3500-7000 words. Include: (1) One-paragraph system summary - what it does and its core purpose, (2) Directory tree with one-line descriptions for each major folder, (3) Key architectural patterns (e.g., MVC, microservices, event-driven) in 2-3 sentences, (4) Critical file locations (entry points, config, main business logic), (5) Essential conventions (naming, file organization, error handling), (6) Important gotchas or non-obvious connections. Keep it scannable and action-oriented.
 
-Example Structure:
+Example:
 
 ````
+## System Summary
+E-commerce platform handling product catalog, orders, and payments with React frontend and Node.js API.
+
 ## Directory Structure
 ```
 src/
-├── api/          # REST API endpoints and middleware
-├── models/       # Database models and business logic  
-├── services/     # External service integrations
-├── utils/        # Shared utilities and helpers
-└── tests/        # Test suites
+├── api/          # REST endpoints (auth in auth.js, orders in orders/)
+├── models/       # Sequelize models (User, Product, Order)
+├── services/     # Stripe (payments/), SendGrid (email/)
+├── client/       # React app (components/, pages/, hooks/)
+└── shared/       # Types and constants used by both API and client
 ```
 
-## Architecture Overview
-[Describe how components interact, data flow, key design decisions]
+## Architecture
+RESTful API with JWT auth. React frontend calls API. Background jobs via Bull queue. PostgreSQL with Sequelize ORM.
 
-## Core Components
-### API Layer
-[Details about API structure, authentication, routing]
+## Key Files
+- Entry: `src/index.js` (starts Express server)
+- Config: `src/config/` (env-specific settings)
+- Routes: `src/api/routes.js` (all endpoints defined here)
+- Auth: `src/middleware/auth.js` (JWT validation)
 
-### Data Model
-[Key entities, relationships, database design]
+## Conventions
+- Files named `[entity].service.js` handle business logic
+- All API routes return `{ success: boolean, data?: any, error?: string }`
+- Database migrations in `migrations/` - run before adding models
 
-## Key Workflows
-1. User Authentication Flow
-   [Step-by-step description]
-2. Data Processing Pipeline
-   [How data moves through the system]
-
-[Continue with other sections...]"
-````                    
-
-                    """,
+## Important Notes
+- Payment webhooks MUST be idempotent (check `processedWebhooks` table)
+- User emails are case-insensitive (lowercase in DB)
+- Order status transitions enforced in `Order.beforeUpdate` hook
+````""",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "projectName": {"type": "string", "description": "The name of the project"},
                             "folderPath": {"type": "string", "description": "Absolute path to the project folder on disk"},
-
-                            "overview": {"type": "string", "description": "Comprehensive narrative overview of the codebase (10-30k tokens recommended)"}
+                            "overview": {"type": "string", "description": "Concise codebase overview (aim for 3500-7500 words / 5k-10k tokens)"}
                         },
                         "required": ["projectName", "folderPath", "overview"],
                         "additionalProperties": False

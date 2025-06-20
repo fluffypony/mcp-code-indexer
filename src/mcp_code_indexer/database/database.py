@@ -910,64 +910,7 @@ class DatabaseManager:
             row = await cursor.fetchone()
             return row['count'] if row else 0
     
-    # Upstream inheritance operations
-    
-    async def inherit_from_upstream(self, project: Project, target_branch: str = "main") -> int:
-        """
-        Inherit file descriptions from upstream repository.
-        
-        Args:
-            project: Target project that should inherit descriptions
-            target_branch: Branch to inherit descriptions into
-            
-        Returns:
-            Number of descriptions inherited
-        """
-        if not project.upstream_origin:
-            return 0
-        
-        # Find upstream project
-        upstream_project = await self.find_project_by_origin(project.upstream_origin)
-        if not upstream_project:
-            logger.debug(f"No upstream project found for {project.upstream_origin}")
-            return 0
-        
-        # Get upstream descriptions
-        upstream_descriptions = await self.get_all_file_descriptions(
-            upstream_project.id, target_branch
-        )
-        
-        if not upstream_descriptions:
-            logger.debug(f"No upstream descriptions found in branch {target_branch}")
-            return 0
-        
-        # Get existing descriptions to avoid overwriting
-        existing_descriptions = await self.get_all_file_descriptions(
-            project.id, target_branch
-        )
-        existing_paths = {desc.file_path for desc in existing_descriptions}
-        
-        # Create new descriptions for files that don't exist locally
-        inherited_descriptions = []
-        for upstream_desc in upstream_descriptions:
-            if upstream_desc.file_path not in existing_paths:
-                new_desc = FileDescription(
-                    project_id=project.id,
-                    branch=target_branch,
-                    file_path=upstream_desc.file_path,
-                    description=upstream_desc.description,
-                    file_hash=None,  # Don't copy hash as local file may differ
-                    last_modified=datetime.utcnow(),
-                    version=1,
-                    source_project_id=upstream_project.id  # Track inheritance source
-                )
-                inherited_descriptions.append(new_desc)
-        
-        if inherited_descriptions:
-            await self.batch_create_file_descriptions(inherited_descriptions)
-            logger.info(f"Inherited {len(inherited_descriptions)} descriptions from upstream")
-        
-        return len(inherited_descriptions)
+
     
 
     
