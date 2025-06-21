@@ -32,9 +32,9 @@ async def temp_db() -> AsyncGenerator[Path, None]:
     """Create a temporary database for testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
         db_path = Path(temp_file.name)
-    
+
     yield db_path
-    
+
     # Cleanup
     if db_path.exists():
         db_path.unlink()
@@ -45,9 +45,9 @@ async def db_manager(temp_db: Path) -> AsyncGenerator[DatabaseManager, None]:
     """Create and initialize a database manager for testing."""
     manager = DatabaseManager(temp_db)
     await manager.initialize()
-    
+
     yield manager
-    
+
     # Cleanup
     await manager.close_pool()
 
@@ -58,17 +58,16 @@ async def sample_project(db_manager: DatabaseManager) -> Project:
     project = Project(
         id="test_project_123",
         name="Test Project",
-        aliases=["test-project", "/path/to/project"]
+        aliases=["test-project", "/path/to/project"],
     )
-    
+
     await db_manager.create_project(project)
     return project
 
 
 @pytest_asyncio.fixture
 async def sample_file_descriptions(
-    db_manager: DatabaseManager, 
-    sample_project: Project
+    db_manager: DatabaseManager, sample_project: Project
 ) -> list[FileDescription]:
     """Create sample file descriptions for testing."""
     descriptions = [
@@ -77,38 +76,38 @@ async def sample_file_descriptions(
             file_path="src/main.py",
             description="Main entry point for the application with CLI argument parsing and server initialization.",
             file_hash="abc123",
-            version=1
+            version=1,
         ),
         FileDescription(
             project_id=sample_project.id,
             file_path="src/database/models.py",
             description="Pydantic data models for projects, file descriptions, and search results.",
             file_hash="def456",
-            version=1
+            version=1,
         ),
         FileDescription(
             project_id=sample_project.id,
             file_path="tests/test_main.py",
             description="Unit tests for the main module functionality.",
             file_hash="ghi789",
-            version=1
+            version=1,
         ),
         FileDescription(
             project_id=sample_project.id,
             file_path="src/main_enhanced.py",
             description="Enhanced main entry point with improved CLI interface and extended functionality.",
             file_hash="abc124",
-            version=2
+            version=2,
         ),
         FileDescription(
             project_id=sample_project.id,
             file_path="src/ui/components.py",
             description="UI components for the enhanced interface.",
             file_hash="jkl012",
-            version=1
-        )
+            version=1,
+        ),
     ]
-    
+
     await db_manager.batch_create_file_descriptions(descriptions)
     return descriptions
 
@@ -119,15 +118,12 @@ def token_counter() -> TokenCounter:
     return TokenCounter(token_limit=1000)  # Lower limit for testing
 
 
-
-
-
 @pytest.fixture
 def mock_file_system(tmp_path: Path) -> Path:
     """Create a mock file system structure for testing."""
     project_root = tmp_path / "test_project"
     project_root.mkdir()
-    
+
     # Create some test files
     (project_root / "src").mkdir()
     (project_root / "src" / "main.py").write_text("# Main file")
@@ -136,13 +132,13 @@ def mock_file_system(tmp_path: Path) -> Path:
     (project_root / "tests" / "test_main.py").write_text("# Tests")
     (project_root / "README.md").write_text("# Test Project")
     (project_root / ".gitignore").write_text("__pycache__/\n*.pyc\n")
-    
+
     # Create some ignored files
     (project_root / "__pycache__").mkdir()
     (project_root / "__pycache__" / "main.cpython-39.pyc").write_text("binary")
     (project_root / "node_modules").mkdir()
     (project_root / "node_modules" / "package").mkdir()
-    
+
     return project_root
 
 
@@ -156,24 +152,24 @@ def setup_test_logging():
 
 class MockGitRepository:
     """Mock git repository for testing."""
-    
+
     def __init__(self, project_root: Path):
         self.project_root = project_root
         self.remotes = {
             "origin": "https://github.com/test/repo.git",
-            "upstream": "https://github.com/upstream/repo.git"
+            "upstream": "https://github.com/upstream/repo.git",
         }
         self.current_branch = "main"
         self.branches = ["main", "develop", "feature/new-ui"]
-    
+
     def get_remote_url(self, remote_name: str = "origin") -> str:
         """Get remote URL for a given remote name."""
         return self.remotes.get(remote_name, "")
-    
+
     def get_current_branch(self) -> str:
         """Get the current branch name."""
         return self.current_branch
-    
+
     def list_branches(self) -> list[str]:
         """List all branches."""
         return self.branches.copy()
@@ -187,20 +183,23 @@ def mock_git_repo(mock_file_system: Path) -> MockGitRepository:
 
 # Performance testing fixtures
 
+
 @pytest.fixture
 def large_file_descriptions(sample_project: Project) -> list[FileDescription]:
     """Generate a large number of file descriptions for performance testing."""
     descriptions = []
-    
+
     for i in range(1000):
-        descriptions.append(FileDescription(
-            project_id=sample_project.id,
-            file_path=f"src/module_{i:03d}.py",
-            description=f"Module {i} containing utility functions and classes for feature set {i // 100}.",
-            file_hash=f"hash_{i:03d}",
-            version=1
-        ))
-    
+        descriptions.append(
+            FileDescription(
+                project_id=sample_project.id,
+                file_path=f"src/module_{i:03d}.py",
+                description=f"Module {i} containing utility functions and classes for feature set {i // 100}.",
+                file_hash=f"hash_{i:03d}",
+                version=1,
+            )
+        )
+
     return descriptions
 
 
@@ -210,13 +209,16 @@ def performance_markers():
     return {
         "slow": pytest.mark.slow,
         "performance": pytest.mark.performance,
-        "integration": pytest.mark.integration
+        "integration": pytest.mark.integration,
     }
 
 
 # Helper functions for tests
 
-def assert_file_description_equal(actual: FileDescription, expected: FileDescription) -> None:
+
+def assert_file_description_equal(
+    actual: FileDescription, expected: FileDescription
+) -> None:
     """Assert that two file descriptions are equal (ignoring timestamps)."""
     assert actual.project_id == expected.project_id
     assert actual.file_path == expected.file_path
@@ -230,7 +232,7 @@ def create_test_file_description(
     project_id: str = "test_project",
     file_path: str = "test.py",
     description: str = "Test file",
-    file_hash: str = "test_hash"
+    file_hash: str = "test_hash",
 ) -> FileDescription:
     """Create a test file description with default values."""
     return FileDescription(
@@ -238,29 +240,30 @@ def create_test_file_description(
         file_path=file_path,
         description=description,
         file_hash=file_hash,
-        version=1
+        version=1,
     )
 
 
 # Async context managers for testing
 
+
 class AsyncTestContext:
     """Context manager for async test setup and teardown."""
-    
+
     def __init__(self):
         self.resources = []
-    
+
     async def __aenter__(self):
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         # Cleanup resources in reverse order
         for resource in reversed(self.resources):
-            if hasattr(resource, 'close'):
+            if hasattr(resource, "close"):
                 await resource.close()
-            elif hasattr(resource, 'cleanup'):
+            elif hasattr(resource, "cleanup"):
                 await resource.cleanup()
-    
+
     def add_resource(self, resource):
         """Add a resource to be cleaned up."""
         self.resources.append(resource)

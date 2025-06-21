@@ -6,6 +6,7 @@ intelligent codebase navigation through searchable file descriptions,
 token-aware overviews, and advanced merge capabilities.
 """
 
+
 def _get_version() -> str:
     """Get version from package metadata or pyproject.toml."""
     # First try to get version from installed package metadata
@@ -15,7 +16,7 @@ def _get_version() -> str:
         except ImportError:
             # Python < 3.8 fallback
             from importlib_metadata import version
-        
+
         # Try different package name variations
         for pkg_name in ["mcp-code-indexer", "mcp_code_indexer"]:
             try:
@@ -24,12 +25,12 @@ def _get_version() -> str:
                 continue
     except Exception:
         pass
-    
+
     # Fallback to reading from pyproject.toml (for development)
     try:
         from pathlib import Path
         import sys
-        
+
         if sys.version_info >= (3, 11):
             import tomllib
         else:
@@ -37,13 +38,14 @@ def _get_version() -> str:
                 import tomli as tomllib
             except ImportError:
                 return "dev"
-        
+
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
         return data["project"]["version"]
     except Exception:
         return "dev"
+
 
 __version__ = _get_version()
 __author__ = "MCP Code Indexer Contributors"

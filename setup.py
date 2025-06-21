@@ -8,6 +8,7 @@ import sys
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
+
 # Read version from pyproject.toml
 def get_version():
     try:
@@ -15,13 +16,14 @@ def get_version():
             import tomllib
         else:
             import tomli as tomllib
-        
+
         with open(this_directory / "pyproject.toml", "rb") as f:
             data = tomllib.load(f)
         return data["project"]["version"]
     except Exception as e:
         # Fail hard if version reading fails
         raise RuntimeError(f"Could not read version from pyproject.toml: {e}")
+
 
 setup(
     name="mcp-code-indexer",
@@ -34,7 +36,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "tiktoken>=0.9.0",
-        "mcp>=1.9.0", 
+        "mcp>=1.9.0",
         "gitignore_parser==0.1.11",
         "pydantic>=2.8.0",
         "aiofiles==23.2.0",
