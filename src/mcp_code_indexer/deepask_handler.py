@@ -77,7 +77,8 @@ class DeepAskHandler(ClaudeAPIHandler):
         self, project_info: Dict[str, str], question: str, max_file_results: int = 10
     ) -> Dict[str, Any]:
         """
-        Ask an enhanced question about the project using two-stage Claude API processing.
+        Ask an enhanced question about the project using two-stage Claude API 
+        processing.
 
         Args:
             project_info: Project information dict with projectName, folderPath, etc.
@@ -89,7 +90,8 @@ class DeepAskHandler(ClaudeAPIHandler):
         """
         try:
             self.logger.info(
-                f"Processing deepask question for project: {project_info['projectName']}"
+                f"Processing deepask question for project: "
+                f"{project_info['projectName']}"
             )
             self.logger.info(f"Question: {question}")
 
@@ -240,7 +242,10 @@ class DeepAskHandler(ClaudeAPIHandler):
                     f"Project '{project_info['projectName']}' not found in database"
                 )
                 return {
-                    "answer": f"Project '{project_info['projectName']}' not found in database. Please check the project name.",
+                    "answer": (
+                        f"Project '{project_info['projectName']}' not found in "
+                        f"database. Please check the project name."
+                    ),
                     "relevant_files": [],
                     "total_files_found": 0,
                     "token_usage": {
@@ -340,7 +345,9 @@ class DeepAskHandler(ClaudeAPIHandler):
         """Build stage 1 prompt for extracting search terms."""
         project_name = project_info["projectName"]
 
-        return f"""I need to answer a question about the codebase "{project_name}". To provide the best answer, I need to search for relevant files and then answer the question.
+        return f"""I need to answer a question about the codebase "{project_name}". 
+To provide the best answer, I need to search for relevant files and then answer 
+the question.
 
 PROJECT OVERVIEW:
 {overview}
@@ -350,8 +357,10 @@ QUESTION:
 
 Please analyze the question and project overview, then provide:
 
-1. A list of 3-5 search terms that would help find relevant files to answer this question
-2. A compressed version of the project overview (2-3 sentences max) that captures the most relevant information for this question
+1. A list of 3-5 search terms that would help find relevant files to answer 
+   this question
+2. A compressed version of the project overview (2-3 sentences max) that 
+   captures the most relevant information for this question
 
 Respond with valid JSON in this format:
 {{
@@ -419,7 +428,8 @@ Always respond with valid JSON matching the requested format."""
 
     def _get_stage2_system_prompt(self) -> str:
         """Get system prompt for stage 2."""
-        return """You are a software engineering expert that provides detailed answers about codebases using available context.
+        return """You are a software engineering expert that provides detailed 
+answers about codebases using available context.
 
 When answering:
 1. Use the compressed project overview for high-level context

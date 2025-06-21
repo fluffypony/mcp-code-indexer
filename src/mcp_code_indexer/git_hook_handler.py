@@ -115,7 +115,8 @@ class GitHookHandler:
             # Get git info from current directory
             project_info = await self._identify_project_from_git()
             self.logger.info(
-                f"Project identified: {project_info.get('name', 'Unknown')} at {project_info.get('folderPath', 'Unknown')}"
+                f"Project identified: {project_info.get('name', 'Unknown')} "
+                f"at {project_info.get('folderPath', 'Unknown')}"
             )
 
             # Get git diff and commit message based on mode
@@ -196,7 +197,8 @@ class GitHookHandler:
         changed_files: List[str],
     ) -> Dict[str, Any]:
         """
-        Smart staging: Try single-stage first, fall back to two-stage if token limit exceeded.
+        Smart staging: Try single-stage first, fall back to two-stage if 
+        token limit exceeded.
 
         Args:
             git_diff: Git diff content
@@ -234,7 +236,8 @@ class GitHookHandler:
         else:
             # Fall back to two-stage approach
             self.logger.info(
-                f"Single-stage prompt too large ({prompt_tokens} tokens), falling back to two-stage analysis"
+                f"Single-stage prompt too large ({prompt_tokens} tokens), "
+                f"falling back to two-stage analysis"
             )
 
             # Stage 1: Check if overview needs updating
@@ -284,7 +287,8 @@ class GitHookHandler:
             if path in changed_files
         }
 
-        return f"""Analyze this git commit and update both the project overview (if needed) and file descriptions.
+        return f"""Analyze this git commit and update both the project overview 
+(if needed) and file descriptions.
 
 COMMIT MESSAGE:
 {commit_message or "No commit message available"}
@@ -303,18 +307,24 @@ GIT DIFF:
 
 INSTRUCTIONS:
 
-1. OVERVIEW UPDATE: Update project overview ONLY if there are major structural changes like:
-   - New major features or components (indicated by commit message or new directories)
+1. OVERVIEW UPDATE: Update project overview ONLY if there are major 
+   structural changes like:
+   - New major features or components (indicated by commit message or new 
+     directories)
    - Architectural changes (new patterns, frameworks, or approaches)
-   - Significant dependency additions (Cargo.toml, package.json, requirements.txt changes)
+   - Significant dependency additions (Cargo.toml, package.json, 
+     requirements.txt changes)
    - New API endpoints or workflows
    - Changes to build/deployment processes
 
    Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
 
-   If updating, provide comprehensive narrative (10-20 pages of text) with directory structure, architecture, components, and workflows.
+   If updating, provide comprehensive narrative (10-20 pages of text) with 
+   directory structure, architecture, components, and workflows.
 
-2. FILE UPDATES: Update descriptions for files that have changed significantly. Consider both the diff content and commit message context. Only include files that need actual description updates.
+2. FILE UPDATES: Update descriptions for files that have changed 
+   significantly. Consider both the diff content and commit message context. 
+   Only include files that need actual description updates.
 
 Return ONLY a JSON object:
 {{
@@ -485,7 +495,10 @@ Return ONLY a JSON object:
             # Clean up and format the messages
             messages = message_result.strip()
             if messages:
-                return f"Combined commit messages for range {start_hash}..{end_hash}:\n\n{messages}"
+                return (
+                    f"Combined commit messages for range "
+                    f"{start_hash}..{end_hash}:\n\n{messages}"
+                )
             else:
                 return f"No commits found in range {start_hash}..{end_hash}"
 
@@ -579,7 +592,8 @@ Return ONLY a JSON object:
         """
         self.logger.info("Stage 1: Analyzing overview updates...")
 
-        prompt = f"""Analyze this git commit to determine if the project overview needs updating.
+        prompt = f"""Analyze this git commit to determine if the project overview 
+needs updating.
 
 COMMIT MESSAGE:
 {commit_message or "No commit message available"}
@@ -598,13 +612,15 @@ INSTRUCTIONS:
 Update project overview ONLY if there are major structural changes like:
 - New major features or components (indicated by commit message or new directories)
 - Architectural changes (new patterns, frameworks, or approaches)
-- Significant dependency additions (Cargo.toml, package.json, requirements.txt changes)
+- Significant dependency additions (Cargo.toml, package.json, 
+  requirements.txt changes)
 - New API endpoints or workflows
 - Changes to build/deployment processes
 
 Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
 
-If updating, provide comprehensive narrative (10-20 pages of text) with directory structure, architecture, components, and workflows.
+If updating, provide comprehensive narrative (10-20 pages of text) with 
+directory structure, architecture, components, and workflows.
 
 Return ONLY a JSON object:
 {{
@@ -617,7 +633,8 @@ Return ONLY a JSON object:
 
         if prompt_tokens > self.config["max_diff_tokens"]:
             self.logger.warning(
-                f"Stage 1 prompt too large ({prompt_tokens} tokens), skipping overview analysis"
+                f"Stage 1 prompt too large ({prompt_tokens} tokens), "
+                f"skipping overview analysis"
             )
             return {"overview_update": None}
 
@@ -655,7 +672,8 @@ Return ONLY a JSON object:
             if path in changed_files
         }
 
-        prompt = f"""Analyze this git commit and update file descriptions for changed files.
+        prompt = f"""Analyze this git commit and update file descriptions for 
+changed files.
 
 COMMIT MESSAGE:
 {commit_message or "No commit message available"}
@@ -673,7 +691,9 @@ INSTRUCTIONS:
 
 Use the COMMIT MESSAGE to understand the intent and context of the changes.
 
-Update descriptions for files that have changed significantly. Consider both the diff content and commit message context. Only include files that need actual description updates.
+Update descriptions for files that have changed significantly. Consider both the 
+diff content and commit message context. Only include files that need actual 
+description updates.
 
 Return ONLY a JSON object:
 {{
@@ -689,7 +709,8 @@ Return ONLY a JSON object:
 
         if prompt_tokens > self.config["max_diff_tokens"]:
             self.logger.warning(
-                f"Stage 2 prompt too large ({prompt_tokens} tokens), skipping file analysis"
+                f"Stage 2 prompt too large ({prompt_tokens} tokens), "
+                f"skipping file analysis"
             )
             return {"file_updates": {}}
 
@@ -726,7 +747,11 @@ Return ONLY a JSON object:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a technical assistant that analyzes code changes and updates file descriptions accurately and concisely.",
+                    "content": (
+                        "You are a technical assistant that analyzes code "
+                        "changes and updates file descriptions accurately "
+                        "and concisely."
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
