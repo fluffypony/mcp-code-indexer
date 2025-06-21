@@ -226,7 +226,8 @@ class MCPCodeIndexServer:
                 logger.error(f"JSON repair failed. Original: {json_str}")
                 logger.error(f"Repaired attempt: {repaired}")
                 raise ValueError(
-                    f"Could not parse JSON even after repair attempts. Original error: {original_error}, Repair error: {repair_error}"
+                    f"Could not parse JSON even after repair attempts. "
+                    f"Original error: {original_error}, Repair error: {repair_error}"
                 )
 
     async def initialize(self) -> None:
@@ -243,7 +244,11 @@ class MCPCodeIndexServer:
             return [
                 types.Tool(
                     name="get_file_description",
-                    description="Retrieves the stored description for a specific file in a codebase. Use this to quickly understand what a file contains without reading its full contents.",
+                    description=(
+                        "Retrieves the stored description for a specific file in a "
+                        "codebase. Use this to quickly understand what a file "
+                        "contains without reading its full contents."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -253,11 +258,15 @@ class MCPCodeIndexServer:
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "filePath": {
                                 "type": "string",
-                                "description": "Relative path to the file from project root",
+                                "description": (
+                                    "Relative path to the file from project root"
+                                ),
                             },
                         },
                         "required": ["projectName", "folderPath", "filePath"],
@@ -266,7 +275,10 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="update_file_description",
-                    description="Creates or updates the description for a file. Use this after analyzing a file's contents to store a detailed summary.",
+                    description=(
+                        "Creates or updates the description for a file. Use this "
+                        "after analyzing a file's contents to store a detailed summary."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -276,19 +288,27 @@ class MCPCodeIndexServer:
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "filePath": {
                                 "type": "string",
-                                "description": "Relative path to the file from project root",
+                                "description": (
+                                    "Relative path to the file from project root"
+                                ),
                             },
                             "description": {
                                 "type": "string",
-                                "description": "Detailed description of the file's contents",
+                                "description": (
+                                    "Detailed description of the file's contents"
+                                ),
                             },
                             "fileHash": {
                                 "type": "string",
-                                "description": "SHA-256 hash of the file contents (optional)",
+                                "description": (
+                                    "SHA-256 hash of the file contents (optional)"
+                                ),
                             },
                         },
                         "required": [
@@ -302,7 +322,11 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="check_codebase_size",
-                    description="Checks the total token count of a codebase's file structure and descriptions. Returns whether the codebase is 'large' and recommends using search instead of the full overview.",
+                    description=(
+                        "Checks the total token count of a codebase's file structure "
+                        "and descriptions. Returns whether the codebase is 'large' "
+                        "and recommends using search instead of the full overview."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -312,11 +336,16 @@ class MCPCodeIndexServer:
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "tokenLimit": {
                                 "type": "integer",
-                                "description": "Optional token limit override (defaults to server configuration)",
+                                "description": (
+                                    "Optional token limit override "
+                                    "(defaults to server configuration)"
+                                ),
                             },
                         },
                         "required": ["projectName", "folderPath"],
@@ -325,7 +354,11 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="find_missing_descriptions",
-                    description="Scans the project folder to find files that don't have descriptions yet. Use update_file_description to add descriptions for individual files.",
+                    description=(
+                        "Scans the project folder to find files that don't have "
+                        "descriptions yet. Use update_file_description to add "
+                        "descriptions for individual files."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -335,11 +368,16 @@ class MCPCodeIndexServer:
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "limit": {
                                 "type": "integer",
-                                "description": "Maximum number of missing files to return (optional)",
+                                "description": (
+                                    "Maximum number of missing files to return "
+                                    "(optional)"
+                                ),
                             },
                         },
                         "required": ["projectName", "folderPath"],
@@ -348,7 +386,16 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="search_descriptions",
-                    description="Searches through all file descriptions in a project to find files related to specific functionality. Use this for large codebases instead of loading the entire structure. Always start with the fewest terms possible (1 to 3 words AT MOST); if the tool returns a lot of results (more than 20) or the results are not relevant, then narrow it down by increasing the number of search words one at a time and calling the tool again. Start VERY broad, then narrow the focus only if needed!",
+                    description=(
+                        "Searches through all file descriptions in a project to find "
+                        "files related to specific functionality. Use this for large "
+                        "codebases instead of loading the entire structure. Always "
+                        "start with the fewest terms possible (1 to 3 words AT MOST); "
+                        "if the tool returns a lot of results (more than 20) or the "
+                        "results are not relevant, then narrow it down by increasing "
+                        "the number of search words one at a time and calling the tool "
+                        "again. Start VERY broad, then narrow the focus only if needed!"
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -358,11 +405,16 @@ class MCPCodeIndexServer:
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "query": {
                                 "type": "string",
-                                "description": "Search query (e.g., 'authentication middleware', 'database models')",
+                                "description": (
+                                    "Search query (e.g., 'authentication middleware', "
+                                    "'database models')"
+                                ),
                             },
                             "maxResults": {
                                 "type": "integer",
@@ -376,7 +428,12 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="get_all_descriptions",
-                    description="Returns the complete file-by-file structure of a codebase with individual descriptions for each file. For large codebases, consider using get_codebase_overview for a condensed summary instead.",
+                    description=(
+                        "Returns the complete file-by-file structure of a codebase "
+                        "with individual descriptions for each file. For large "
+                        "codebases, consider using get_codebase_overview for a "
+                        "condensed summary instead."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -386,7 +443,9 @@ class MCPCodeIndexServer:
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                         },
                         "required": ["projectName", "folderPath"],
@@ -395,7 +454,15 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="get_codebase_overview",
-                    description="Returns a condensed, interpretive overview of the entire codebase. This is a single comprehensive narrative that captures the architecture, key components, relationships, and design patterns. Unlike get_all_descriptions which lists every file, this provides a holistic view suitable for understanding the codebase's structure and purpose. If no overview exists, returns empty string.",
+                    description=(
+                        "Returns a condensed, interpretive overview of the entire "
+                        "codebase. This is a single comprehensive narrative that "
+                        "captures the architecture, key components, relationships, "
+                        "and design patterns. Unlike get_all_descriptions which "
+                        "lists every file, this provides a holistic view suitable "
+                        "for understanding the codebase's structure and purpose. "
+                        "If no overview exists, returns empty string."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -405,7 +472,9 @@ class MCPCodeIndexServer:
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                         },
                         "required": ["projectName", "folderPath"],
@@ -414,43 +483,65 @@ class MCPCodeIndexServer:
                 ),
                 types.Tool(
                     name="update_codebase_overview",
-                    description="""Creates a concise codebase overview for AI agents. Focus on essential navigation and context in 3500-7000 words. Include: (1) One-paragraph system summary - what it does and its core purpose, (2) Directory tree with one-line descriptions for each major folder, (3) Key architectural patterns (e.g., MVC, microservices, event-driven) in 2-3 sentences, (4) Critical file locations (entry points, config, main business logic), (5) Essential conventions (naming, file organization, error handling), (6) Important gotchas or non-obvious connections. Keep it scannable and action-oriented.
-
-Example:
-
-````
-## System Summary
-E-commerce platform handling product catalog, orders, and payments with React frontend and Node.js API.
-
-## Directory Structure
-```
-src/
-├── api/          # REST endpoints (auth in auth.js, orders in orders/)
-├── models/       # Sequelize models (User, Product, Order)
-├── services/     # Stripe (payments/), SendGrid (email/)
-├── client/       # React app (components/, pages/, hooks/)
-└── shared/       # Types and constants used by both API and client
-```
-
-## Architecture
-RESTful API with JWT auth. React frontend calls API. Background jobs via Bull queue. PostgreSQL with Sequelize ORM.
-
-## Key Files
-- Entry: `src/index.js` (starts Express server)
-- Config: `src/config/` (env-specific settings)
-- Routes: `src/api/routes.js` (all endpoints defined here)
-- Auth: `src/middleware/auth.js` (JWT validation)
-
-## Conventions
-- Files named `[entity].service.js` handle business logic
-- All API routes return `{ success: boolean, data?: any, error?: string }`
-- Database migrations in `migrations/` - run before adding models
-
-## Important Notes
-- Payment webhooks MUST be idempotent (check `processedWebhooks` table)
-- User emails are case-insensitive (lowercase in DB)
-- Order status transitions enforced in `Order.beforeUpdate` hook
-````""",
+                    description=(
+                        "Creates a concise codebase overview for AI agents. Focus on "
+                        "essential navigation and context in 3500-7000 words. Include: "
+                        "(1) One-paragraph system summary - what it does and its core "
+                        "purpose, (2) Directory tree with one-line descriptions for "
+                        "each major folder, (3) Key architectural patterns (e.g., MVC, "
+                        "microservices, event-driven) in 2-3 sentences, (4) Critical "
+                        "file locations (entry points, config, main business logic), "
+                        "(5) Essential conventions (naming, file organization, error "
+                        "handling), (6) Important gotchas or non-obvious connections. "
+                        "Keep it scannable and action-oriented.\n\n"
+                        "Example:\n\n"
+                        "````\n"
+                        "## System Summary\n"
+                        "E-commerce platform handling product catalog, orders, "
+                        "and payments with React frontend and Node.js API.\n\n"
+                        "## Directory Structure\n"
+                        "```\n"
+                        "src/\n"
+                        "├── api/          # REST endpoints "
+                        "(auth in auth.js, orders in orders/)\n"
+                        "├── models/       # Sequelize models "
+                        "(User, Product, Order)\n"
+                        "├── services/     # Stripe (payments/), "
+                        "SendGrid (email/)\n"
+                        "├── client/       # React app "
+                        "(components/, pages/, hooks/)\n"
+                        "└── shared/       # Types and constants used "
+                        "by both API and client\n"
+                        "```\n\n"
+                        "## Architecture\n"
+                        "RESTful API with JWT auth. React frontend calls API. "
+                        "Background jobs via Bull queue. PostgreSQL with "
+                        "Sequelize ORM.\n\n"
+                        "## Key Files\n"
+                        "- Entry: `src/index.js` "
+                        "(starts Express server)\n"
+                        "- Config: `src/config/` "
+                        "(env-specific settings)\n"
+                        "- Routes: `src/api/routes.js` "
+                        "(all endpoints defined here)\n"
+                        "- Auth: `src/middleware/auth.js` "
+                        "(JWT validation)\n\n"
+                        "## Conventions\n"
+                        "- Files named `[entity].service.js` "
+                        "handle business logic\n"
+                        "- All API routes return "
+                        "`{ success: boolean, data?: any, error?: string }`\n"
+                        "- Database migrations in `migrations/` - "
+                        "run before adding models\n\n"
+                        "## Important Notes\n"
+                        "- Payment webhooks MUST be idempotent "
+                        "(check `processedWebhooks` table)\n"
+                        "- User emails are case-insensitive "
+                        "(lowercase in DB)\n"
+                        "- Order status transitions enforced in "
+                        "`Order.beforeUpdate` hook\n"
+                        "````"
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -460,11 +551,16 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "overview": {
                                 "type": "string",
-                                "description": "Concise codebase overview (aim for 3500-7500 words / 5k-10k tokens)",
+                                "description": (
+                                    "Concise codebase overview "
+                                    "(aim for 3500-7500 words / 5k-10k tokens)"
+                                ),
                             },
                         },
                         "required": ["projectName", "folderPath", "overview"],
@@ -473,7 +569,13 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                 ),
                 types.Tool(
                     name="get_word_frequency",
-                    description="Analyzes all file descriptions to find the most frequently used technical terms. Filters out common English stop words and symbols, returning the top 200 meaningful terms. Useful for understanding the codebase's domain vocabulary and finding all functions/files related to specific concepts.",
+                    description=(
+                        "Analyzes all file descriptions to find the most frequently "
+                        "used technical terms. Filters out common English stop words "
+                        "and symbols, returning the top 200 meaningful terms. Useful "
+                        "for understanding the codebase's domain vocabulary and "
+                        "finding all functions/files related to specific concepts."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -483,7 +585,9 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "limit": {
                                 "type": "integer",
@@ -497,7 +601,13 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                 ),
                 types.Tool(
                     name="check_database_health",
-                    description="Perform health diagnostics for the MCP Code Indexer's SQLite database and connection pool. Returns database resilience metrics, connection pool status, WAL mode performance, and file description storage statistics for monitoring the code indexer's database locking improvements.",
+                    description=(
+                        "Perform health diagnostics for the MCP Code Indexer's SQLite "
+                        "database and connection pool. Returns database resilience "
+                        "metrics, connection pool status, WAL mode performance, and "
+                        "file description storage statistics for monitoring the code "
+                        "indexer's database locking improvements."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {},
@@ -506,7 +616,11 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                 ),
                 types.Tool(
                     name="search_codebase_overview",
-                    description="Search for a single word in the codebase overview and return 2 sentences before and after where the word is found. Useful for quickly finding specific information in large overviews.",
+                    description=(
+                        "Search for a single word in the codebase overview and return "
+                        "2 sentences before and after where the word is found. Useful "
+                        "for quickly finding specific information in large overviews."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -516,11 +630,15 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                             },
                             "folderPath": {
                                 "type": "string",
-                                "description": "Absolute path to the project folder on disk",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
                             },
                             "searchWord": {
                                 "type": "string",
-                                "description": "Single word to search for in the overview",
+                                "description": (
+                                    "Single word to search for in the overview"
+                                ),
                             },
                         },
                         "required": ["projectName", "folderPath", "searchWord"],
@@ -671,14 +789,16 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                     best_score = score
                     best_match = project
                     logger.info(
-                        f"Match for project {project.name} (score: {score}, factors: {match_factors})"
+                        f"Match for project {project.name} "
+                        f"(score: {score}, factors: {match_factors})"
                     )
 
             # If only name matches, check file similarity for potential matches
             elif score == 1 and "name" in match_factors:
                 if await self._check_file_similarity(project, folder_path):
                     logger.info(
-                        f"File similarity match for project {project.name} (factor: {match_factors[0]})"
+                        f"File similarity match for project {project.name} "
+                        f"(factor: {match_factors[0]})"
                     )
                     if score > best_score:
                         best_score = score
@@ -688,7 +808,8 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
 
     async def _check_file_similarity(self, project: Project, folder_path: str) -> bool:
         """
-        Check if the files in the folder are similar to files already indexed for this project.
+        Check if the files in the folder are similar to files already indexed
+        for this project.
         Returns True if 80%+ of files match.
         """
         try:
@@ -715,7 +836,8 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
             similarity = len(intersection) / len(current_basenames)
 
             logger.debug(
-                f"File similarity for {project.name}: {similarity:.2%} ({len(intersection)}/{len(current_basenames)} files match)"
+                f"File similarity for {project.name}: {similarity:.2%} "
+                f"({len(intersection)}/{len(current_basenames)} files match)"
             )
 
             return similarity >= 0.8
@@ -861,10 +983,13 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
         recommendation = "use_search" if is_large else "use_overview"
 
         logger.info(
-            f"Codebase analysis complete: {total_tokens} tokens total ({descriptions_tokens} descriptions + {overview_tokens} overview), {len(file_descriptions)} files"
+            f"Codebase analysis complete: {total_tokens} tokens total "
+            f"({descriptions_tokens} descriptions + {overview_tokens} overview), "
+            f"{len(file_descriptions)} files"
         )
         logger.info(
-            f"Size assessment: {'LARGE' if is_large else 'SMALL'} (limit: {token_limit})"
+            f"Size assessment: {'LARGE' if is_large else 'SMALL'} "
+            f"(limit: {token_limit})"
         )
         logger.info(f"Recommendation: {recommendation}")
 
@@ -885,7 +1010,8 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
     ) -> Dict[str, Any]:
         """Handle find_missing_descriptions tool calls."""
         logger.info(
-            f"Finding missing descriptions for: {arguments.get('projectName', 'Unknown')}"
+            f"Finding missing descriptions for: "
+            f"{arguments.get('projectName', 'Unknown')}"
         )
         logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
 
@@ -978,9 +1104,12 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
 
         # Calculate total tokens
         total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
-        is_large = self.token_counter.is_large_codebase(total_tokens)
+        is_large = self.token_counter.is_large_codebase(
+            total_tokens
+        )
 
-        # Always build and return the folder structure - if the AI called this tool, it wants the overview
+        # Always build and return the folder structure - if the AI called this
+        # tool, it wants the overview
         structure = self._build_folder_structure(file_descriptions)
 
         return {
@@ -1289,7 +1418,8 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                     await asyncio.sleep(delay)
                 else:
                     logger.error(
-                        "Max retries exceeded for validation errors. Server will continue but this session failed."
+                        "Max retries exceeded for validation errors. Server will "
+                        "continue but this session failed."
                     )
                     return
 
@@ -1307,7 +1437,8 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                 ) and "ValidationError" in str(e):
                     # This is likely a ValidationError wrapped in a TaskGroup exception
                     logger.warning(
-                        f"Detected wrapped validation error (attempt {attempt + 1}): {e}",
+                        f"Detected wrapped validation error "
+                        f"(attempt {attempt + 1}): {e}",
                         extra={
                             "structured_data": {
                                 "error_type": type(e).__name__,
@@ -1325,7 +1456,8 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                         await asyncio.sleep(delay)
                     else:
                         logger.error(
-                            "Max retries exceeded for validation errors. Server will continue but this session failed."
+                            "Max retries exceeded for validation errors. Server will "
+                            "continue but this session failed."
                         )
                         return
                 else:
@@ -1383,11 +1515,15 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
 
                 if is_validation_error:
                     logger.warning(
-                        f"Detected validation error in session (attempt {attempt + 1}): Malformed client request",
+                        f"Detected validation error in session "
+                        f"(attempt {attempt + 1}): Malformed client request",
                         extra={
                             "structured_data": {
                                 "error_type": "ValidationError",
-                                "error_message": "Client sent malformed request (likely missing clientInfo)",
+                                "error_message": (
+                                    "Client sent malformed request "
+                                    "(likely missing clientInfo)"
+                                ),
                                 "attempt": attempt + 1,
                                 "max_retries": max_retries,
                                 "will_retry": attempt < max_retries,
@@ -1404,7 +1540,8 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
                         continue
                     else:
                         logger.warning(
-                            "Max retries exceeded for validation errors. Server is robust against malformed requests."
+                            "Max retries exceeded for validation errors. Server is "
+                            "robust against malformed requests."
                         )
                         return
                 else:

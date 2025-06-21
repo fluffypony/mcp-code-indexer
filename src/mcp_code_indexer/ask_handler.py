@@ -90,8 +90,9 @@ class AskHandler(ClaudeAPIHandler):
             # Validate token limits
             if not self.validate_token_limit(prompt):
                 raise AskError(
-                    f"Question and project context exceed token limit of {self.config.token_limit}. "
-                    "Please ask a more specific question or use --deepask for enhanced search."
+                    f"Question and project context exceed token limit of "
+                    f"{self.config.token_limit}. Please ask a more specific "
+                    "question or use --deepask for enhanced search."
                 )
 
             # Get token counts for reporting
@@ -100,7 +101,8 @@ class AskHandler(ClaudeAPIHandler):
             total_prompt_tokens = self.get_token_count(prompt)
 
             self.logger.info(
-                f"Token usage: overview={overview_tokens}, question={question_tokens}, total={total_prompt_tokens}"
+                f"Token usage: overview={overview_tokens}, "
+                f"question={question_tokens}, total={total_prompt_tokens}"
             )
 
             # Call Claude API
@@ -161,40 +163,46 @@ class AskHandler(ClaudeAPIHandler):
         project_name = project_info["projectName"]
 
         if overview.strip():
-            prompt = f"""Please answer the following question about the codebase "{project_name}".
-
-PROJECT OVERVIEW:
-{overview}
-
-QUESTION:
-{question}
-
-Please provide a clear, detailed answer based on the project overview above. If the overview doesn't contain enough information to fully answer the question, please say so and suggest what additional information might be needed."""
+            prompt = (
+                f'Please answer the following question about the codebase '
+                f'"{project_name}".\n\n'
+                f'PROJECT OVERVIEW:\n{overview}\n\n'
+                f'QUESTION:\n{question}\n\n'
+                f'Please provide a clear, detailed answer based on the project '
+                f'overview above. If the overview doesn\'t contain enough '
+                f'information to fully answer the question, please say so and '
+                f'suggest what additional information might be needed.'
+            )
         else:
-            prompt = f"""Please answer the following question about the codebase "{project_name}".
-
-Note: No project overview is available for this codebase.
-
-QUESTION:
-{question}
-
-Please provide the best answer you can based on the project name and general software development knowledge. If you need more specific information about this codebase to provide a complete answer, please mention what would be helpful."""
+            prompt = (
+                f'Please answer the following question about the codebase '
+                f'"{project_name}".\n\n'
+                f'Note: No project overview is available for this codebase.\n\n'
+                f'QUESTION:\n{question}\n\n'
+                f'Please provide the best answer you can based on the project '
+                f'name and general software development knowledge. If you need '
+                f'more specific information about this codebase to provide a '
+                f'complete answer, please mention what would be helpful.'
+            )
 
         return prompt
 
     def _get_system_prompt(self) -> str:
         """Get system prompt for Claude API."""
-        return """You are a helpful software engineering assistant that analyzes codebases and answers questions about them.
-
-When answering questions:
-1. Be specific and technical when appropriate
-2. Reference the project overview when available
-3. If information is missing, clearly state what you don't know
-4. Provide actionable suggestions when possible
-5. Use clear, professional language
-6. Focus on the specific question asked
-
-If the project overview is insufficient to answer the question completely, explain what additional information would be needed and suggest using --deepask for more detailed analysis."""
+        return (
+            "You are a helpful software engineering assistant that analyzes "
+            "codebases and answers questions about them.\n\n"
+            "When answering questions:\n"
+            "1. Be specific and technical when appropriate\n"
+            "2. Reference the project overview when available\n"
+            "3. If information is missing, clearly state what you don't know\n"
+            "4. Provide actionable suggestions when possible\n"
+            "5. Use clear, professional language\n"
+            "6. Focus on the specific question asked\n\n"
+            "If the project overview is insufficient to answer the question "
+            "completely, explain what additional information would be needed "
+            "and suggest using --deepask for more detailed analysis."
+        )
 
     def format_response(self, result: Dict[str, Any], format_type: str = "text") -> str:
         """

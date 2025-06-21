@@ -22,7 +22,6 @@ from src.mcp_code_indexer.database.retry_executor import (
 )
 
 
-
 class TestRetryConfig:
     """Test retry configuration."""
 
@@ -230,7 +229,9 @@ class TestRetryExecutor:
 
         # Check that most operations succeeded
         successful_results = [r for r in results if isinstance(r, str)]
-        _ = [r for r in results if isinstance(r, Exception)]  # failed_results for potential future use
+        _ = [
+            r for r in results if isinstance(r, Exception)
+        ]  # failed_results for potential future use
 
         assert len(successful_results) >= 6  # Most should succeed
         assert all("result_" in result for result in successful_results)

@@ -88,7 +88,9 @@ class DatabaseLockError(Exception):
         self.retry_count = retry_count
         self.operation_name = operation_name
         self.last_attempt = last_attempt or datetime.now(timezone.utc)
-        super().__init__(f"{operation_name}: {message} (after {retry_count} attempts)")
+        super().__init__(
+            f"{operation_name}: {message} (after {retry_count} attempts)"
+        )
 
 
 class RetryExecutor:
@@ -171,7 +173,10 @@ class RetryExecutor:
                             operation_had_retries = True
                         self._stats.total_retry_time += operation_time
                         logger.info(
-                            f"Operation '{operation_name}' succeeded after {attempt_count} attempts",
+                            (
+                                f"Operation '{operation_name}' succeeded after "
+                                f"{attempt_count} attempts"
+                            ),
                             extra={
                                 "structured_data": {
                                     "retry_success": {
@@ -195,7 +200,10 @@ class RetryExecutor:
 
             original_error = e.last_attempt.exception()
             logger.error(
-                f"Operation '{operation_name}' failed after {attempt_count} attempts",
+                (
+                    f"Operation '{operation_name}' failed after "
+                    f"{attempt_count} attempts"
+                ),
                 extra={
                     "structured_data": {
                         "retry_exhausted": {
@@ -209,7 +217,10 @@ class RetryExecutor:
             )
 
             raise DatabaseLockError(
-                f"Database operation failed after {attempt_count} attempts: {original_error}",
+                (
+                    f"Database operation failed after {attempt_count} attempts: "
+                    f"{original_error}"
+                ),
                 retry_count=attempt_count,
                 operation_name=operation_name,
                 last_attempt=datetime.now(timezone.utc),
@@ -239,17 +250,21 @@ class RetryExecutor:
     @asynccontextmanager
     async def get_connection_with_retry(
         self,
-        connection_factory: Callable[[], AsyncIterator[aiosqlite.Connection]],
+        connection_factory: Callable[
+            [], AsyncIterator[aiosqlite.Connection]
+        ],
         operation_name: str = "database_connection",
     ) -> AsyncIterator[aiosqlite.Connection]:
         """
         Get a database connection with retry logic wrapped around the context manager.
 
-        This method properly separates retry logic from resource management by
-        retrying the entire context manager operation, not yielding inside a retry loop.
+        This method properly separates retry logic from resource management
+        by retrying the entire context manager operation, not yielding inside
+        a retry loop.
 
         Args:
-            connection_factory: Function that returns an async context manager for connections
+            connection_factory: Function that returns an async context manager
+                for connections
             operation_name: Name for logging and statistics
 
         Yields:
@@ -264,7 +279,9 @@ class RetryExecutor:
 
         # Use execute_with_retry to handle the retry logic
         # We create a connection and store it for the context manager
-        connection = await self.execute_with_retry(get_connection, operation_name)
+        connection = await self.execute_with_retry(
+            get_connection, operation_name
+        )
 
         try:
             yield connection

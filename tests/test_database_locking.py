@@ -19,7 +19,6 @@ from src.mcp_code_indexer.database.database import DatabaseManager
 from src.mcp_code_indexer.database.models import Project, FileDescription
 
 
-
 class TestDatabaseLocking:
     """Test database locking resilience and concurrent access."""
 

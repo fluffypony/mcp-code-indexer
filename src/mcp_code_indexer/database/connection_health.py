@@ -79,7 +79,10 @@ class ConnectionHealthMonitor:
         self._is_monitoring = True
         self._monitoring_task = asyncio.create_task(self._monitoring_loop())
         logger.info(
-            f"Started database health monitoring with {self.check_interval}s interval",
+            (
+                f"Started database health monitoring with "
+                f"{self.check_interval}s interval"
+            ),
             extra={
                 "structured_data": {
                     "health_monitoring": {
@@ -167,7 +170,9 @@ class ConnectionHealthMonitor:
             return HealthCheckResult(
                 is_healthy=False,
                 response_time_ms=(time.time() - start_time) * 1000,
-                error_message=f"Health check timeout after {self.timeout_seconds}s",
+                error_message=(
+                    f"Health check timeout after {self.timeout_seconds}s"
+                ),
             )
 
         except Exception as e:
@@ -206,12 +211,17 @@ class ConnectionHealthMonitor:
 
         # Trim history if it exceeds max size
         if len(self._health_history) > self._max_history_size:
-            self._health_history = self._health_history[-self._max_history_size :]
+            self._health_history = self._health_history[
+                -self._max_history_size :
+            ]
 
     async def _handle_persistent_failures(self) -> None:
         """Handle persistent health check failures by refreshing pool."""
         logger.warning(
-            f"Detected {self.metrics.consecutive_failures} consecutive failures, refreshing connection pool",
+            (
+                f"Detected {self.metrics.consecutive_failures} consecutive "
+                f"failures, refreshing connection pool"
+            ),
             extra={
                 "structured_data": {
                     "pool_refresh": {
@@ -232,10 +242,13 @@ class ConnectionHealthMonitor:
             # Perform immediate health check after refresh
             health_result = await self.check_health()
             if health_result.is_healthy:
-                logger.info("Connection pool refresh successful, health check passed")
+                logger.info(
+                    "Connection pool refresh successful, health check passed"
+                )
             else:
                 logger.error(
-                    f"Connection pool refresh failed, health check error: {health_result.error_message}"
+                    f"Connection pool refresh failed, health check error: "
+                    f"{health_result.error_message}"
                 )
 
         except Exception as e:
@@ -250,7 +263,10 @@ class ConnectionHealthMonitor:
         )
 
         logger.info(
-            f"Health monitoring summary: {success_rate:.1f}% success rate over {self.metrics.total_checks} checks",
+            (
+                f"Health monitoring summary: {success_rate:.1f}% success rate "
+                f"over {self.metrics.total_checks} checks"
+            ),
             extra={
                 "structured_data": {
                     "health_summary": {
@@ -287,7 +303,9 @@ class ConnectionHealthMonitor:
         health_status = {
             "is_monitoring": self._is_monitoring,
             "current_status": {
-                "is_healthy": (recent_checks[-1].is_healthy if recent_checks else True),
+                "is_healthy": (
+                    recent_checks[-1].is_healthy if recent_checks else True
+                ),
                 "consecutive_failures": self.metrics.consecutive_failures,
                 "recent_success_rate_percent": recent_success_rate,
             },
@@ -321,10 +339,15 @@ class ConnectionHealthMonitor:
         }
 
         # Include retry executor statistics if available
-        if include_retry_stats and hasattr(self.database_manager, "_retry_executor"):
+        if (
+            include_retry_stats
+            and hasattr(self.database_manager, "_retry_executor")
+        ):
             retry_executor = self.database_manager._retry_executor
             if retry_executor:
-                health_status["retry_statistics"] = retry_executor.get_retry_stats()
+                health_status["retry_statistics"] = (
+                    retry_executor.get_retry_stats()
+                )
 
         # Include database-level statistics if available
         if hasattr(self.database_manager, "get_database_stats"):
@@ -377,19 +400,25 @@ class ConnectionHealthMonitor:
             "performance_analysis": {
                 "health_check_performance": {
                     "avg_response_time_ms": self.metrics.avg_response_time_ms,
-                    "response_time_threshold_exceeded": self.metrics.avg_response_time_ms
-                    > 100,
+                    "response_time_threshold_exceeded": (
+                        self.metrics.avg_response_time_ms > 100
+                    ),
                     "recent_performance_trend": self._get_performance_trend(),
                 },
                 "failure_analysis": {
                     "failure_rate_percent": (
-                        (self.metrics.failed_checks / self.metrics.total_checks * 100)
+                        (
+                            self.metrics.failed_checks
+                            / self.metrics.total_checks
+                            * 100
+                        )
                         if self.metrics.total_checks > 0
                         else 0
                     ),
                     "consecutive_failures": self.metrics.consecutive_failures,
                     "approaching_failure_threshold": (
-                        self.metrics.consecutive_failures >= self.failure_threshold - 1
+                        self.metrics.consecutive_failures
+                        >= self.failure_threshold - 1
                     ),
                     "pool_refresh_frequency": self.metrics.pool_refreshes,
                 },
@@ -441,7 +470,9 @@ class ConnectionHealthMonitor:
         failure_penalty = min(self.metrics.consecutive_failures * 10, 50)
 
         # Penalize high response times
-        response_penalty = min(max(0, self.metrics.avg_response_time_ms - 50) / 10, 20)
+        response_penalty = min(
+            max(0, self.metrics.avg_response_time_ms - 50) / 10, 20
+        )
 
         # Calculate final score
         score = success_rate - failure_penalty - response_penalty
@@ -498,13 +529,20 @@ class ConnectionHealthMonitor:
             ) * 100
             if failure_rate > 20:
                 recommendations.append(
-                    f"High failure rate ({failure_rate:.1f}%) - check database configuration"
+                    (
+                        f"High failure rate ({failure_rate:.1f}%) - "
+                        f"check database configuration"
+                    )
                 )
 
         # High response times
         if self.metrics.avg_response_time_ms > 100:
             recommendations.append(
-                f"High response times ({self.metrics.avg_response_time_ms:.1f}ms) - consider optimizing queries"
+                (
+                    f"High response times "
+                    f"({self.metrics.avg_response_time_ms:.1f}ms) - "
+                    f"consider optimizing queries"
+                )
             )
 
         # Approaching failure threshold
@@ -516,7 +554,10 @@ class ConnectionHealthMonitor:
         # Frequent pool refreshes
         if self.metrics.pool_refreshes > 3:
             recommendations.append(
-                "Frequent pool refreshes detected - investigate underlying connection issues"
+                (
+                    "Frequent pool refreshes detected - investigate "
+                    "underlying connection issues"
+                )
             )
 
         # No recent successful checks
@@ -526,7 +567,10 @@ class ConnectionHealthMonitor:
             > timedelta(minutes=5)
         ):
             recommendations.append(
-                "No successful health checks in last 5 minutes - database may be unavailable"
+                (
+                    "No successful health checks in last 5 minutes - "
+                    "database may be unavailable"
+                )
             )
 
         if not recommendations:

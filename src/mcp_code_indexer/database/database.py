@@ -71,9 +71,7 @@ class DatabaseManager:
         self.retry_jitter = retry_jitter
         self._connection_pool: List[aiosqlite.Connection] = []
         self._pool_lock = None  # Will be initialized in async context
-        self._write_lock = (
-            None  # Write serialization lock, initialized in async context
-        )
+        self._write_lock = None  # Write serialization lock, async context
 
         # Retry and recovery components - configure with provided settings
         self._retry_executor = create_retry_executor(
@@ -154,7 +152,9 @@ class DatabaseManager:
             for migration_file in migration_files:
                 migration_name = migration_file.name
                 if migration_name in applied_migrations:
-                    logger.info(f"Skipping already applied migration: {migration_name}")
+                    logger.info(
+                        f"Skipping already applied migration: {migration_name}"
+                    )
                     continue
 
                 logger.info(f"Applying migration: {migration_name}")
@@ -174,25 +174,35 @@ class DatabaseManager:
                         (migration_name,),
                     )
                     await db.commit()
-                    logger.info(f"Successfully applied migration: {migration_name}")
+                    logger.info(
+                        f"Successfully applied migration: {migration_name}"
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to apply migration {migration_name}: {e}")
+                    logger.error(
+                        f"Failed to apply migration {migration_name}: {e}"
+                    )
                     await db.rollback()
                     raise
 
         logger.info(
-            f"Database initialized at {self.db_path} with {len(migration_files)} total migrations"
+            (
+                f"Database initialized at {self.db_path} with "
+                f"{len(migration_files)} total migrations"
+            )
         )
 
     async def _configure_database_optimizations(
-        self, db: aiosqlite.Connection, include_wal_mode: bool = True
+        self,
+        db: aiosqlite.Connection,
+        include_wal_mode: bool = True,
     ) -> None:
         """
         Configure SQLite optimizations for concurrent access and performance.
 
         Args:
             db: Database connection to configure
-            include_wal_mode: Whether to set WAL mode (only needed once per database)
+            include_wal_mode: Whether to set WAL mode (only needed once per
+                database)
         """
         optimizations = []
 
@@ -208,7 +218,7 @@ class DatabaseManager:
                 "PRAGMA cache_size = -64000",  # 64MB cache
                 "PRAGMA temp_store = MEMORY",  # Use memory for temp tables
                 "PRAGMA mmap_size = 268435456",  # 256MB memory mapping
-                "PRAGMA busy_timeout = 10000",  # 10 second timeout (reduced from 30s)
+                "PRAGMA busy_timeout = 10000",  # 10s timeout (reduced from 30s)
                 "PRAGMA optimize",  # Enable query planner optimizations
             ]
         )
@@ -229,7 +239,8 @@ class DatabaseManager:
         await db.commit()
         if include_wal_mode:
             logger.info(
-                "Database optimizations configured for concurrent access with WAL mode"
+                "Database optimizations configured for concurrent access "
+                "with WAL mode"
             )
         else:
             logger.debug("Connection optimizations applied")
@@ -250,15 +261,20 @@ class DatabaseManager:
             conn = await aiosqlite.connect(self.db_path)
             conn.row_factory = aiosqlite.Row
 
-            # Apply connection-level optimizations (WAL mode already set during initialization)
-            await self._configure_database_optimizations(conn, include_wal_mode=False)
+            # Apply connection-level optimizations (WAL mode set during init)
+            await self._configure_database_optimizations(
+                conn, include_wal_mode=False
+            )
 
         try:
             yield conn
         finally:
             # Return to pool if pool not full, otherwise close
             returned_to_pool = False
-            if self._pool_lock and len(self._connection_pool) < self.pool_size:
+            if (
+                self._pool_lock
+                and len(self._connection_pool) < self.pool_size
+            ):
                 async with self._pool_lock:
                     if len(self._connection_pool) < self.pool_size:
                         self._connection_pool.append(conn)
@@ -285,8 +301,9 @@ class DatabaseManager:
         """
         Get a database connection with write serialization.
 
-        This ensures only one write operation occurs at a time across the entire
-        application, preventing database locking issues in multi-client scenarios.
+        This ensures only one write operation occurs at a time across the
+        entire application, preventing database locking issues in
+        multi-client scenarios.
         """
         if self._write_lock is None:
             raise RuntimeError(
@@ -302,13 +319,16 @@ class DatabaseManager:
         self, operation_name: str = "write_operation"
     ) -> AsyncIterator[aiosqlite.Connection]:
         """
-        Get a database connection with write serialization and automatic retry logic.
+        Get a database connection with write serialization and automatic
+        retry logic.
 
-        This uses the new RetryExecutor to properly handle retry logic without
-        the broken yield-in-retry-loop pattern that caused generator errors.
+        This uses the new RetryExecutor to properly handle retry logic
+        without the broken yield-in-retry-loop pattern that caused
+        generator errors.
 
         Args:
-            operation_name: Name of the operation for logging and monitoring
+            operation_name: Name of the operation for logging and
+                monitoring
         """
         if self._write_lock is None:
             raise RuntimeError(
@@ -316,7 +336,7 @@ class DatabaseManager:
             )
 
         async def get_write_connection():
-            """Inner function to get connection - will be retried by executor."""
+            """Inner function to get connection - retried by executor."""
             async with self._write_lock:
                 async with self.get_connection() as conn:
                     return conn
@@ -343,7 +363,10 @@ class DatabaseManager:
             # Classify and wrap other exceptions
             classified_error = classify_sqlite_error(e, operation_name)
             logger.error(
-                f"Database operation '{operation_name}' failed: {classified_error.message}",
+                (
+                    f"Database operation '{operation_name}' failed: "
+                    f"{classified_error.message}"
+                ),
                 extra={"structured_data": classified_error.to_dict()},
             )
             raise classified_error
@@ -353,7 +376,8 @@ class DatabaseManager:
         Get database performance and reliability statistics.
 
         Returns:
-            Dictionary with retry stats, recovery stats, health status, and metrics
+            Dictionary with retry stats, recovery stats, health status,
+            and metrics
         """
         stats = {
             "connection_pool": {
@@ -361,18 +385,26 @@ class DatabaseManager:
                 "current_size": len(self._connection_pool),
             },
             "retry_executor": (
-                self._retry_executor.get_retry_stats() if self._retry_executor else {}
+                self._retry_executor.get_retry_stats()
+                if self._retry_executor
+                else {}
             ),
         }
 
         # Legacy retry handler removed - retry executor stats are included above
 
         if self._health_monitor:
-            stats["health_status"] = self._health_monitor.get_health_status()
+            stats["health_status"] = (
+                self._health_monitor.get_health_status()
+            )
 
         if self._metrics_collector:
-            stats["operation_metrics"] = self._metrics_collector.get_operation_metrics()
-            stats["locking_frequency"] = self._metrics_collector.get_locking_frequency()
+            stats["operation_metrics"] = (
+                self._metrics_collector.get_operation_metrics()
+            )
+            stats["locking_frequency"] = (
+                self._metrics_collector.get_locking_frequency()
+            )
 
         return stats
 
@@ -407,16 +439,19 @@ class DatabaseManager:
         timeout_seconds: float = 10.0,
     ) -> AsyncIterator[aiosqlite.Connection]:
         """
-        Get a database connection with BEGIN IMMEDIATE transaction and timeout.
+        Get a database connection with BEGIN IMMEDIATE transaction and
+        timeout.
 
-        This ensures write locks are acquired immediately, preventing lock escalation
-        failures that can occur with DEFERRED transactions.
+        This ensures write locks are acquired immediately, preventing lock
+        escalation failures that can occur with DEFERRED transactions.
 
         Args:
             operation_name: Name of the operation for monitoring
             timeout_seconds: Transaction timeout in seconds
         """
-        async with self.get_write_connection_with_retry(operation_name) as conn:
+        async with self.get_write_connection_with_retry(
+            operation_name
+        ) as conn:
             try:
                 # Start immediate transaction with timeout
                 async with asyncio.timeout(timeout_seconds):
@@ -425,7 +460,10 @@ class DatabaseManager:
                     await conn.commit()
             except asyncio.TimeoutError:
                 logger.warning(
-                    f"Transaction timeout after {timeout_seconds}s for {operation_name}",
+                    (
+                        f"Transaction timeout after {timeout_seconds}s for "
+                        f"{operation_name}"
+                    ),
                     extra={
                         "structured_data": {
                             "transaction_timeout": {
@@ -450,15 +488,18 @@ class DatabaseManager:
         timeout_seconds: float = 10.0,
     ) -> Any:
         """
-        Execute a database operation within a transaction with automatic retry.
+        Execute a database operation within a transaction with automatic
+        retry.
 
-        Uses the new RetryExecutor for robust retry handling with proper error
-        classification and exponential backoff.
+        Uses the new RetryExecutor for robust retry handling with proper
+        error classification and exponential backoff.
 
         Args:
-            operation_func: Async function that takes a connection and performs the operation
+            operation_func: Async function that takes a connection and
+                performs the operation
             operation_name: Name of the operation for logging
-            max_retries: Maximum retry attempts (overrides default retry executor config)
+            max_retries: Maximum retry attempts (overrides default retry
+                executor config)
             timeout_seconds: Transaction timeout in seconds
 
         Returns:
@@ -469,11 +510,13 @@ class DatabaseManager:
                 await conn.execute("INSERT INTO ...", (...))
                 return "success"
 
-            result = await db.execute_transaction_with_retry(my_operation, "insert_data")
+            result = await db.execute_transaction_with_retry(
+                my_operation, "insert_data"
+            )
         """
 
         async def execute_transaction():
-            """Inner function to execute transaction - will be retried by executor."""
+            """Inner function to execute transaction - retried by executor."""
             try:
                 async with self.get_immediate_transaction(
                     operation_name, timeout_seconds
@@ -494,7 +537,9 @@ class DatabaseManager:
             except (aiosqlite.OperationalError, asyncio.TimeoutError) as e:
                 # Record locking event for metrics
                 if self._metrics_collector and "locked" in str(e).lower():
-                    self._metrics_collector.record_locking_event(operation_name, str(e))
+                    self._metrics_collector.record_locking_event(
+                        operation_name, str(e)
+                    )
 
                 # Classify the error for better handling
                 classified_error = classify_sqlite_error(e, operation_name)
