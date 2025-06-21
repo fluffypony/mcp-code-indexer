@@ -84,7 +84,7 @@ class TestMCPServerIntegration:
         # Add some file descriptions
         project_name = "size-test"
         folder_path = "/tmp/size-test"
-        
+
         # Add individual file descriptions
         for i, desc in enumerate(["First file", "Second file", "Third file"], 1):
             update_args = {
@@ -97,7 +97,11 @@ class TestMCPServerIntegration:
             await mcp_server._handle_update_file_description(update_args)
 
         # Check size - use the current project directory for test
-        size_args = {"projectName": project_name, "folderPath": folder_path, "tokenLimit": 1000}
+        size_args = {
+            "projectName": project_name,
+            "folderPath": folder_path,
+            "tokenLimit": 1000,
+        }
 
         result = await mcp_server._handle_check_codebase_size(size_args)
 
@@ -135,7 +139,15 @@ class TestMCPServerIntegration:
             ],
         }
 
-        await mcp_server._handle_update_missing_descriptions(descriptions_args)
+        # Add files individually instead of using non-existent method
+        for file_data in descriptions_args["descriptions"]:
+            update_args = {
+                "projectName": descriptions_args["projectName"],
+                "folderPath": descriptions_args["folderPath"],
+                "filePath": file_data["filePath"],
+                "description": file_data["description"],
+            }
+            await mcp_server._handle_update_file_description(update_args)
 
         # Search for authentication
         search_args = {
@@ -291,7 +303,15 @@ class TestMCPServerIntegration:
             ],
         }
 
-        await mcp_server._handle_update_missing_descriptions(descriptions_args)
+        # Add files individually
+        for file_data in descriptions_args["descriptions"]:
+            update_args = {
+                "projectName": descriptions_args["projectName"],
+                "folderPath": descriptions_args["folderPath"],
+                "filePath": file_data["filePath"],
+                "description": file_data["description"],
+            }
+            await mcp_server._handle_update_file_description(update_args)
 
         # Get overview
         overview_args = {
@@ -330,7 +350,15 @@ class TestMCPServerIntegration:
             ],
         }
 
-        await mcp_server._handle_update_missing_descriptions(upstream_args)
+        # Add upstream files individually
+        for file_data in upstream_args["descriptions"]:
+            update_args = {
+                "projectName": upstream_args["projectName"],
+                "folderPath": upstream_args["folderPath"],
+                "filePath": file_data["filePath"],
+                "description": file_data["description"],
+            }
+            await mcp_server._handle_update_file_description(update_args)
 
         # Create fork project that should inherit
         fork_args = {
@@ -423,7 +451,15 @@ class TestMCPPerformance:
             "descriptions": descriptions,
         }
 
-        await server._handle_update_missing_descriptions(large_args)
+        # Add large files individually
+        for file_data in large_args["descriptions"]:
+            update_args = {
+                "projectName": large_args["projectName"],
+                "folderPath": large_args["folderPath"],
+                "filePath": file_data["filePath"],
+                "description": file_data["description"],
+            }
+            await server._handle_update_file_description(update_args)
 
         yield server
 
@@ -504,7 +540,15 @@ class TestMCPWorkflow:
             ],
         }
 
-        await mcp_server._handle_update_missing_descriptions(initial_files)
+        # Add initial files individually
+        for file_data in initial_files["descriptions"]:
+            update_args = {
+                "projectName": initial_files["projectName"],
+                "folderPath": initial_files["folderPath"],
+                "filePath": file_data["filePath"],
+                "description": file_data["description"],
+            }
+            await mcp_server._handle_update_file_description(update_args)
 
         # 3. Check size after adding files
         size_result = await mcp_server._handle_check_codebase_size(project_args)
@@ -537,7 +581,15 @@ class TestMCPWorkflow:
             ],
         }
 
-        await mcp_server._handle_update_missing_descriptions(feature_files)
+        # Add feature files individually
+        for file_data in feature_files["descriptions"]:
+            update_args = {
+                "projectName": feature_files["projectName"],
+                "folderPath": feature_files["folderPath"],
+                "filePath": file_data["filePath"],
+                "description": file_data["description"],
+            }
+            await mcp_server._handle_update_file_description(update_args)
 
         # 7. Merge feature branch back to main
         merge_result = await mcp_server._handle_merge_branch_descriptions(
