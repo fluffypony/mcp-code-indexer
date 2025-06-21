@@ -762,7 +762,7 @@ class DatabaseManager:
                 """
                 INSERT OR REPLACE INTO file_descriptions
                 (
-                    project_id, file_path, description, file_hash, last_modified, 
+                    project_id, file_path, description, file_hash, last_modified,
                     version, source_project_id, to_be_cleaned
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -865,7 +865,7 @@ class DatabaseManager:
                 """
                 INSERT OR REPLACE INTO file_descriptions
                 (
-                    project_id, file_path, description, file_hash, last_modified, 
+                    project_id, file_path, description, file_hash, last_modified,
                     version, source_project_id, to_be_cleaned
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)

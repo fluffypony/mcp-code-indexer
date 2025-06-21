@@ -287,7 +287,7 @@ class GitHookHandler:
             if path in changed_files
         }
 
-        return f"""Analyze this git commit and update both the project overview 
+        return f"""Analyze this git commit and update both the project overview
 (if needed) and file descriptions.
 
 COMMIT MESSAGE:
@@ -307,23 +307,23 @@ GIT DIFF:
 
 INSTRUCTIONS:
 
-1. OVERVIEW UPDATE: Update project overview ONLY if there are major 
+1. OVERVIEW UPDATE: Update project overview ONLY if there are major
    structural changes like:
-   - New major features or components (indicated by commit message or new 
+   - New major features or components (indicated by commit message or new
      directories)
    - Architectural changes (new patterns, frameworks, or approaches)
-   - Significant dependency additions (Cargo.toml, package.json, 
+   - Significant dependency additions (Cargo.toml, package.json,
      requirements.txt changes)
    - New API endpoints or workflows
    - Changes to build/deployment processes
 
    Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
 
-   If updating, provide comprehensive narrative (10-20 pages of text) with 
+   If updating, provide comprehensive narrative (10-20 pages of text) with
    directory structure, architecture, components, and workflows.
 
-2. FILE UPDATES: Update descriptions for files that have changed 
-   significantly. Consider both the diff content and commit message context. 
+2. FILE UPDATES: Update descriptions for files that have changed
+   significantly. Consider both the diff content and commit message context.
    Only include files that need actual description updates.
 
 Return ONLY a JSON object:
@@ -592,7 +592,7 @@ Return ONLY a JSON object:
         """
         self.logger.info("Stage 1: Analyzing overview updates...")
 
-        prompt = f"""Analyze this git commit to determine if the project overview 
+        prompt = f"""Analyze this git commit to determine if the project overview
 needs updating.
 
 COMMIT MESSAGE:
@@ -612,14 +612,14 @@ INSTRUCTIONS:
 Update project overview ONLY if there are major structural changes like:
 - New major features or components (indicated by commit message or new directories)
 - Architectural changes (new patterns, frameworks, or approaches)
-- Significant dependency additions (Cargo.toml, package.json, 
+- Significant dependency additions (Cargo.toml, package.json,
   requirements.txt changes)
 - New API endpoints or workflows
 - Changes to build/deployment processes
 
 Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
 
-If updating, provide comprehensive narrative (10-20 pages of text) with 
+If updating, provide comprehensive narrative (10-20 pages of text) with
 directory structure, architecture, components, and workflows.
 
 Return ONLY a JSON object:
@@ -672,7 +672,7 @@ Return ONLY a JSON object:
             if path in changed_files
         }
 
-        prompt = f"""Analyze this git commit and update file descriptions for 
+        prompt = f"""Analyze this git commit and update file descriptions for
 changed files.
 
 COMMIT MESSAGE:
@@ -691,8 +691,8 @@ INSTRUCTIONS:
 
 Use the COMMIT MESSAGE to understand the intent and context of the changes.
 
-Update descriptions for files that have changed significantly. Consider both the 
-diff content and commit message context. Only include files that need actual 
+Update descriptions for files that have changed significantly. Consider both the
+diff content and commit message context. Only include files that need actual
 description updates.
 
 Return ONLY a JSON object:

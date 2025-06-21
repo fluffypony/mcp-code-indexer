@@ -182,7 +182,7 @@ class CleanupManager:
                 cursor = await conn.execute(
                     """
                     DELETE FROM file_descriptions
-                    WHERE project_id = ? AND to_be_cleaned IS NOT NULL 
+                    WHERE project_id = ? AND to_be_cleaned IS NOT NULL
                         AND to_be_cleaned < ?
                     """,
                     (project_id, cutoff_timestamp),

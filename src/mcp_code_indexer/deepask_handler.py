@@ -345,8 +345,8 @@ class DeepAskHandler(ClaudeAPIHandler):
         """Build stage 1 prompt for extracting search terms."""
         project_name = project_info["projectName"]
 
-        return f"""I need to answer a question about the codebase "{project_name}". 
-To provide the best answer, I need to search for relevant files and then answer 
+        return f"""I need to answer a question about the codebase "{project_name}".
+To provide the best answer, I need to search for relevant files and then answer
 the question.
 
 PROJECT OVERVIEW:
@@ -357,9 +357,9 @@ QUESTION:
 
 Please analyze the question and project overview, then provide:
 
-1. A list of 3-5 search terms that would help find relevant files to answer 
+1. A list of 3-5 search terms that would help find relevant files to answer
    this question
-2. A compressed version of the project overview (2-3 sentences max) that 
+2. A compressed version of the project overview (2-3 sentences max) that
    captures the most relevant information for this question
 
 Respond with valid JSON in this format:
@@ -403,7 +403,7 @@ Respond with valid JSON in this format:
 
     def _get_stage1_system_prompt(self) -> str:
         """Get system prompt for stage 1."""
-        return """You are a technical assistant that analyzes software projects to 
+        return """You are a technical assistant that analyzes software projects to
 extract relevant search terms and compress information.
 
 Your task:
@@ -425,12 +425,12 @@ Always respond with valid JSON matching the requested format."""
 
     def _get_stage2_system_prompt(self) -> str:
         """Get system prompt for stage 2."""
-        return """You are a software engineering expert that provides detailed 
+        return """You are a software engineering expert that provides detailed
 answers about codebases using available context.
 
 When answering:
 1. Use the compressed project overview for high-level context
-2. Reference specific files from the relevant files list when they 
+2. Reference specific files from the relevant files list when they
    relate to the question
 3. Explain how different files work together if relevant
 4. Be specific and technical when appropriate
