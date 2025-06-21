@@ -389,11 +389,16 @@ PROJECT OVERVIEW (COMPRESSED):
 QUESTION:
 {question}
 
-Please provide a comprehensive answer based on the project overview and relevant file descriptions above. Reference specific files when appropriate and explain how they relate to the question. If the available information is insufficient, clearly state what additional details would be needed."""
+Please provide a comprehensive answer based on the project overview and "
+                "relevant file descriptions above. Reference specific files when "
+                "appropriate and explain how they relate to the question. If the "
+                "available information is insufficient, clearly state what "
+                "additional details would be needed."""
 
     def _get_stage1_system_prompt(self) -> str:
         """Get system prompt for stage 1."""
-        return """You are a technical assistant that analyzes software projects to extract relevant search terms and compress information.
+        return """You are a technical assistant that analyzes software projects to 
+extract relevant search terms and compress information.
 
 Your task:
 1. Analyze the user's question about a codebase
