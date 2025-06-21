@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from src.file_scanner import FileScanner, DEFAULT_IGNORE_PATTERNS, IGNORED_EXTENSIONS
+from src.mcp_code_indexer.file_scanner import FileScanner, DEFAULT_IGNORE_PATTERNS, IGNORED_EXTENSIONS
 
 
 class TestFileScanner:

@@ -12,12 +12,12 @@ from unittest.mock import Mock, patch
 import pytest
 import pytest_asyncio
 
-from src.error_handler import (
+from src.mcp_code_indexer.error_handler import (
     ErrorHandler, MCPError, DatabaseError, ValidationError, FileSystemError,
     ResourceError, ErrorCategory, setup_error_handling, StructuredFormatter
 )
-from src.middleware.error_middleware import ToolMiddleware, AsyncTaskManager
-from src.logging_config import setup_logging, get_logger
+from src.mcp_code_indexer.middleware.error_middleware import ToolMiddleware, AsyncTaskManager
+from src.mcp_code_indexer.logging_config import setup_logging, get_logger
 
 
 class TestMCPErrors:

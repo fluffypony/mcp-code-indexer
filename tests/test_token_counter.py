@@ -8,8 +8,8 @@ for offline operation and token counting accuracy.
 import pytest
 from pathlib import Path
 
-from src.token_counter import TokenCounter, verify_tiktoken_setup
-from src.database.models import FileDescription
+from src.mcp_code_indexer.token_counter import TokenCounter, verify_tiktoken_setup
+from src.mcp_code_indexer.database.models import FileDescription
 
 
 class TestTokenCounter:
