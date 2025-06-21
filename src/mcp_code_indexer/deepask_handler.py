@@ -131,7 +131,7 @@ class DeepAskHandler(ClaudeAPIHandler):
                 },
             }
 
-            self.logger.info(f"DeepAsk question completed successfully")
+            self.logger.info("DeepAsk question completed successfully")
             self.logger.info(f"Search terms: {stage1_result['search_terms']}")
             self.logger.info(f"Files found: {stage2_result['total_files_found']}")
             self.logger.info(f"Files included: {len(stage2_result['relevant_files'])}")
@@ -222,7 +222,7 @@ class DeepAskHandler(ClaudeAPIHandler):
         Returns:
             Dict with answer, relevant_files, total_files_found, and token_usage
         """
-        self.logger.info(f"Stage 2: Searching files and generating enhanced answer")
+        self.logger.info("Stage 2: Searching files and generating enhanced answer")
         self.logger.info(f"Search terms: {search_terms}")
 
         # Search for relevant files
@@ -307,7 +307,7 @@ class DeepAskHandler(ClaudeAPIHandler):
 
             if not self.validate_token_limit(prompt):
                 raise DeepAskError(
-                    f"Stage 2 prompt still exceeds token limit even with reduced context. "
+                    "Stage 2 prompt still exceeds token limit even with reduced context. "
                     "Try a more specific question."
                 )
 

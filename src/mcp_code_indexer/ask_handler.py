@@ -133,7 +133,7 @@ class AskHandler(ClaudeAPIHandler):
                 },
             }
 
-            self.logger.info(f"Ask question completed successfully")
+            self.logger.info("Ask question completed successfully")
             return result
 
         except Exception as e:

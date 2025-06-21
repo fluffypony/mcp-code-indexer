@@ -105,7 +105,7 @@ class GitHookHandler:
         This is the main entry point for git hook functionality.
         """
         try:
-            self.logger.info(f"=== Git Hook Analysis Started ===")
+            self.logger.info("=== Git Hook Analysis Started ===")
             if commit_hash:
                 self.logger.info(f"Mode: Single commit ({commit_hash})")
             elif commit_range:
@@ -113,7 +113,7 @@ class GitHookHandler:
                     f"Mode: Commit range ({commit_range[0]}..{commit_range[1]})"
                 )
             else:
-                self.logger.info(f"Mode: Staged changes")
+                self.logger.info("Mode: Staged changes")
 
             # Get git info from current directory
             project_info = await self._identify_project_from_git()
@@ -138,7 +138,7 @@ class GitHookHandler:
 
             # Log diff details
             if not git_diff:
-                self.logger.info(f"Skipping git hook update - no git diff")
+                self.logger.info("Skipping git hook update - no git diff")
                 return
 
             diff_tokens = self.token_counter.count_tokens(git_diff)
@@ -739,10 +739,10 @@ Return ONLY a JSON object:
 
         timeout = aiohttp.ClientTimeout(total=self.config["timeout"])
 
-        self.logger.info(f"Sending request to OpenRouter API...")
+        self.logger.info("Sending request to OpenRouter API...")
         self.logger.info(f"  Model: {self.config['model']}")
         self.logger.info(f"  Temperature: {self.config['temperature']}")
-        self.logger.info(f"  Max tokens: 24000")
+        self.logger.info("  Max tokens: 24000")
         self.logger.info(f"  Timeout: {self.config['timeout']}s")
 
         try:

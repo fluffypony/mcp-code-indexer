@@ -183,7 +183,7 @@ class ClaudeAPIHandler:
 
         timeout = aiohttp.ClientTimeout(total=self.config.timeout)
 
-        self.logger.info(f"Sending request to Claude API via OpenRouter...")
+        self.logger.info("Sending request to Claude API via OpenRouter...")
         self.logger.info(f"  Model: {self.config.model}")
         self.logger.info(f"  Temperature: {self.config.temperature}")
         self.logger.info(f"  Max tokens: {self.config.max_tokens}")

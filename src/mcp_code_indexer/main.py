@@ -215,7 +215,7 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
                     }
                 },
             )
-            print(f"JSON repaired successfully", file=sys.stderr)
+            print("JSON repaired successfully", file=sys.stderr)
             print(f"Original: {args.runcommand}", file=sys.stderr)
             print(f"Repaired: {repaired}", file=sys.stderr)
         except json.JSONDecodeError as repair_error:
