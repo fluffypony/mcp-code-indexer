@@ -238,7 +238,10 @@ def verify_tiktoken_setup() -> bool:
             return True
         else:
             logger.warning(
-                f"Tiktoken token count mismatch: expected {expected_count}, got {token_count}"
+                (
+                    f"Tiktoken token count mismatch: expected {expected_count}, "
+                    f"got {token_count}"
+                )
             )
             return False
 

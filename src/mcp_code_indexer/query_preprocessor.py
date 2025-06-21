@@ -6,8 +6,10 @@ to enable multi-word search with case insensitive matching, whole word enforceme
 and proper handling of FTS5 operators as literal search terms.
 
 Key features:
-- Multi-word queries: "grpc proto" becomes "grpc" AND "proto" for order-agnostic matching
-- FTS5 operator escaping: "AND OR" becomes '"AND" AND "OR"' to treat operators as literals
+- Multi-word queries: "grpc proto" becomes "grpc" AND "proto" for
+  order-agnostic matching
+- FTS5 operator escaping: "AND OR" becomes '"AND" AND "OR"' to treat
+  operators as literals
 - Whole word matching: prevents partial matches by relying on proper tokenization
 - Case insensitive: leverages FTS5 default behavior
 - Special character handling: preserves special characters in quoted terms

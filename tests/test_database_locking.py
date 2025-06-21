@@ -125,7 +125,8 @@ class TestDatabaseLocking:
             ):
                 await asyncio.sleep(0.2)  # Sleep longer than timeout
 
-    # Retry handler tests removed - comprehensive retry testing is now in test_retry_executor.py
+    # Retry handler tests removed - comprehensive retry testing is now in
+    # test_retry_executor.py
     @pytest.mark.asyncio
     async def test_concurrent_reads_during_write(self, temp_db_manager, sample_project):
         """Test that reads can proceed during writes (WAL mode benefit)."""

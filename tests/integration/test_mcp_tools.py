@@ -105,8 +105,9 @@ class TestMCPServerIntegration:
 
         result = await mcp_server._handle_check_codebase_size(size_args)
 
-        # Note: The actual count might be 0 if cleanup removes files without corresponding filesystem entries
-        # This is expected behavior for check_codebase_size which validates against filesystem
+        # Note: The actual count might be 0 if cleanup removes files without
+        # corresponding filesystem entries. This is expected behavior for
+        # check_codebase_size which validates against filesystem
         assert "totalFiles" in result
         assert "totalTokens" in result
         assert result["tokenLimit"] == 1000
@@ -441,7 +442,9 @@ class TestMCPPerformance:
             descriptions.append(
                 {
                     "filePath": f"src/module_{i:03d}.py",
-                    "description": f"Module {i} with functionality for feature set {i // 50}",
+                    "description": (
+                        f"Module {i} with functionality for feature set {i // 50}"
+                    ),
                 }
             )
 
@@ -616,7 +619,10 @@ class TestMCPWorkflow:
                 "conflictResolutions": [
                     {
                         "conflictId": conflict["conflictId"],
-                        "resolvedDescription": "Main application with enhanced features and new functionality",
+                        "resolvedDescription": (
+                            "Main application with enhanced features "
+                            "and new functionality"
+                        ),
                     }
                 ],
             }

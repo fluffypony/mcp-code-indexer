@@ -27,7 +27,8 @@ class CleanupManager:
 
         Args:
             db_manager: DatabaseManager instance
-            retention_months: Number of months to retain records before permanent deletion
+            retention_months: Number of months to retain records before
+                permanent deletion
         """
         self.db_manager = db_manager
         self.retention_months = retention_months
@@ -164,7 +165,8 @@ class CleanupManager:
         Permanently delete records that exceed the retention period.
 
         Args:
-            project_id: If specified, only clean up this project. Otherwise clean all projects.
+            project_id: If specified, only clean up this project. Otherwise
+                clean all projects.
 
         Returns:
             Number of records permanently deleted
@@ -180,7 +182,8 @@ class CleanupManager:
                 cursor = await conn.execute(
                     """
                     DELETE FROM file_descriptions
-                    WHERE project_id = ? AND to_be_cleaned IS NOT NULL AND to_be_cleaned < ?
+                    WHERE project_id = ? AND to_be_cleaned IS NOT NULL 
+                        AND to_be_cleaned < ?
                     """,
                     (project_id, cutoff_timestamp),
                 )
@@ -230,14 +233,20 @@ class CleanupManager:
 
             # Active files
             cursor = await db.execute(
-                f"SELECT COUNT(*) FROM file_descriptions {base_where} AND to_be_cleaned IS NULL",
+                (
+                    f"SELECT COUNT(*) FROM file_descriptions {base_where} "
+                    "AND to_be_cleaned IS NULL"
+                ),
                 params,
             )
             active_count = (await cursor.fetchone())[0]
 
             # Files marked for cleanup
             cursor = await db.execute(
-                f"SELECT COUNT(*) FROM file_descriptions {base_where} AND to_be_cleaned IS NOT NULL",
+                (
+                    f"SELECT COUNT(*) FROM file_descriptions {base_where} "
+                    "AND to_be_cleaned IS NOT NULL"
+                ),
                 params,
             )
             marked_count = (await cursor.fetchone())[0]
@@ -245,12 +254,18 @@ class CleanupManager:
             # Files eligible for permanent deletion
             if project_id:
                 cursor = await db.execute(
-                    "SELECT COUNT(*) FROM file_descriptions WHERE project_id = ? AND to_be_cleaned IS NOT NULL AND to_be_cleaned < ?",
+                    (
+                        "SELECT COUNT(*) FROM file_descriptions WHERE project_id = ? "
+                        "AND to_be_cleaned IS NOT NULL AND to_be_cleaned < ?"
+                    ),
                     (project_id, cutoff_timestamp),
                 )
             else:
                 cursor = await db.execute(
-                    "SELECT COUNT(*) FROM file_descriptions WHERE to_be_cleaned IS NOT NULL AND to_be_cleaned < ?",
+                    (
+                        "SELECT COUNT(*) FROM file_descriptions WHERE "
+                        "to_be_cleaned IS NOT NULL AND to_be_cleaned < ?"
+                    ),
                     (cutoff_timestamp,),
                 )
             eligible_for_deletion = (await cursor.fetchone())[0]

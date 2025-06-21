@@ -197,7 +197,7 @@ class GitHookHandler:
         changed_files: List[str],
     ) -> Dict[str, Any]:
         """
-        Smart staging: Try single-stage first, fall back to two-stage if 
+        Smart staging: Try single-stage first, fall back to two-stage if
         token limit exceeded.
 
         Args:

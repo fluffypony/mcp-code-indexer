@@ -45,7 +45,10 @@ class TestTokenCounter:
             project_id="test-project",
             branch="main",
             file_path="src/main.py",
-            description="Main entry point for the application with argument parsing and setup.",
+            description=(
+                "Main entry point for the application with argument parsing "
+                "and setup."
+            ),
         )
 
         tokens = counter.count_file_description_tokens(file_desc)

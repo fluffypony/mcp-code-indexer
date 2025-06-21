@@ -88,9 +88,7 @@ class DatabaseLockError(Exception):
         self.retry_count = retry_count
         self.operation_name = operation_name
         self.last_attempt = last_attempt or datetime.now(timezone.utc)
-        super().__init__(
-            f"{operation_name}: {message} (after {retry_count} attempts)"
-        )
+        super().__init__(f"{operation_name}: {message} (after {retry_count} attempts)")
 
 
 class RetryExecutor:
@@ -250,9 +248,7 @@ class RetryExecutor:
     @asynccontextmanager
     async def get_connection_with_retry(
         self,
-        connection_factory: Callable[
-            [], AsyncIterator[aiosqlite.Connection]
-        ],
+        connection_factory: Callable[[], AsyncIterator[aiosqlite.Connection]],
         operation_name: str = "database_connection",
     ) -> AsyncIterator[aiosqlite.Connection]:
         """
@@ -279,9 +275,7 @@ class RetryExecutor:
 
         # Use execute_with_retry to handle the retry logic
         # We create a connection and store it for the context manager
-        connection = await self.execute_with_retry(
-            get_connection, operation_name
-        )
+        connection = await self.execute_with_retry(get_connection, operation_name)
 
         try:
             yield connection

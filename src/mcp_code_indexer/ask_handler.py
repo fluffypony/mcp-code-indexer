@@ -164,25 +164,25 @@ class AskHandler(ClaudeAPIHandler):
 
         if overview.strip():
             prompt = (
-                f'Please answer the following question about the codebase '
+                f"Please answer the following question about the codebase "
                 f'"{project_name}".\n\n'
-                f'PROJECT OVERVIEW:\n{overview}\n\n'
-                f'QUESTION:\n{question}\n\n'
-                f'Please provide a clear, detailed answer based on the project '
-                f'overview above. If the overview doesn\'t contain enough '
-                f'information to fully answer the question, please say so and '
-                f'suggest what additional information might be needed.'
+                f"PROJECT OVERVIEW:\n{overview}\n\n"
+                f"QUESTION:\n{question}\n\n"
+                f"Please provide a clear, detailed answer based on the project "
+                f"overview above. If the overview doesn't contain enough "
+                f"information to fully answer the question, please say so and "
+                f"suggest what additional information might be needed."
             )
         else:
             prompt = (
-                f'Please answer the following question about the codebase '
+                f"Please answer the following question about the codebase "
                 f'"{project_name}".\n\n'
-                f'Note: No project overview is available for this codebase.\n\n'
-                f'QUESTION:\n{question}\n\n'
-                f'Please provide the best answer you can based on the project '
-                f'name and general software development knowledge. If you need '
-                f'more specific information about this codebase to provide a '
-                f'complete answer, please mention what would be helpful.'
+                f"Note: No project overview is available for this codebase.\n\n"
+                f"QUESTION:\n{question}\n\n"
+                f"Please provide the best answer you can based on the project "
+                f"name and general software development knowledge. If you need "
+                f"more specific information about this codebase to provide a "
+                f"complete answer, please mention what would be helpful."
             )
 
         return prompt

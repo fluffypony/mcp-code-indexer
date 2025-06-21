@@ -152,9 +152,7 @@ class DatabaseManager:
             for migration_file in migration_files:
                 migration_name = migration_file.name
                 if migration_name in applied_migrations:
-                    logger.info(
-                        f"Skipping already applied migration: {migration_name}"
-                    )
+                    logger.info(f"Skipping already applied migration: {migration_name}")
                     continue
 
                 logger.info(f"Applying migration: {migration_name}")
@@ -174,13 +172,9 @@ class DatabaseManager:
                         (migration_name,),
                     )
                     await db.commit()
-                    logger.info(
-                        f"Successfully applied migration: {migration_name}"
-                    )
+                    logger.info(f"Successfully applied migration: {migration_name}")
                 except Exception as e:
-                    logger.error(
-                        f"Failed to apply migration {migration_name}: {e}"
-                    )
+                    logger.error(f"Failed to apply migration {migration_name}: {e}")
                     await db.rollback()
                     raise
 
@@ -262,19 +256,14 @@ class DatabaseManager:
             conn.row_factory = aiosqlite.Row
 
             # Apply connection-level optimizations (WAL mode set during init)
-            await self._configure_database_optimizations(
-                conn, include_wal_mode=False
-            )
+            await self._configure_database_optimizations(conn, include_wal_mode=False)
 
         try:
             yield conn
         finally:
             # Return to pool if pool not full, otherwise close
             returned_to_pool = False
-            if (
-                self._pool_lock
-                and len(self._connection_pool) < self.pool_size
-            ):
+            if self._pool_lock and len(self._connection_pool) < self.pool_size:
                 async with self._pool_lock:
                     if len(self._connection_pool) < self.pool_size:
                         self._connection_pool.append(conn)
@@ -385,26 +374,18 @@ class DatabaseManager:
                 "current_size": len(self._connection_pool),
             },
             "retry_executor": (
-                self._retry_executor.get_retry_stats()
-                if self._retry_executor
-                else {}
+                self._retry_executor.get_retry_stats() if self._retry_executor else {}
             ),
         }
 
         # Legacy retry handler removed - retry executor stats are included above
 
         if self._health_monitor:
-            stats["health_status"] = (
-                self._health_monitor.get_health_status()
-            )
+            stats["health_status"] = self._health_monitor.get_health_status()
 
         if self._metrics_collector:
-            stats["operation_metrics"] = (
-                self._metrics_collector.get_operation_metrics()
-            )
-            stats["locking_frequency"] = (
-                self._metrics_collector.get_locking_frequency()
-            )
+            stats["operation_metrics"] = self._metrics_collector.get_operation_metrics()
+            stats["locking_frequency"] = self._metrics_collector.get_locking_frequency()
 
         return stats
 
@@ -449,9 +430,7 @@ class DatabaseManager:
             operation_name: Name of the operation for monitoring
             timeout_seconds: Transaction timeout in seconds
         """
-        async with self.get_write_connection_with_retry(
-            operation_name
-        ) as conn:
+        async with self.get_write_connection_with_retry(operation_name) as conn:
             try:
                 # Start immediate transaction with timeout
                 async with asyncio.timeout(timeout_seconds):
@@ -537,9 +516,7 @@ class DatabaseManager:
             except (aiosqlite.OperationalError, asyncio.TimeoutError) as e:
                 # Record locking event for metrics
                 if self._metrics_collector and "locked" in str(e).lower():
-                    self._metrics_collector.record_locking_event(
-                        operation_name, str(e)
-                    )
+                    self._metrics_collector.record_locking_event(operation_name, str(e))
 
                 # Classify the error for better handling
                 classified_error = classify_sqlite_error(e, operation_name)
@@ -557,7 +534,8 @@ class DatabaseManager:
                 raise classified_error
 
         try:
-            # Create a temporary retry executor with custom max_retries if different from default
+            # Create a temporary retry executor with custom max_retries if different
+            # from default
             if max_retries != self._retry_executor.config.max_attempts:
                 from mcp_code_indexer.database.retry_executor import (
                     RetryConfig,
@@ -668,7 +646,10 @@ class DatabaseManager:
                     best_score = score
                     best_match = project
                     logger.info(
-                        f"Match for project {project.name} (score: {score}, factors: {match_factors})"
+                        (
+                            f"Match for project {project.name} "
+                            f"(score: {score}, factors: {match_factors})"
+                        )
                     )
 
         return best_match
@@ -780,7 +761,10 @@ class DatabaseManager:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO file_descriptions
-                (project_id, file_path, description, file_hash, last_modified, version, source_project_id, to_be_cleaned)
+                (
+                    project_id, file_path, description, file_hash, last_modified, 
+                    version, source_project_id, to_be_cleaned
+                )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -856,7 +840,9 @@ class DatabaseManager:
     async def batch_create_file_descriptions(
         self, file_descriptions: List[FileDescription]
     ) -> None:
-        """Batch create multiple file descriptions efficiently with optimized transactions."""
+        """
+        Batch create multiple file descriptions efficiently with optimized transactions.
+        """
         if not file_descriptions:
             return
 
@@ -878,7 +864,10 @@ class DatabaseManager:
             await conn.executemany(
                 """
                 INSERT OR REPLACE INTO file_descriptions
-                (project_id, file_path, description, file_hash, last_modified, version, source_project_id, to_be_cleaned)
+                (
+                    project_id, file_path, description, file_hash, last_modified, 
+                    version, source_project_id, to_be_cleaned
+                )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 data,
@@ -981,7 +970,10 @@ class DatabaseManager:
         """Get count of files in a project."""
         async with self.get_connection() as db:
             cursor = await db.execute(
-                "SELECT COUNT(*) as count FROM file_descriptions WHERE project_id = ? AND to_be_cleaned IS NULL",
+                (
+                    "SELECT COUNT(*) as count FROM file_descriptions WHERE "
+                    "project_id = ? AND to_be_cleaned IS NULL"
+                ),
                 (project_id,),
             )
             row = await cursor.fetchone()
@@ -1045,7 +1037,10 @@ class DatabaseManager:
         async def cleanup_operation(conn: aiosqlite.Connection) -> List[str]:
             # Get all active file descriptions for this project
             cursor = await conn.execute(
-                "SELECT file_path FROM file_descriptions WHERE project_id = ? AND to_be_cleaned IS NULL",
+                (
+                    "SELECT file_path FROM file_descriptions WHERE "
+                    "project_id = ? AND to_be_cleaned IS NULL"
+                ),
                 (project_id,),
             )
 
@@ -1066,11 +1061,17 @@ class DatabaseManager:
 
                 cleanup_timestamp = int(time.time())
                 await conn.executemany(
-                    "UPDATE file_descriptions SET to_be_cleaned = ? WHERE project_id = ? AND file_path = ?",
+                    (
+                        "UPDATE file_descriptions SET to_be_cleaned = ? WHERE "
+                        "project_id = ? AND file_path = ?"
+                    ),
                     [(cleanup_timestamp, project_id, path) for path in to_remove],
                 )
                 logger.info(
-                    f"Marked {len(to_remove)} missing files for cleanup from {project_id}"
+                    (
+                        f"Marked {len(to_remove)} missing files for cleanup "
+                        f"from {project_id}"
+                    )
                 )
 
             return to_remove
@@ -1153,7 +1154,10 @@ class DatabaseManager:
         async with self.get_connection() as db:
             # Get all descriptions for this project
             cursor = await db.execute(
-                "SELECT description FROM file_descriptions WHERE project_id = ? AND to_be_cleaned IS NULL",
+                (
+                    "SELECT description FROM file_descriptions WHERE "
+                    "project_id = ? AND to_be_cleaned IS NULL"
+                ),
                 (project_id,),
             )
 

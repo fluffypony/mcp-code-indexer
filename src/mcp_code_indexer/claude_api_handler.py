@@ -327,7 +327,10 @@ class ClaudeAPIHandler:
             Formatted error message
         """
         if isinstance(error, ClaudeRateLimitError):
-            return f"Rate limited by Claude API. Please wait {error.retry_after} seconds and try again."
+            return (
+                f"Rate limited by Claude API. Please wait {error.retry_after} "
+                "seconds and try again."
+            )
         elif isinstance(error, ClaudeValidationError):
             return f"Invalid response from Claude API: {str(error)}"
         elif isinstance(error, ClaudeAPIError):

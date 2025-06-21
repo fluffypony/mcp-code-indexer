@@ -31,7 +31,10 @@ def parse_arguments() -> argparse.Namespace:
         "--token-limit",
         type=int,
         default=32000,
-        help="Maximum tokens before recommending search instead of full overview (default: 32000)",
+        help=(
+            "Maximum tokens before recommending search instead of full overview "
+            "(default: 32000)"
+        ),
     )
 
     parser.add_argument(
@@ -73,16 +76,22 @@ def parse_arguments() -> argparse.Namespace:
         "--dumpdescriptions",
         nargs="+",
         metavar=("PROJECT_ID", "BRANCH"),
-        help="Export descriptions for a project. Usage: --dumpdescriptions PROJECT_ID [BRANCH]",
+        help=(
+            "Export descriptions for a project. Usage: "
+            "--dumpdescriptions PROJECT_ID [BRANCH]"
+        ),
     )
 
     parser.add_argument(
         "--githook",
         nargs="*",
         metavar="COMMIT_HASH",
-        help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API. "
-        "Usage: --githook (current changes), --githook HASH (specific commit), "
-        "--githook HASH1 HASH2 (commit range from HASH1 to HASH2)",
+        help=(
+            "Git hook mode: auto-update descriptions based on git diff using "
+            "OpenRouter API. Usage: --githook (current changes), --githook HASH "
+            "(specific commit), --githook HASH1 HASH2 (commit range from "
+            "HASH1 to HASH2)"
+        ),
     )
 
     parser.add_argument(
@@ -95,7 +104,10 @@ def parse_arguments() -> argparse.Namespace:
         "--map",
         type=str,
         metavar="PROJECT_NAME_OR_ID",
-        help="Generate a markdown project map for the specified project (by name or ID)",
+        help=(
+            "Generate a markdown project map for the specified project "
+            "(by name or ID)"
+        ),
     )
 
     return parser.parse_args()
@@ -289,11 +301,13 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
                     },
                 )
                 print(
-                    "Error: Could not auto-detect tool from arguments. Please use full MCP format:",
+                    "Error: Could not auto-detect tool from arguments. "
+                    "Please use full MCP format:",
                     file=sys.stderr,
                 )
                 print(
-                    '{"method": "tools/call", "params": {"name": "TOOL_NAME", "arguments": {...}}}',
+                    '{"method": "tools/call", "params": '
+                    '{"name": "TOOL_NAME", "arguments": {...}}}',
                     file=sys.stderr,
                 )
                 sys.exit(1)

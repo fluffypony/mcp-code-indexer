@@ -74,14 +74,20 @@ async def sample_file_descriptions(
         FileDescription(
             project_id=sample_project.id,
             file_path="src/main.py",
-            description="Main entry point for the application with CLI argument parsing and server initialization.",
+            description=(
+                "Main entry point for the application with CLI argument "
+                "parsing and server initialization."
+            ),
             file_hash="abc123",
             version=1,
         ),
         FileDescription(
             project_id=sample_project.id,
             file_path="src/database/models.py",
-            description="Pydantic data models for projects, file descriptions, and search results.",
+            description=(
+                "Pydantic data models for projects, file descriptions, "
+                "and search results."
+            ),
             file_hash="def456",
             version=1,
         ),
@@ -95,7 +101,10 @@ async def sample_file_descriptions(
         FileDescription(
             project_id=sample_project.id,
             file_path="src/main_enhanced.py",
-            description="Enhanced main entry point with improved CLI interface and extended functionality.",
+            description=(
+                "Enhanced main entry point with improved CLI interface "
+                "and extended functionality."
+            ),
             file_hash="abc124",
             version=2,
         ),
@@ -185,7 +194,9 @@ def mock_git_repo(mock_file_system: Path) -> MockGitRepository:
 
 
 @pytest.fixture
-def large_file_descriptions(sample_project: Project) -> list[FileDescription]:
+def large_file_descriptions(
+    sample_project: Project,
+) -> list[FileDescription]:
     """Generate a large number of file descriptions for performance testing."""
     descriptions = []
 
@@ -194,7 +205,10 @@ def large_file_descriptions(sample_project: Project) -> list[FileDescription]:
             FileDescription(
                 project_id=sample_project.id,
                 file_path=f"src/module_{i:03d}.py",
-                description=f"Module {i} containing utility functions and classes for feature set {i // 100}.",
+                description=(
+                    f"Module {i} containing utility functions and classes "
+                    f"for feature set {i // 100}."
+                ),
                 file_hash=f"hash_{i:03d}",
                 version=1,
             )

@@ -77,7 +77,7 @@ class DeepAskHandler(ClaudeAPIHandler):
         self, project_info: Dict[str, str], question: str, max_file_results: int = 10
     ) -> Dict[str, Any]:
         """
-        Ask an enhanced question about the project using two-stage Claude API 
+        Ask an enhanced question about the project using two-stage Claude API
         processing.
 
         Args:
@@ -312,8 +312,8 @@ class DeepAskHandler(ClaudeAPIHandler):
 
             if not self.validate_token_limit(prompt):
                 raise DeepAskError(
-                    "Stage 2 prompt still exceeds token limit even with reduced context. "
-                    "Try a more specific question."
+                    "Stage 2 prompt still exceeds token limit even with reduced "
+                    "context. Try a more specific question."
                 )
 
             relevant_files = reduced_files
@@ -389,20 +389,17 @@ Respond with valid JSON in this format:
         else:
             file_context = "\n\nNo relevant files found in the search."
 
-        return f"""Please answer the following question about the codebase "{project_name}".
-
-PROJECT OVERVIEW (COMPRESSED):
-{compressed_overview}
-{file_context}
-
-QUESTION:
-{question}
-
-Please provide a comprehensive answer based on the project overview and "
-                "relevant file descriptions above. Reference specific files when "
-                "appropriate and explain how they relate to the question. If the "
-                "available information is insufficient, clearly state what "
-                "additional details would be needed."""
+        return (
+            f"Please answer the following question about the codebase "
+            f'"{project_name}".\n\n'
+            f"PROJECT OVERVIEW (COMPRESSED):\n{compressed_overview}\n{file_context}\n\n"
+            f"QUESTION:\n{question}\n\n"
+            "Please provide a comprehensive answer based on the project overview and "
+            "relevant file descriptions above. Reference specific files when "
+            "appropriate and explain how they relate to the question. If the "
+            "available information is insufficient, clearly state what "
+            "additional details would be needed."
+        )
 
     def _get_stage1_system_prompt(self) -> str:
         """Get system prompt for stage 1."""
@@ -433,7 +430,8 @@ answers about codebases using available context.
 
 When answering:
 1. Use the compressed project overview for high-level context
-2. Reference specific files from the relevant files list when they relate to the question
+2. Reference specific files from the relevant files list when they 
+   relate to the question
 3. Explain how different files work together if relevant
 4. Be specific and technical when appropriate
 5. If information is incomplete, clearly state what's missing and suggest next steps
@@ -492,7 +490,10 @@ Your answer should be comprehensive but focused on the specific question asked."
         stage2_tokens = metadata["stage2_tokens"]["total_tokens"]
         if stage1_tokens and stage2_tokens:
             output.append(
-                f"  Total tokens: {stage1_tokens + stage2_tokens} (Stage 1: {stage1_tokens}, Stage 2: {stage2_tokens})"
+                (
+                    f"  Total tokens: {stage1_tokens + stage2_tokens} "
+                    f"(Stage 1: {stage1_tokens}, Stage 2: {stage2_tokens})"
+                )
             )
 
         return "\n".join(output)

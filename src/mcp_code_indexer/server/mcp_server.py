@@ -1104,9 +1104,7 @@ class MCPCodeIndexServer:
 
         # Calculate total tokens
         total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
-        is_large = self.token_counter.is_large_codebase(
-            total_tokens
-        )
+        is_large = self.token_counter.is_large_codebase(total_tokens)
 
         # Always build and return the folder structure - if the AI called this
         # tool, it wants the overview
