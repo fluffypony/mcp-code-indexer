@@ -147,7 +147,9 @@ class TestTiktokenSetup:
 
     def test_cache_file_exists(self):
         """Test that the required cache file exists."""
-        cache_dir = Path(__file__).parent.parent / "src" / "tiktoken_cache"
+        cache_dir = (
+            Path(__file__).parent.parent / "src" / "mcp_code_indexer" / "tiktoken_cache"
+        )
         cache_file = cache_dir / "9b5ad71b2ce5302211f9c61530b329a4922fc6a4"
 
         assert cache_dir.exists(), f"Cache directory not found: {cache_dir}"
