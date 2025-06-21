@@ -8,10 +8,8 @@ Entry point for the mcp-code-indexer package when installed via pip.
 import argparse
 import asyncio
 import json
-import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict
 
 from . import __version__
 from .logging_config import setup_logging
@@ -662,9 +660,6 @@ async def handle_cleanup(args: argparse.Namespace) -> None:
 async def handle_map(args: argparse.Namespace) -> None:
     """Handle --map command."""
     from .logging_config import setup_command_logger
-    import re
-    from collections import defaultdict
-    from pathlib import Path as PathLib
 
     # Set up dedicated logging for map
     cache_dir = Path(args.cache_dir).expanduser()

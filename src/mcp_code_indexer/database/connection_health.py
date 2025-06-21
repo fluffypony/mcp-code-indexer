@@ -12,8 +12,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 
-import aiosqlite
-
 logger = logging.getLogger(__name__)
 
 

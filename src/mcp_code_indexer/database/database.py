@@ -7,33 +7,25 @@ connection management, transaction handling, and performance optimizations.
 
 import json
 import logging
-import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple, AsyncIterator
+from typing import List, Optional, Dict, Any, AsyncIterator
 
 import asyncio
-import random
 import aiosqlite
 
 from mcp_code_indexer.database.models import (
     Project,
     FileDescription,
-    MergeConflict,
     SearchResult,
-    CodebaseSizeInfo,
     ProjectOverview,
     WordFrequencyResult,
     WordFrequencyTerm,
 )
-from mcp_code_indexer.database.retry_executor import (
-    RetryExecutor,
-    create_retry_executor,
-)
+from mcp_code_indexer.database.retry_executor import create_retry_executor
 from mcp_code_indexer.database.exceptions import (
     DatabaseError,
-    DatabaseLockError,
     classify_sqlite_error,
     is_retryable_error,
 )
@@ -340,7 +332,7 @@ class DatabaseManager:
 
                 # Success - retry executor handles all failure tracking
 
-            except Exception as e:
+            except Exception:
                 # Error handling is managed by the retry executor
                 raise
 
@@ -542,7 +534,7 @@ class DatabaseManager:
                     execute_transaction, operation_name
                 )
 
-        except DatabaseError as e:
+        except DatabaseError:
             # Record failed operation metrics for final failure
             if self._metrics_collector:
                 self._metrics_collector.record_operation(
@@ -697,7 +689,7 @@ class DatabaseManager:
         async with self.get_write_connection_with_retry("update_project") as db:
             await db.execute(
                 """
-                UPDATE projects 
+                UPDATE projects
                 SET name = ?, aliases = ?, last_accessed = ?
                 WHERE id = ?
                 """,
@@ -742,7 +734,7 @@ class DatabaseManager:
         ) as db:
             await db.execute(
                 """
-                INSERT OR REPLACE INTO file_descriptions 
+                INSERT OR REPLACE INTO file_descriptions
                 (project_id, file_path, description, file_hash, last_modified, version, source_project_id, to_be_cleaned)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -767,7 +759,7 @@ class DatabaseManager:
         async with self.get_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT * FROM file_descriptions 
+                SELECT * FROM file_descriptions
                 WHERE project_id = ? AND file_path = ? AND to_be_cleaned IS NULL
                 """,
                 (project_id, file_path),
@@ -793,7 +785,7 @@ class DatabaseManager:
         async with self.get_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT * FROM file_descriptions 
+                SELECT * FROM file_descriptions
                 WHERE project_id = ? AND to_be_cleaned IS NULL
                 ORDER BY file_path
                 """,
@@ -840,7 +832,7 @@ class DatabaseManager:
 
             await conn.executemany(
                 """
-                INSERT OR REPLACE INTO file_descriptions 
+                INSERT OR REPLACE INTO file_descriptions
                 (project_id, file_path, description, file_hash, last_modified, version, source_project_id, to_be_cleaned)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -872,15 +864,15 @@ class DatabaseManager:
         async with self.get_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT 
+                SELECT
                     fd.project_id,
                     fd.file_path,
                     fd.description,
                     bm25(file_descriptions_fts) as rank
                 FROM file_descriptions_fts
                 JOIN file_descriptions fd ON fd.id = file_descriptions_fts.rowid
-                WHERE file_descriptions_fts MATCH ? 
-                  AND fd.project_id = ? 
+                WHERE file_descriptions_fts MATCH ?
+                  AND fd.project_id = ?
                   AND fd.to_be_cleaned IS NULL
                 ORDER BY bm25(file_descriptions_fts)
                 LIMIT ?
@@ -906,7 +898,7 @@ class DatabaseManager:
         async with self.get_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT token_count FROM token_cache 
+                SELECT token_count FROM token_cache
                 WHERE cache_key = ? AND (expires IS NULL OR expires > ?)
                 """,
                 (cache_key, datetime.utcnow()),
@@ -957,7 +949,7 @@ class DatabaseManager:
         async with self.get_write_connection() as db:
             await db.execute(
                 """
-                INSERT OR REPLACE INTO project_overviews 
+                INSERT OR REPLACE INTO project_overviews
                 (project_id, overview, last_modified, total_files, total_tokens)
                 VALUES (?, ?, ?, ?, ?)
                 """,
@@ -1155,7 +1147,7 @@ class DatabaseManager:
             # Find projects with no descriptions and no overview
             cursor = await db.execute(
                 """
-                SELECT p.id, p.name 
+                SELECT p.id, p.name
                 FROM projects p
                 LEFT JOIN file_descriptions fd ON p.id = fd.project_id
                 LEFT JOIN project_overviews po ON p.id = po.project_id
@@ -1228,7 +1220,7 @@ class DatabaseManager:
 
             # Get all file descriptions for this project
             cursor = await db.execute(
-                """SELECT * FROM file_descriptions 
+                """SELECT * FROM file_descriptions
                    WHERE project_id = ? AND to_be_cleaned IS NULL
                    ORDER BY file_path""",
                 (project.id,),

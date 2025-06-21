@@ -233,7 +233,7 @@ class ClaudeAPIHandler:
         except aiohttp.ClientError as e:
             self.logger.error(f"Claude API request failed: {e}")
             raise ClaudeAPIError(f"Claude API request failed: {e}")
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             self.logger.error(
                 f"Claude API request timed out after {self.config.timeout}s"
             )

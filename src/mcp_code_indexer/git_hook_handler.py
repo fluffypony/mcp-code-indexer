@@ -312,9 +312,9 @@ INSTRUCTIONS:
    - Significant dependency additions (Cargo.toml, package.json, requirements.txt changes)
    - New API endpoints or workflows
    - Changes to build/deployment processes
-   
+
    Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
-   
+
    If updating, provide comprehensive narrative (10-20 pages of text) with directory structure, architecture, components, and workflows.
 
 2. FILE UPDATES: Update descriptions for files that have changed significantly. Consider both the diff content and commit message context. Only include files that need actual description updates.
@@ -787,7 +787,7 @@ Return ONLY a JSON object:
             self.logger.error(f"OpenRouter API request failed: {e}")
             self.logger.error(f"ClientError details: {type(e).__name__}: {str(e)}")
             raise GitHookError(f"OpenRouter API request failed: {e}")
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             self.logger.error(
                 f"OpenRouter API request timed out after {self.config['timeout']}s"
             )

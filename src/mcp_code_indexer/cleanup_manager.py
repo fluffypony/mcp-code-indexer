@@ -9,7 +9,6 @@ and manual cleanup methods.
 import logging
 import time
 from typing import List, Optional
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +50,8 @@ class CleanupManager:
         ) as db:
             cursor = await db.execute(
                 """
-                UPDATE file_descriptions 
-                SET to_be_cleaned = ? 
+                UPDATE file_descriptions
+                SET to_be_cleaned = ?
                 WHERE project_id = ? AND file_path = ? AND to_be_cleaned IS NULL
                 """,
                 (cleanup_timestamp, project_id, file_path),
@@ -84,8 +83,8 @@ class CleanupManager:
             data = [(cleanup_timestamp, project_id, path) for path in file_paths]
             cursor = await conn.executemany(
                 """
-                UPDATE file_descriptions 
-                SET to_be_cleaned = ? 
+                UPDATE file_descriptions
+                SET to_be_cleaned = ?
                 WHERE project_id = ? AND file_path = ? AND to_be_cleaned IS NULL
                 """,
                 data,
@@ -117,8 +116,8 @@ class CleanupManager:
         ) as db:
             cursor = await db.execute(
                 """
-                UPDATE file_descriptions 
-                SET to_be_cleaned = NULL 
+                UPDATE file_descriptions
+                SET to_be_cleaned = NULL
                 WHERE project_id = ? AND file_path = ? AND to_be_cleaned IS NOT NULL
                 """,
                 (project_id, file_path),
@@ -140,8 +139,8 @@ class CleanupManager:
         async with self.db_manager.get_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT file_path, to_be_cleaned 
-                FROM file_descriptions 
+                SELECT file_path, to_be_cleaned
+                FROM file_descriptions
                 WHERE project_id = ? AND to_be_cleaned IS NOT NULL
                 ORDER BY to_be_cleaned DESC, file_path
                 """,
@@ -180,7 +179,7 @@ class CleanupManager:
             if project_id:
                 cursor = await conn.execute(
                     """
-                    DELETE FROM file_descriptions 
+                    DELETE FROM file_descriptions
                     WHERE project_id = ? AND to_be_cleaned IS NOT NULL AND to_be_cleaned < ?
                     """,
                     (project_id, cutoff_timestamp),
@@ -188,7 +187,7 @@ class CleanupManager:
             else:
                 cursor = await conn.execute(
                     """
-                    DELETE FROM file_descriptions 
+                    DELETE FROM file_descriptions
                     WHERE to_be_cleaned IS NOT NULL AND to_be_cleaned < ?
                     """,
                     (cutoff_timestamp,),

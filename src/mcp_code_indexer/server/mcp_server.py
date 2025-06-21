@@ -6,7 +6,6 @@ for file description management tools.
 """
 
 import asyncio
-import hashlib
 import html
 import json
 import logging
@@ -14,7 +13,7 @@ import re
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from mcp import types
 from mcp.server import Server
@@ -27,15 +26,9 @@ from mcp_code_indexer.token_counter import TokenCounter
 from mcp_code_indexer.database.models import (
     Project,
     FileDescription,
-    CodebaseOverview,
-    SearchResult,
-    CodebaseSizeInfo,
-    FolderNode,
-    FileNode,
     ProjectOverview,
-    WordFrequencyResult,
 )
-from mcp_code_indexer.error_handler import setup_error_handling, ErrorHandler
+from mcp_code_indexer.error_handler import setup_error_handling
 from mcp_code_indexer.middleware.error_middleware import (
     create_tool_middleware,
     AsyncTaskManager,
@@ -1068,7 +1061,6 @@ RESTful API with JWT auth. React frontend calls API. Background jobs via Bull qu
     ) -> Dict[str, Any]:
         """Handle update_codebase_overview tool calls."""
         project_id = await self._get_or_create_project_id(arguments)
-        folder_path = Path(arguments["folderPath"])
 
         # Get current file count and total tokens for context
         file_descriptions = await self.db_manager.get_all_file_descriptions(

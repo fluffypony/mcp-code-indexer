@@ -6,12 +6,11 @@ context manager retry pattern with proper separation of concerns between
 retry logic and resource management.
 """
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator, Callable, Dict, Optional, Type, TypeVar, Union
+from datetime import datetime, timezone
+from typing import Any, AsyncIterator, Callable, Dict, Optional, TypeVar
 
 import aiosqlite
 from tenacity import (
@@ -19,7 +18,6 @@ from tenacity import (
     RetryError,
     stop_after_attempt,
     wait_exponential_jitter,
-    retry_if_exception_type,
     before_sleep_log,
     after_log,
 )
