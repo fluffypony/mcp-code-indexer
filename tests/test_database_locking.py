@@ -6,6 +6,7 @@ write serialization, retry logic, and connection health monitoring.
 """
 
 import asyncio
+import logging
 import os
 import sqlite3
 import tempfile

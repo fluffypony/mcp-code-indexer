@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import patch, AsyncMock
 from datetime import datetime
 
+import sqlite3
 import aiosqlite
 
 from src.mcp_code_indexer.database.database import DatabaseManager
