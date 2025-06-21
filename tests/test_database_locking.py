@@ -8,18 +8,16 @@ write serialization, retry logic, and connection health monitoring.
 import asyncio
 import logging
 import os
-import sqlite3
 import tempfile
 import pytest
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
 from datetime import datetime
 
 import aiosqlite
 
 from src.mcp_code_indexer.database.database import DatabaseManager
 from src.mcp_code_indexer.database.models import Project, FileDescription
-from src.mcp_code_indexer.database.exceptions import DatabaseLockError
+
 
 
 class TestDatabaseLocking:

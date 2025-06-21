@@ -10,11 +10,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from src.mcp_code_indexer.file_scanner import (
-    FileScanner,
-    DEFAULT_IGNORE_PATTERNS,
-    IGNORED_EXTENSIONS,
-)
+from src.mcp_code_indexer.file_scanner import FileScanner
 
 
 class TestFileScanner:
@@ -292,8 +288,8 @@ private/
         scanner = FileScanner(self.project_root)
 
         # Should work with default patterns only
-        test_file = self.create_test_file("main.py")
-        ignored_file = self.create_test_file("cache.pyc")
+        _ = self.create_test_file("main.py")
+        _ = self.create_test_file("cache.pyc")
 
         found_files = scanner.scan_directory()
         found_relative = [scanner.get_relative_path(f) for f in found_files]

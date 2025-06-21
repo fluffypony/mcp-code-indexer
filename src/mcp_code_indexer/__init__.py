@@ -6,6 +6,8 @@ intelligent codebase navigation through searchable file descriptions,
 token-aware overviews, and advanced merge capabilities.
 """
 
+from .server.mcp_server import MCPCodeIndexServer
+
 
 def _get_version() -> str:
     """Get version from package metadata or pyproject.toml."""
@@ -51,7 +53,5 @@ __version__ = _get_version()
 __author__ = "MCP Code Indexer Contributors"
 __email__ = ""
 __license__ = "MIT"
-
-from .server.mcp_server import MCPCodeIndexServer
 
 __all__ = ["MCPCodeIndexServer", "__version__"]

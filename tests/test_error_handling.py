@@ -8,7 +8,7 @@ structured logging, MCP error responses, and async exception management.
 import asyncio
 import json
 import logging
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import pytest
 import pytest_asyncio
 

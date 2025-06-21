@@ -33,7 +33,10 @@ def parse_arguments() -> argparse.Namespace:
         "--token-limit",
         type=int,
         default=32000,
-        help="Maximum tokens before recommending search instead of full overview (default: 32000)",
+        help=(
+            "Maximum tokens before recommending search instead of full overview "
+            "(default: 32000)"
+        ),
     )
 
     parser.add_argument(
@@ -61,19 +64,28 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--githook",
         action="store_true",
-        help="Git hook mode: auto-update descriptions based on git diff using OpenRouter API",
+        help=(
+            "Git hook mode: auto-update descriptions based on git diff using "
+            "OpenRouter API"
+        ),
     )
 
     parser.add_argument(
         "--ask",
         type=str,
-        help="Ask a question about the project (requires PROJECT_NAME as positional argument)",
+        help=(
+            "Ask a question about the project (requires PROJECT_NAME as "
+            "positional argument)"
+        ),
     )
 
     parser.add_argument(
         "--deepask",
         type=str,
-        help="Ask an enhanced question with file search (requires PROJECT_NAME as positional argument)",
+        help=(
+            "Ask an enhanced question with file search (requires PROJECT_NAME "
+            "as positional argument)"
+        ),
     )
 
     parser.add_argument(
@@ -98,28 +110,40 @@ def parse_arguments() -> argparse.Namespace:
         "--db-retry-count",
         type=int,
         default=int(os.getenv("DB_RETRY_COUNT", "5")),
-        help="Maximum database operation retry attempts (default: 5, env: DB_RETRY_COUNT)",
+        help=(
+            "Maximum database operation retry attempts "
+            "(default: 5, env: DB_RETRY_COUNT)"
+        ),
     )
 
     parser.add_argument(
         "--db-timeout",
         type=float,
         default=float(os.getenv("DB_TIMEOUT", "10.0")),
-        help="Database transaction timeout in seconds (default: 10.0, env: DB_TIMEOUT)",
+        help=(
+            "Database transaction timeout in seconds "
+            "(default: 10.0, env: DB_TIMEOUT)"
+        ),
     )
 
     parser.add_argument(
         "--enable-wal-mode",
         action="store_true",
         default=os.getenv("DB_WAL_MODE", "true").lower() == "true",
-        help="Enable WAL mode for better concurrent access (default: True, env: DB_WAL_MODE)",
+        help=(
+            "Enable WAL mode for better concurrent access "
+            "(default: True, env: DB_WAL_MODE)"
+        ),
     )
 
     parser.add_argument(
         "--health-check-interval",
         type=float,
         default=float(os.getenv("DB_HEALTH_CHECK_INTERVAL", "30.0")),
-        help="Database health check interval in seconds (default: 30.0, env: DB_HEALTH_CHECK_INTERVAL)",
+        help=(
+            "Database health check interval in seconds "
+            "(default: 30.0, env: DB_HEALTH_CHECK_INTERVAL)"
+        ),
     )
 
     # Retry executor configuration options
@@ -127,21 +151,30 @@ def parse_arguments() -> argparse.Namespace:
         "--retry-min-wait",
         type=float,
         default=float(os.getenv("DB_RETRY_MIN_WAIT", "0.1")),
-        help="Minimum wait time between retries in seconds (default: 0.1, env: DB_RETRY_MIN_WAIT)",
+        help=(
+            "Minimum wait time between retries in seconds "
+            "(default: 0.1, env: DB_RETRY_MIN_WAIT)"
+        ),
     )
 
     parser.add_argument(
         "--retry-max-wait",
         type=float,
         default=float(os.getenv("DB_RETRY_MAX_WAIT", "2.0")),
-        help="Maximum wait time between retries in seconds (default: 2.0, env: DB_RETRY_MAX_WAIT)",
+        help=(
+            "Maximum wait time between retries in seconds "
+            "(default: 2.0, env: DB_RETRY_MAX_WAIT)"
+        ),
     )
 
     parser.add_argument(
         "--retry-jitter",
         type=float,
         default=float(os.getenv("DB_RETRY_JITTER", "0.2")),
-        help="Maximum jitter to add to retry delays in seconds (default: 0.2, env: DB_RETRY_JITTER)",
+        help=(
+            "Maximum jitter to add to retry delays in seconds "
+            "(default: 0.2, env: DB_RETRY_JITTER)"
+        ),
     )
 
     return parser.parse_args()

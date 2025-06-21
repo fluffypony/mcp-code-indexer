@@ -5,16 +5,11 @@ This module tests the complete MCP tool workflow including server initialization
 tool execution, error handling, and response formatting.
 """
 
-import asyncio
-import json
-import tempfile
 from pathlib import Path
 import pytest
 import pytest_asyncio
 
 from src.mcp_code_indexer.server.mcp_server import MCPCodeIndexServer
-from src.mcp_code_indexer.database.models import Project, FileDescription
-from tests.conftest import MockGitRepository
 
 
 class TestMCPServerIntegration:
@@ -161,7 +156,6 @@ class TestMCPServerIntegration:
         # Add individual file descriptions for testing
         project_name = "multi-word-test"
         folder_path = "/tmp/multi-word-test"
-        branch = "main"
 
         # Add multiple files with descriptions containing target terms
         files_to_add = [
@@ -201,7 +195,6 @@ class TestMCPServerIntegration:
         """Test FTS5 operators are treated as literal search terms."""
         project_name = "operator-test"
         folder_path = "/tmp/operator-test"
-        branch = "main"
 
         files_to_add = [
             ("error_handler.py", "Error handling AND logging utilities"),
@@ -236,7 +229,6 @@ class TestMCPServerIntegration:
         """Test that multi-word search is order-agnostic."""
         project_name = "order-test"
         folder_path = "/tmp/order-test"
-        branch = "main"
 
         files_to_add = [
             ("proto_grpc.py", "Protocol buffer gRPC service definitions"),

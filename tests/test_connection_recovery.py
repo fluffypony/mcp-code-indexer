@@ -10,8 +10,7 @@ import os
 import tempfile
 import pytest
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
-from datetime import datetime
+
 
 import sqlite3
 import aiosqlite
@@ -48,7 +47,8 @@ class TestConnectionRecovery:
         """Test connection pool refresh functionality."""
         # Get initial pool state
         initial_stats = temp_db_manager.get_database_stats()
-        initial_pool_size = initial_stats["connection_pool"]["current_size"]
+        # Note: initial_pool_size available if needed for future checks
+        _ = initial_stats["connection_pool"]["current_size"]
 
         # Manually trigger pool refresh
         await temp_db_manager.close_pool()

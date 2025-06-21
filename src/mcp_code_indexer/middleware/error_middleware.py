@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List
 import aiosqlite
 from mcp import types
 
-from mcp_code_indexer.error_handler import ErrorHandler, MCPError
+from mcp_code_indexer.error_handler import ErrorHandler
 from mcp_code_indexer.logging_config import (
     get_logger,
     log_tool_usage,

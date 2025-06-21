@@ -7,15 +7,11 @@ context manager retry pattern with proper separation of concerns.
 
 import asyncio
 import pytest
-import sqlite3
 import tempfile
-import time
 from pathlib import Path
-from unittest.mock import patch, AsyncMock, MagicMock
 from datetime import datetime
 
 import aiosqlite
-from tenacity import RetryError
 
 from src.mcp_code_indexer.database.retry_executor import (
     RetryExecutor,
@@ -24,12 +20,7 @@ from src.mcp_code_indexer.database.retry_executor import (
     DatabaseLockError,
     create_retry_executor,
 )
-from src.mcp_code_indexer.database.exceptions import (
-    DatabaseError,
-    DatabaseBusyError,
-    classify_sqlite_error,
-    is_retryable_error,
-)
+
 
 
 class TestRetryConfig:
@@ -239,7 +230,7 @@ class TestRetryExecutor:
 
         # Check that most operations succeeded
         successful_results = [r for r in results if isinstance(r, str)]
-        failed_results = [r for r in results if isinstance(r, Exception)]
+        _ = [r for r in results if isinstance(r, Exception)]  # failed_results for potential future use
 
         assert len(successful_results) >= 6  # Most should succeed
         assert all("result_" in result for result in successful_results)

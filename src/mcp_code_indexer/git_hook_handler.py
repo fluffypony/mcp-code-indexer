@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -25,8 +24,6 @@ from tenacity import (
 )
 
 from .database.database import DatabaseManager
-from .database.models import Project, FileDescription
-from .error_handler import ValidationError
 from .token_counter import TokenCounter
 
 

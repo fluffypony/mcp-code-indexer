@@ -5,9 +5,7 @@ This module tests the custom exception hierarchy and error classification
 logic for SQLite database operations.
 """
 
-import pytest
 from datetime import datetime
-from unittest.mock import MagicMock
 
 import aiosqlite
 
