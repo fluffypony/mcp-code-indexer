@@ -362,7 +362,11 @@ class ConnectionHealthMonitor:
                 "timestamp": check.timestamp.isoformat(),
                 "is_healthy": check.is_healthy,
                 "response_time_ms": check.response_time_ms,
-                "error_message": check.error_message,
+                "error_message": (
+                    check.error_message[:500] + "..."
+                    if check.error_message and len(check.error_message) > 500
+                    else check.error_message
+                ),
             }
             for check in recent_checks
         ]
@@ -622,7 +626,7 @@ class DatabaseMetricsCollector:
         event = {
             "timestamp": datetime.utcnow().isoformat(),
             "operation_name": operation_name,
-            "error_message": error_message,
+            "error_message": error_message[:1000] if error_message else None,
         }
 
         self._locking_events.append(event)
@@ -666,11 +670,25 @@ class DatabaseMetricsCollector:
             operation_counts.items(), key=lambda x: x[1], reverse=True
         )[:5]
 
+        # Truncate error messages to prevent massive responses
+        recent_events_truncated = []
+        for event in self._locking_events[-10:]:  # Last 10 events
+            truncated_event = {
+                "timestamp": event["timestamp"],
+                "operation_name": event["operation_name"],
+                "error_message": (
+                    event["error_message"][:500] + "..."
+                    if len(event["error_message"]) > 500
+                    else event["error_message"]
+                ),
+            }
+            recent_events_truncated.append(truncated_event)
+
         return {
             "total_events": len(self._locking_events),
             "events_last_hour": len(recent_events),
             "most_frequent_operations": [
                 {"operation": op, "count": count} for op, count in most_frequent
             ],
-            "recent_events": self._locking_events[-10:],  # Last 10 events
+            "recent_events": recent_events_truncated,
         }
