@@ -25,6 +25,10 @@ The git hook integration provides **zero-effort documentation**:
 
 The git hook feature requires additional packages:
 ```bash
+# With Poetry
+poetry add aiohttp>=3.8.0 tenacity>=8.0.0
+
+# Or with pip
 pip install aiohttp>=3.8.0 tenacity>=8.0.0
 ```
 

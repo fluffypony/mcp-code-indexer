@@ -24,7 +24,10 @@ Perfect for AI-powered code review, refactoring tools, documentation generation,
 Get started integrating MCP Code Indexer into your AI agent workflow:
 
 ```bash
-# Install the package
+# Install with Poetry
+poetry add mcp-code-indexer
+
+# Or with pip
 pip install mcp-code-indexer
 
 # Start the MCP server
@@ -54,7 +57,7 @@ mcp-code-indexer --version
 
 **New to MCP Code Indexer?** Start here:
 
-1. **Install**: `pip install mcp-code-indexer`
+1. **Install**: `poetry add mcp-code-indexer` (or `pip install mcp-code-indexer`)
 2. **Run**: `mcp-code-indexer --token-limit 32000`
 3. **Connect**: Use your favorite MCP client
 4. **Explore**: Try the `check_codebase_size` tool first
@@ -66,7 +69,10 @@ mcp-code-indexer --version
 git clone https://github.com/fluffypony/mcp-code-indexer.git
 cd mcp-code-indexer
 
-# Install in development mode (required)
+# Install with Poetry (recommended)
+poetry install
+
+# Or install in development mode with pip
 pip install -e .
 
 # Run the server
@@ -122,14 +128,12 @@ Contributing to MCP Code Indexer? Follow these steps for a proper development en
 git clone https://github.com/fluffypony/mcp-code-indexer.git
 cd mcp-code-indexer
 
-# Create and activate virtual environment
+# Install with Poetry (recommended)
+poetry install
+
+# Or use pip with virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install package in editable mode (REQUIRED for development)
-pip install -e .
-
-# Install development dependencies
 pip install -e .[dev]
 
 # Verify installation
@@ -380,7 +384,10 @@ async def analyze_codebase(project_path):
 ## 🧪 Testing
 
 ```bash
-# Install with test dependencies
+# Install with test dependencies using Poetry
+poetry install --with test
+
+# Or with pip
 pip install mcp-code-indexer[test]
 
 # Run full test suite

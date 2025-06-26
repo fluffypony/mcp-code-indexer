@@ -23,7 +23,7 @@ if command -v mcp-code-indexer >/dev/null 2>&1; then
     mcp-code-indexer --version
 else
     echo "⚠ mcp-code-indexer not found in PATH"
-    echo "Install with: pip install -e ."
+    echo "Install with: poetry install"
     echo ""
 fi
 
@@ -45,7 +45,7 @@ check_package() {
     if python -c "import $1" 2>/dev/null; then
         echo "✓ $1 is available"
     else
-        echo "⚠ $1 not found - install with: pip install $2"
+        echo "⚠ $1 not found - install with: poetry add $2"
     fi
 }
 

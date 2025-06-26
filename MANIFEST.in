@@ -1,7 +1,7 @@
 include README.md
 include LICENSE
 include pyproject.toml
-include requirements.txt
+include pyproject.toml
 recursive-include src/mcp_code_indexer/tiktoken_cache *
 recursive-include src/mcp_code_indexer/migrations *.sql
 recursive-include docs *.md

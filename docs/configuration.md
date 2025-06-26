@@ -410,9 +410,11 @@ RUN useradd --create-home --shell /bin/bash mcp-indexer
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy Poetry configuration and install dependencies
+COPY pyproject.toml poetry.lock* .
+RUN pip install poetry && \
+    poetry config virtualenvs.create false && \
+    poetry install --no-dev
 
 # Copy application code
 COPY . .

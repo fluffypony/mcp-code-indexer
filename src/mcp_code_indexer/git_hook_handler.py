@@ -313,7 +313,7 @@ INSTRUCTIONS:
      directories)
    - Architectural changes (new patterns, frameworks, or approaches)
    - Significant dependency additions (Cargo.toml, package.json,
-     requirements.txt changes)
+   pyproject.toml changes)
    - New API endpoints or workflows
    - Changes to build/deployment processes
 
@@ -613,7 +613,7 @@ Update project overview ONLY if there are major structural changes like:
 - New major features or components (indicated by commit message or new directories)
 - Architectural changes (new patterns, frameworks, or approaches)
 - Significant dependency additions (Cargo.toml, package.json,
-  requirements.txt changes)
+  pyproject.toml changes)
 - New API endpoints or workflows
 - Changes to build/deployment processes
 

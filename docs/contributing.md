@@ -39,10 +39,10 @@ cd mcp-code-indexer
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install package in editable mode (REQUIRED)
-pip install -e .
+# Install with Poetry (recommended)
+poetry install
 
-# Install development dependencies
+# Or install with pip in editable mode
 pip install -e .[dev]
 
 # Install pre-commit hooks
@@ -99,7 +99,7 @@ mcp-code-indexer/
 
 ### 🐍 Python Environment
 
-**Requirements** (`requirements-dev.txt`):
+**Requirements** (managed by Poetry in `pyproject.toml`):
 
 ```text
 # Testing

@@ -1,19 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "mcp-code-indexer"
 version = "3.1.6"
 description = "MCP server that tracks file descriptions across codebases, enabling AI agents to efficiently navigate and understand code through searchable summaries and token-aware overviews."
+authors = ["MCP Code Indexer Contributors"]
+maintainers = ["MCP Code Indexer Contributors"]
+license = "MIT"
 readme = "README.md"
-license = {text = "MIT"}
-authors = [
-    {name = "MCP Code Indexer Contributors"}
-]
-maintainers = [
-    {name = "MCP Code Indexer Contributors"}
-]
+homepage = "https://github.com/fluffypony/mcp-code-indexer"
+repository = "https://github.com/fluffypony/mcp-code-indexer"
+documentation = "https://github.com/fluffypony/mcp-code-indexer/blob/main/README.md"
 keywords = [
     "mcp", 
     "model-context-protocol", 
@@ -29,11 +28,11 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -41,56 +40,42 @@ classifiers = [
     "Environment :: Console",
     "Typing :: Typed"
 ]
-requires-python = ">=3.9"
-dependencies = [
-    "tiktoken>=0.9.0",
-    "mcp>=1.9.0", 
-    "gitignore_parser==0.1.11",
-    "pydantic>=2.8.0",
-    "aiofiles==23.2.0",
-    "aiosqlite==0.19.0",
-    "aiohttp>=3.8.0",
-    "tenacity>=8.0.0",
-    "tomli>=1.2.0; python_version<'3.11'",
-    "importlib-metadata>=1.0.0; python_version<'3.8'"
-]
+packages = [{include = "mcp_code_indexer", from = "src"}]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.11.0",
-    "pytest-cov>=4.0.0",
-    "black>=24.0.0",
-    "isort>=5.12.0",
-    "flake8>=7.0.0",
-    "mypy>=1.8.0",
-    "pre-commit>=3.5.0"
-]
-test = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.21.0", 
-    "pytest-mock>=3.11.0",
-    "pytest-cov>=4.0.0"
-]
+[tool.poetry.dependencies]
+python = "^3.9"
+tiktoken = ">=0.9.0"
+mcp = ">=1.9.0"
+gitignore-parser = "0.1.11"
+pydantic = ">=2.8.0"
+aiofiles = "23.2.0"
+aiosqlite = "0.19.0"
+aiohttp = ">=3.8.0"
+tenacity = ">=8.0.0"
+tomli = {version = ">=1.2.0", markers = "python_version < '3.11'"}
+importlib-metadata = {version = ">=1.0.0", markers = "python_version < '3.8'"}
 
-[project.urls]
-Homepage = "https://github.com/fluffypony/mcp-code-indexer"
-Repository = "https://github.com/fluffypony/mcp-code-indexer"
-Issues = "https://github.com/fluffypony/mcp-code-indexer/issues"
-Documentation = "https://github.com/fluffypony/mcp-code-indexer/blob/main/README.md"
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.21.0"
+pytest-mock = ">=3.11.0"
+pytest-cov = ">=4.0.0"
+black = ">=24.0.0"
+isort = ">=5.12.0"
+flake8 = ">=7.0.0"
+mypy = ">=1.8.0"
+pre-commit = ">=3.5.0"
 
-[project.scripts]
+[tool.poetry.group.test.dependencies]
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.21.0"
+pytest-mock = ">=3.11.0"
+pytest-cov = ">=4.0.0"
+
+[tool.poetry.scripts]
 mcp-code-indexer = "mcp_code_indexer.main:cli_main"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-mcp_code_indexer = ["tiktoken_cache/*", "*.sql", "data/*"]
 
 # Black configuration
 [tool.black]
