@@ -76,6 +76,7 @@ class GitHookHandler:
         self.config = {
             "model": os.getenv("MCP_GITHOOK_MODEL", self.OPENROUTER_MODEL),
             "max_diff_tokens": 136000,  # Skip if diff larger than this (in tokens)
+            "chunk_token_limit": 100000,  # Target token limit per chunk
             "timeout": 300,  # 5 minutes
             "temperature": 0.3,  # Lower temperature for consistent updates
         }
@@ -197,8 +198,8 @@ class GitHookHandler:
         changed_files: List[str],
     ) -> Dict[str, Any]:
         """
-        Smart staging: Try single-stage first, fall back to two-stage if
-        token limit exceeded.
+        Smart staging: Try single-stage first, fall back to two-stage,
+        then chunked processing if needed.
 
         Args:
             git_diff: Git diff content
@@ -240,24 +241,25 @@ class GitHookHandler:
                 f"falling back to two-stage analysis"
             )
 
-            # Stage 1: Check if overview needs updating
-            overview_updates = await self._analyze_overview_updates(
-                git_diff, commit_message, current_overview, changed_files
-            )
-
-            # Stage 2: Update file descriptions
-            file_updates = await self._analyze_file_updates(
-                git_diff, commit_message, current_descriptions, changed_files
-            )
-
-            # Combine updates
-            updates = {
-                "file_updates": file_updates.get("file_updates", {}),
-                "overview_update": overview_updates.get("overview_update"),
-            }
-
-            self.logger.info("Two-stage analysis completed")
-            return updates
+            # Try two-stage analysis first
+            try:
+                return await self._analyze_with_two_stage(
+                    git_diff, commit_message, current_overview,
+                    current_descriptions, changed_files
+                )
+            except GitHookError as e:
+                if "too large" in str(e).lower():
+                    # Fall back to chunked processing
+                    self.logger.info(
+                        "Two-stage analysis failed due to size, "
+                        "falling back to chunked processing"
+                    )
+                    return await self._analyze_with_chunking(
+                        git_diff, commit_message, current_overview,
+                        current_descriptions, changed_files
+                    )
+                else:
+                    raise
 
     def _build_single_stage_prompt(
         self,
@@ -571,6 +573,118 @@ Return ONLY a JSON object:
             self.logger.warning(f"Failed to get file descriptions: {e}")
             return {}
 
+    async def _analyze_with_two_stage(
+        self,
+        git_diff: str,
+        commit_message: str,
+        current_overview: str,
+        current_descriptions: Dict[str, str],
+        changed_files: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Two-stage analysis: overview updates first, then file updates.
+
+        Args:
+            git_diff: Git diff content
+            commit_message: Commit message explaining the changes
+            current_overview: Current project overview
+            current_descriptions: Current file descriptions
+            changed_files: List of changed file paths
+
+        Returns:
+            Dict containing file_updates and overview_update
+        """
+        # Stage 1: Check if overview needs updating
+        overview_updates = await self._analyze_overview_updates(
+            git_diff, commit_message, current_overview, changed_files
+        )
+
+        # Stage 2: Update file descriptions
+        file_updates = await self._analyze_file_updates(
+            git_diff, commit_message, current_descriptions, changed_files
+        )
+
+        # Combine updates
+        updates = {
+            "file_updates": file_updates.get("file_updates", {}),
+            "overview_update": overview_updates.get("overview_update"),
+        }
+
+        self.logger.info("Two-stage analysis completed")
+        return updates
+
+    async def _analyze_with_chunking(
+        self,
+        git_diff: str,
+        commit_message: str,
+        current_overview: str,
+        current_descriptions: Dict[str, str],
+        changed_files: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Chunked processing: Break large diffs into manageable chunks.
+
+        Args:
+            git_diff: Git diff content
+            commit_message: Commit message explaining the changes
+            current_overview: Current project overview
+            current_descriptions: Current file descriptions
+            changed_files: List of changed file paths
+
+        Returns:
+            Dict containing file_updates and overview_update
+        """
+        self.logger.info(
+            f"Starting chunked processing for {len(changed_files)} files"
+        )
+
+        # First, handle overview separately if needed
+        overview_update = None
+        if current_overview:
+            overview_update = await self._analyze_overview_lightweight(
+                commit_message, current_overview, changed_files
+            )
+
+        # Break changed files into chunks and process file descriptions
+        chunk_size = await self._calculate_optimal_chunk_size(
+            git_diff, changed_files
+        )
+        
+        self.logger.info(f"Using chunk size of {chunk_size} files per chunk")
+        
+        all_file_updates = {}
+        
+        for i in range(0, len(changed_files), chunk_size):
+            chunk_files = changed_files[i:i + chunk_size]
+            chunk_number = (i // chunk_size) + 1
+            total_chunks = (len(changed_files) + chunk_size - 1) // chunk_size
+            
+            self.logger.info(
+                f"Processing chunk {chunk_number}/{total_chunks} "
+                f"({len(chunk_files)} files)"
+            )
+            
+            # Extract diff content for this chunk
+            chunk_diff = self._extract_chunk_diff(git_diff, chunk_files)
+            
+            # Process this chunk
+            chunk_updates = await self._analyze_file_chunk(
+                chunk_diff, commit_message, current_descriptions, chunk_files
+            )
+            
+            # Merge results
+            if chunk_updates and "file_updates" in chunk_updates:
+                all_file_updates.update(chunk_updates["file_updates"])
+        
+        self.logger.info(
+            f"Chunked processing completed: updated {len(all_file_updates)} files"
+        )
+        
+        return {
+            "file_updates": all_file_updates,
+            "overview_update": overview_update
+        }
+
     async def _analyze_overview_updates(
         self,
         git_diff: str,
@@ -632,11 +746,9 @@ Return ONLY a JSON object:
         self.logger.info(f"Stage 1 prompt: {prompt_tokens} tokens")
 
         if prompt_tokens > self.config["max_diff_tokens"]:
-            self.logger.warning(
-                f"Stage 1 prompt too large ({prompt_tokens} tokens), "
-                f"skipping overview analysis"
+            raise GitHookError(
+                f"Stage 1 prompt too large ({prompt_tokens} tokens)"
             )
-            return {"overview_update": None}
 
         # Call OpenRouter API
         result = await self._call_openrouter(prompt)
@@ -708,17 +820,210 @@ Return ONLY a JSON object:
         self.logger.info(f"Stage 2 prompt: {prompt_tokens} tokens")
 
         if prompt_tokens > self.config["max_diff_tokens"]:
-            self.logger.warning(
-                f"Stage 2 prompt too large ({prompt_tokens} tokens), "
-                f"skipping file analysis"
+            raise GitHookError(
+                f"Stage 2 prompt too large ({prompt_tokens} tokens)"
             )
-            return {"file_updates": {}}
 
         # Call OpenRouter API
         result = await self._call_openrouter(prompt)
         self.logger.info("Stage 2 completed: file description analysis")
 
         return result
+
+    async def _analyze_overview_lightweight(
+        self,
+        commit_message: str,
+        current_overview: str,
+        changed_files: List[str],
+    ) -> Optional[str]:
+        """
+        Lightweight overview analysis without including full diff.
+
+        Args:
+            commit_message: Commit message explaining the changes
+            current_overview: Current project overview
+            changed_files: List of changed file paths
+
+        Returns:
+            Updated overview text or None
+        """
+        self.logger.info("Lightweight overview analysis...")
+
+        prompt = f"""Analyze this commit to determine if project overview needs updating.
+
+COMMIT MESSAGE:
+{commit_message or "No commit message available"}
+
+CURRENT PROJECT OVERVIEW:
+{current_overview or "No overview available"}
+
+CHANGED FILES:
+{', '.join(changed_files)}
+
+INSTRUCTIONS:
+Update project overview ONLY if there are major structural changes like:
+- New major features or components (indicated by commit message or new directories)
+- Architectural changes (new patterns, frameworks, or approaches)
+- Significant dependency additions (Cargo.toml, package.json, pyproject.toml changes)
+- New API endpoints or workflows
+- Changes to build/deployment processes
+
+Do NOT update for: bug fixes, small refactors, documentation updates, version bumps.
+
+Return ONLY a JSON object:
+{{
+  "overview_update": "Updated overview text" or null
+}}"""
+
+        try:
+            result = await self._call_openrouter(prompt)
+            return result.get("overview_update")
+        except Exception as e:
+            self.logger.warning(f"Lightweight overview analysis failed: {e}")
+            return None
+
+    async def _calculate_optimal_chunk_size(
+        self, git_diff: str, changed_files: List[str]
+    ) -> int:
+        """
+        Calculate optimal chunk size based on diff content.
+
+        Args:
+            git_diff: Full git diff content
+            changed_files: List of changed file paths
+
+        Returns:
+            Optimal number of files per chunk
+        """
+        if not changed_files:
+            return 10  # Default chunk size
+
+        # Estimate average diff size per file
+        total_diff_tokens = self.token_counter.count_tokens(git_diff)
+        avg_tokens_per_file = total_diff_tokens / len(changed_files)
+        
+        # Target chunk token limit
+        chunk_limit = self.config.get("chunk_token_limit", 100000)
+        
+        # Calculate chunk size with buffer for overhead
+        overhead_factor = 0.7  # Reserve 30% for prompt overhead
+        effective_limit = chunk_limit * overhead_factor
+        
+        chunk_size = max(1, int(effective_limit / avg_tokens_per_file))
+        
+        # Cap at reasonable limits
+        chunk_size = min(chunk_size, 50)  # Max 50 files per chunk
+        chunk_size = max(chunk_size, 5)   # Min 5 files per chunk
+        
+        self.logger.info(
+            f"Calculated chunk size: {chunk_size} files "
+            f"(avg {avg_tokens_per_file:.0f} tokens/file, "
+            f"target {chunk_limit} tokens/chunk)"
+        )
+        
+        return chunk_size
+
+    def _extract_chunk_diff(self, git_diff: str, chunk_files: List[str]) -> str:
+        """
+        Extract diff content for specific files.
+
+        Args:
+            git_diff: Full git diff content
+            chunk_files: List of files to include in chunk
+
+        Returns:
+            Filtered diff content for chunk files only
+        """
+        lines = git_diff.split('\n')
+        chunk_lines = []
+        current_file = None
+        include_section = False
+        
+        for line in lines:
+            if line.startswith('diff --git'):
+                # Parse file path from diff header
+                parts = line.split(' ')
+                if len(parts) >= 4:
+                    file_path = parts[2][2:]  # Remove 'a/' prefix
+                    current_file = file_path
+                    include_section = file_path in chunk_files
+            
+            if include_section:
+                chunk_lines.append(line)
+        
+        return '\n'.join(chunk_lines)
+
+    async def _analyze_file_chunk(
+        self,
+        chunk_diff: str,
+        commit_message: str,
+        current_descriptions: Dict[str, str],
+        chunk_files: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Analyze a chunk of files for description updates.
+
+        Args:
+            chunk_diff: Git diff for this chunk only
+            commit_message: Commit message explaining the changes
+            current_descriptions: Current file descriptions
+            chunk_files: List of files in this chunk
+
+        Returns:
+            Dict with file_updates for this chunk
+        """
+        # Only include descriptions for files in this chunk
+        relevant_descriptions = {
+            path: desc
+            for path, desc in current_descriptions.items()
+            if path in chunk_files
+        }
+
+        prompt = f"""Analyze this git commit chunk and update file descriptions.
+
+COMMIT MESSAGE:
+{commit_message or "No commit message available"}
+
+CURRENT FILE DESCRIPTIONS (for chunk files only):
+{json.dumps(relevant_descriptions, indent=2)}
+
+CHUNK FILES:
+{', '.join(chunk_files)}
+
+GIT DIFF (chunk only):
+{chunk_diff}
+
+INSTRUCTIONS:
+Use the COMMIT MESSAGE to understand the intent and context of the changes.
+Update descriptions for files that have changed significantly. 
+Only include files that need actual description updates.
+
+Return ONLY a JSON object:
+{{
+  "file_updates": {{
+    "path/to/file1.py": "Updated description for file1",
+    "path/to/file2.js": "Updated description for file2"
+  }}
+}}"""
+
+        # Check token count
+        prompt_tokens = self.token_counter.count_tokens(prompt)
+        self.logger.info(f"Chunk prompt: {prompt_tokens} tokens")
+
+        if prompt_tokens > self.config.get("chunk_token_limit", 100000):
+            self.logger.warning(
+                f"Chunk still too large ({prompt_tokens} tokens), "
+                f"skipping {len(chunk_files)} files"
+            )
+            return {"file_updates": {}}
+
+        # Call OpenRouter API
+        try:
+            result = await self._call_openrouter(prompt)
+            return result
+        except Exception as e:
+            self.logger.error(f"Failed to analyze chunk: {e}")
+            return {"file_updates": {}}
 
     @retry(
         wait=wait_exponential(multiplier=1, min=4, max=60),
