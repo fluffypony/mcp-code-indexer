@@ -63,7 +63,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--getprojects",
         action="store_true",
-        help="List all projects with IDs, branches, and description counts",
+        help="List all projects with IDs and file description counts",
     )
 
     parser.add_argument(
@@ -75,10 +75,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--dumpdescriptions",
         nargs="+",
-        metavar=("PROJECT_ID", "BRANCH"),
+        metavar="PROJECT_ID",
         help=(
             "Export descriptions for a project. Usage: "
-            "--dumpdescriptions PROJECT_ID [BRANCH]"
+            "--dumpdescriptions PROJECT_ID"
         ),
     )
 
@@ -138,17 +138,12 @@ async def handle_getprojects(args: argparse.Namespace) -> None:
             print(f"ID: {project.id}")
             print(f"Name: {project.name}")
 
-            # Get branch information
+            # Get file description count
             try:
-                branch_counts = await db_manager.get_branch_file_counts(project.id)
-                if branch_counts:
-                    print("Branches:")
-                    for branch, count in branch_counts.items():
-                        print(f"  - {branch}: {count} descriptions")
-                else:
-                    print("Branches: No descriptions found")
+                file_count = await db_manager.get_file_count(project.id)
+                print(f"Files: {file_count} descriptions")
             except Exception as e:
-                print(f"Branches: Error loading branch info - {e}")
+                print(f"Files: Error loading file count - {e}")
 
             print("-" * 80)
 
@@ -288,11 +283,6 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
                 tool_arguments = json_data
                 logger.info("Auto-detected tool: update_file_description")
                 print("Auto-detected tool: update_file_description", file=sys.stderr)
-            elif "branch" in json_data:
-                tool_name = "check_codebase_size"
-                tool_arguments = json_data
-                logger.info("Auto-detected tool: check_codebase_size")
-                print("Auto-detected tool: check_codebase_size", file=sys.stderr)
             else:
                 logger.error(
                     "Could not auto-detect tool from arguments",
@@ -449,7 +439,6 @@ async def handle_dumpdescriptions(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     project_id = args.dumpdescriptions[0]
-    branch = args.dumpdescriptions[1] if len(args.dumpdescriptions) > 1 else None
 
     db_manager = None
     try:
@@ -461,16 +450,10 @@ async def handle_dumpdescriptions(args: argparse.Namespace) -> None:
         token_counter = TokenCounter(args.token_limit)
 
         # Get file descriptions
-        if branch:
-            file_descriptions = await db_manager.get_all_file_descriptions(
-                project_id=project_id, branch=branch
-            )
-            print(f"File descriptions for project {project_id}, branch {branch}:")
-        else:
-            file_descriptions = await db_manager.get_all_file_descriptions(
-                project_id=project_id
-            )
-            print(f"File descriptions for project {project_id} (all branches):")
+        file_descriptions = await db_manager.get_all_file_descriptions(
+            project_id=project_id
+        )
+        print(f"File descriptions for project {project_id}:")
 
         print("=" * 80)
 
@@ -481,8 +464,6 @@ async def handle_dumpdescriptions(args: argparse.Namespace) -> None:
             total_tokens = 0
             for desc in file_descriptions:
                 print(f"File: {desc.file_path}")
-                if branch is None:
-                    print(f"Branch: {desc.branch}")
                 print(f"Description: {desc.description}")
                 print("-" * 40)
 
@@ -714,7 +695,6 @@ async def handle_map(args: argparse.Namespace) -> None:
             sys.exit(1)
 
         project = project_data["project"]
-        branch = project_data["branch"]
         overview = project_data["overview"]
         files = project_data["files"]
 
@@ -723,7 +703,6 @@ async def handle_map(args: argparse.Namespace) -> None:
             extra={
                 "structured_data": {
                     "project_name": project.name,
-                    "branch": branch,
                     "file_count": len(files),
                     "has_overview": overview is not None,
                 }
@@ -732,7 +711,7 @@ async def handle_map(args: argparse.Namespace) -> None:
 
         # Generate markdown
         markdown_content = generate_project_markdown(
-            project, branch, overview, files, logger
+            project, overview, files, logger
         )
 
         # Output the markdown
@@ -766,7 +745,7 @@ async def handle_map(args: argparse.Namespace) -> None:
             logger.removeHandler(handler)
 
 
-def generate_project_markdown(project, branch, overview, files, logger):
+def generate_project_markdown(project, overview, files, logger):
     """Generate the markdown content for the project map."""
     import re
     from collections import defaultdict
@@ -777,10 +756,6 @@ def generate_project_markdown(project, branch, overview, files, logger):
     # Project header with sentence case
     project_name = project.name.title() if project.name.islower() else project.name
     markdown_lines.append(f"# {project_name}")
-    markdown_lines.append("")
-
-    # Project metadata
-    markdown_lines.append(f"**Branch:** {branch}")
     markdown_lines.append("")
 
     # Project overview (with header demotion if needed)
