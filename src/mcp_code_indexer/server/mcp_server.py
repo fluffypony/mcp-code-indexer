@@ -34,6 +34,7 @@ from mcp_code_indexer.middleware.error_middleware import (
     AsyncTaskManager,
 )
 from mcp_code_indexer.logging_config import get_logger
+from mcp_code_indexer.cleanup_manager import CleanupManager
 
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,7 @@ class MCPCodeIndexServer:
             retry_jitter=retry_jitter,
         )
         self.token_counter = TokenCounter(token_limit)
+        self.cleanup_manager = CleanupManager(self.db_manager, retention_months=6)
 
         # Setup error handling
         self.logger = get_logger(__name__)
@@ -118,6 +120,11 @@ class MCPCodeIndexServer:
 
         # Register handlers
         self._register_handlers()
+
+        # Background cleanup task tracking
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._last_cleanup_time: Optional[float] = None
+        self._cleanup_running: bool = False
 
         # Add debug logging for server events
         self.logger.debug("MCP server instance created and handlers registered")
@@ -233,6 +240,7 @@ class MCPCodeIndexServer:
     async def initialize(self) -> None:
         """Initialize database and other resources."""
         await self.db_manager.initialize()
+        self._start_background_cleanup()
         logger.info("Server initialized successfully")
 
     def _register_handlers(self) -> None:
@@ -949,12 +957,8 @@ class MCPCodeIndexServer:
 
         logger.info(f"Resolved project_id: {project_id}")
 
-        # Clean up descriptions for files that no longer exist
-        logger.info("Cleaning up descriptions for missing files...")
-        cleaned_up_files = await self.db_manager.cleanup_missing_files(
-            project_id=project_id, project_root=folder_path
-        )
-        logger.info(f"Cleaned up {len(cleaned_up_files)} missing files")
+        # Run cleanup if needed (respects 30-minute cooldown)
+        await self._run_cleanup_if_needed()
 
         # Get file descriptions for this project (after cleanup)
         logger.info("Retrieving file descriptions...")
@@ -1472,6 +1476,85 @@ class MCPCodeIndexServer:
                     )
                     raise
 
+    async def _periodic_cleanup(self) -> None:
+        """Background task that performs cleanup every 6 hours."""
+        while True:
+            try:
+                await asyncio.sleep(6 * 60 * 60)  # 6 hours
+                await self._run_cleanup_if_needed()
+                
+            except asyncio.CancelledError:
+                logger.info("Periodic cleanup task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in periodic cleanup: {e}")
+                # Continue running despite errors
+
+    async def _run_cleanup_if_needed(self) -> None:
+        """Run cleanup if conditions are met (not running, not run recently)."""
+        current_time = time.time()
+        
+        # Check if cleanup is already running
+        if self._cleanup_running:
+            logger.debug("Cleanup already running, skipping")
+            return
+            
+        # Check if cleanup was run in the last 30 minutes
+        if (self._last_cleanup_time and 
+            current_time - self._last_cleanup_time < 30 * 60):
+            logger.debug("Cleanup ran recently, skipping")
+            return
+            
+        # Set running flag and update time
+        self._cleanup_running = True
+        self._last_cleanup_time = current_time
+        
+        try:
+            logger.info("Starting cleanup")
+            
+            # Get all projects and run cleanup on each
+            projects = await self.db_manager.get_all_projects()
+            total_cleaned = 0
+            
+            for project in projects:
+                try:
+                    # Cleanup missing files
+                    missing_files = await self.db_manager.cleanup_missing_files(
+                        project_id=project.id,
+                        project_root=Path(project.folder_path)
+                    )
+                    total_cleaned += len(missing_files)
+                    
+                    # Perform permanent cleanup (retention policy)
+                    deleted_count = await self.cleanup_manager.perform_cleanup(
+                        project_id=project.id
+                    )
+                    
+                    if missing_files or deleted_count:
+                        logger.info(
+                            f"Cleanup for {project.name}: "
+                            f"{len(missing_files)} marked, "
+                            f"{deleted_count} permanently deleted"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Error during cleanup for project {project.name}: {e}"
+                    )
+            
+            logger.info(f"Cleanup completed: {total_cleaned} files processed")
+            
+        finally:
+            self._cleanup_running = False
+
+    def _start_background_cleanup(self) -> None:
+        """Start the background cleanup task."""
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = self.task_manager.create_task(
+                self._periodic_cleanup(),
+                name="periodic_cleanup"
+            )
+            logger.info("Started background cleanup task (6-hour interval)")
+
     async def run(self) -> None:
         """Run the MCP server with robust error handling."""
         logger.info("Starting server initialization...")
@@ -1562,6 +1645,14 @@ class MCPCodeIndexServer:
     async def shutdown(self) -> None:
         """Clean shutdown of server resources."""
         try:
+            # Cancel background cleanup task
+            if self._cleanup_task and not self._cleanup_task.done():
+                self._cleanup_task.cancel()
+                try:
+                    await self._cleanup_task
+                except asyncio.CancelledError:
+                    pass
+            
             # Cancel any running tasks
             self.task_manager.cancel_all()
 
