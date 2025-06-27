@@ -9,6 +9,7 @@ import asyncio
 import html
 import json
 import logging
+import random
 import re
 import time
 import uuid
@@ -386,6 +387,13 @@ class MCPCodeIndexServer:
                                 "description": (
                                     "Maximum number of missing files to return "
                                     "(optional)"
+                                ),
+                            },
+                            "randomize": {
+                                "type": "boolean",
+                                "description": (
+                                    "Randomly shuffle files before applying limit "
+                                    "(useful for parallel processing, optional)"
                                 ),
                             },
                         },
@@ -1046,6 +1054,12 @@ class MCPCodeIndexServer:
         missing_paths = [scanner.get_relative_path(f) for f in missing_files]
 
         logger.info(f"Found {len(missing_paths)} files without descriptions")
+
+        # Apply randomization if specified
+        randomize = arguments.get("randomize", False)
+        if randomize:
+            random.shuffle(missing_paths)
+            logger.info("Randomized file order for parallel processing")
 
         # Apply limit if specified
         limit = arguments.get("limit")
