@@ -88,6 +88,21 @@ class GitHookHandler:
                 "OPENROUTER_API_KEY environment variable is required for git hook mode"
             )
 
+    def _log_and_print(self, message: str, level: str = "info") -> None:
+        """
+        Log message and also print to stdout for user visibility.
+        
+        Args:
+            message: Message to log and print
+            level: Log level (info, warning, error)
+        """
+        # Log to logger
+        getattr(self.logger, level)(message)
+        
+        # Also print to stdout with prefix for visibility
+        prefix = "🔍" if level == "info" else "⚠️" if level == "warning" else "❌"
+        print(f"{prefix} {message}")
+
     async def run_githook_mode(
         self,
         commit_hash: Optional[str] = None,
@@ -103,21 +118,20 @@ class GitHookHandler:
         This is the main entry point for git hook functionality.
         """
         try:
-            self.logger.info("=== Git Hook Analysis Started ===")
+            self._log_and_print("=== Git Hook Analysis Started ===")
             if commit_hash:
-                self.logger.info(f"Mode: Single commit ({commit_hash})")
+                self._log_and_print(f"Mode: Single commit ({commit_hash})")
             elif commit_range:
-                self.logger.info(
+                self._log_and_print(
                     f"Mode: Commit range ({commit_range[0]}..{commit_range[1]})"
                 )
             else:
-                self.logger.info("Mode: Staged changes")
+                self._log_and_print("Mode: Staged changes")
 
             # Get git info from current directory
             project_info = await self._identify_project_from_git()
-            self.logger.info(
-                f"Project identified: {project_info.get('name', 'Unknown')} "
-                f"at {project_info.get('folderPath', 'Unknown')}"
+            self._log_and_print(
+                f"Project: {project_info.get('name', 'Unknown')}"
             )
 
             # Get git diff and commit message based on mode
@@ -137,25 +151,23 @@ class GitHookHandler:
 
             # Log diff details
             if not git_diff:
-                self.logger.info("Skipping git hook update - no git diff")
+                self._log_and_print("No changes detected, skipping analysis")
                 return
 
             diff_tokens = self.token_counter.count_tokens(git_diff)
-            self.logger.info(f"Git diff: {diff_tokens} tokens")
+            self._log_and_print(f"Analyzing diff: {diff_tokens:,} tokens")
 
             # Fetch current state
-            self.logger.info("Fetching current project state...")
+            self._log_and_print("Fetching current project state...")
             current_overview = await self._get_project_overview(project_info)
             current_descriptions = await self._get_all_descriptions(project_info)
             changed_files = self._extract_changed_files(git_diff)
 
             if not changed_files:
-                self.logger.info("No changed files detected in git diff")
+                self._log_and_print("No files changed, skipping analysis")
                 return
 
-            self.logger.info(
-                f"Found {len(changed_files)} changed files: {', '.join(changed_files)}"
-            )
+            self._log_and_print(f"Found {len(changed_files)} changed files")
             overview_tokens = (
                 self.token_counter.count_tokens(current_overview)
                 if current_overview
@@ -175,13 +187,23 @@ class GitHookHandler:
 
             # Apply updates to database
             await self._apply_updates(project_info, updates)
-
-            self.logger.info(
-                f"Git hook update completed successfully for {len(changed_files)} files"
-            )
+            
+            # Count actual updates
+            file_update_count = len(updates.get("file_updates", {}))
+            overview_updated = bool(updates.get("overview_update"))
+            
+            if file_update_count > 0 or overview_updated:
+                update_parts = []
+                if file_update_count > 0:
+                    update_parts.append(f"{file_update_count} file descriptions")
+                if overview_updated:
+                    update_parts.append("project overview")
+                self._log_and_print(f"✅ Updated {' and '.join(update_parts)}")
+            else:
+                self._log_and_print("✅ Analysis complete, no updates needed")
 
         except Exception as e:
-            self.logger.error(f"Git hook mode failed: {e}")
+            self._log_and_print(f"Git hook analysis failed: {e}", "error")
             self.logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
             import traceback
 
@@ -230,16 +252,12 @@ class GitHookHandler:
 
         if prompt_tokens <= token_limit:
             # Use single-stage approach
-            self.logger.info("Using single-stage analysis (within token limit)")
+            self._log_and_print("Using single-stage analysis")
             result = await self._call_openrouter(single_stage_prompt)
-            self.logger.info("Single-stage analysis completed")
             return result
         else:
             # Fall back to two-stage approach
-            self.logger.info(
-                f"Single-stage prompt too large ({prompt_tokens} tokens), "
-                f"falling back to two-stage analysis"
-            )
+            self._log_and_print("Using two-stage analysis (large diff)")
 
             # Try two-stage analysis first
             try:
@@ -250,9 +268,8 @@ class GitHookHandler:
             except GitHookError as e:
                 if "too large" in str(e).lower():
                     # Fall back to chunked processing
-                    self.logger.info(
-                        "Two-stage analysis failed due to size, "
-                        "falling back to chunked processing"
+                    self._log_and_print(
+                        "Using chunked processing (very large diff)"
                     )
                     return await self._analyze_with_chunking(
                         git_diff, commit_message, current_overview,
@@ -634,7 +651,7 @@ Return ONLY a JSON object:
         Returns:
             Dict containing file_updates and overview_update
         """
-        self.logger.info(
+        self._log_and_print(
             f"Starting chunked processing for {len(changed_files)} files"
         )
 
@@ -650,7 +667,7 @@ Return ONLY a JSON object:
             git_diff, changed_files
         )
         
-        self.logger.info(f"Using chunk size of {chunk_size} files per chunk")
+        self._log_and_print(f"Processing in {chunk_size}-file chunks")
         
         all_file_updates = {}
         
@@ -659,7 +676,7 @@ Return ONLY a JSON object:
             chunk_number = (i // chunk_size) + 1
             total_chunks = (len(changed_files) + chunk_size - 1) // chunk_size
             
-            self.logger.info(
+            self._log_and_print(
                 f"Processing chunk {chunk_number}/{total_chunks} "
                 f"({len(chunk_files)} files)"
             )
