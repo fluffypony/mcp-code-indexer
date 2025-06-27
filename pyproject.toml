@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "mcp-code-indexer"
-version = "3.4.0"
+version = "3.4.1"
 description = "MCP server that tracks file descriptions across codebases, enabling AI agents to efficiently navigate and understand code through searchable summaries and token-aware overviews."
 authors = ["MCP Code Indexer Contributors"]
 maintainers = ["MCP Code Indexer Contributors"]
