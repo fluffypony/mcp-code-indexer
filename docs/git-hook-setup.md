@@ -50,8 +50,14 @@ mcp-code-indexer --githook
 # Or analyze a specific commit
 mcp-code-indexer --githook abc123def
 
+# Or analyze using HEAD syntax
+mcp-code-indexer --githook HEAD
+mcp-code-indexer --githook HEAD~1
+mcp-code-indexer --githook HEAD~3
+
 # Or analyze a range of commits (useful for rebases)
-mcp-code-indexer --githook abc123..def456
+mcp-code-indexer --githook abc123 def456
+mcp-code-indexer --githook HEAD~5 HEAD
 ```
 
 **What you'll see**: The tool analyzes git changes and updates descriptions for modified files.
@@ -63,6 +69,8 @@ The `--githook` command supports three modes:
 1. **Current Changes** (default): `--githook` - Analyzes staged changes
 2. **Specific Commit**: `--githook COMMIT_HASH` - Analyzes a particular commit
 3. **Commit Range**: `--githook HASH1 HASH2` - Analyzes all commits from HASH1 to HASH2
+
+**Supported commit references**: commit hashes, HEAD, HEAD~1, HEAD~3, branch names, tags
 
 ### Automatic Setup
 

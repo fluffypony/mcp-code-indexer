@@ -205,8 +205,14 @@ mcp-code-indexer --githook
 # Analyze a specific commit
 mcp-code-indexer --githook abc123def
 
+# Analyze using HEAD syntax
+mcp-code-indexer --githook HEAD
+mcp-code-indexer --githook HEAD~1
+mcp-code-indexer --githook HEAD~3
+
 # Analyze a commit range (perfect for rebases)
 mcp-code-indexer --githook abc123 def456
+mcp-code-indexer --githook HEAD~5 HEAD
 ```
 
 **🎯 Perfect for**:

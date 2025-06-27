@@ -89,8 +89,8 @@ def parse_arguments() -> argparse.Namespace:
         help=(
             "Git hook mode: auto-update descriptions based on git diff using "
             "OpenRouter API. Usage: --githook (current changes), --githook HASH "
-            "(specific commit), --githook HASH1 HASH2 (commit range from "
-            "HASH1 to HASH2)"
+            "(specific commit), --githook HASH1 HASH2 (commit range). "
+            "Supports: commit hashes, HEAD, HEAD~1, HEAD~3, branch names, tags."
         ),
     )
 
