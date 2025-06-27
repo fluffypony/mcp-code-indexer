@@ -10,6 +10,7 @@ import html
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -958,7 +959,9 @@ class MCPCodeIndexServer:
         logger.info(f"Resolved project_id: {project_id}")
 
         # Run cleanup if needed (respects 30-minute cooldown)
-        await self._run_cleanup_if_needed()
+        cleaned_up_count = await self._run_cleanup_if_needed(
+            project_id=project_id, project_root=folder_path
+        )
 
         # Get file descriptions for this project (after cleanup)
         logger.info("Retrieving file descriptions...")
@@ -1005,8 +1008,7 @@ class MCPCodeIndexServer:
             "recommendation": recommendation,
             "tokenLimit": token_limit,
             "totalFiles": len(file_descriptions),
-            "cleanedUpFiles": cleaned_up_files,
-            "cleanedUpCount": len(cleaned_up_files),
+            "cleanedUpCount": cleaned_up_count,
         }
 
     async def _handle_find_missing_descriptions(
@@ -1490,20 +1492,20 @@ class MCPCodeIndexServer:
                 logger.error(f"Error in periodic cleanup: {e}")
                 # Continue running despite errors
 
-    async def _run_cleanup_if_needed(self) -> None:
+    async def _run_cleanup_if_needed(self, project_id: str = None, project_root: Path = None) -> int:
         """Run cleanup if conditions are met (not running, not run recently)."""
         current_time = time.time()
         
         # Check if cleanup is already running
         if self._cleanup_running:
             logger.debug("Cleanup already running, skipping")
-            return
+            return 0
             
         # Check if cleanup was run in the last 30 minutes
         if (self._last_cleanup_time and 
             current_time - self._last_cleanup_time < 30 * 60):
             logger.debug("Cleanup ran recently, skipping")
-            return
+            return 0
             
         # Set running flag and update time
         self._cleanup_running = True
@@ -1511,37 +1513,66 @@ class MCPCodeIndexServer:
         
         try:
             logger.info("Starting cleanup")
-            
-            # Get all projects and run cleanup on each
-            projects = await self.db_manager.get_all_projects()
             total_cleaned = 0
             
-            for project in projects:
+            if project_id and project_root:
+                # Single project cleanup
                 try:
-                    # Cleanup missing files
                     missing_files = await self.db_manager.cleanup_missing_files(
-                        project_id=project.id,
-                        project_root=Path(project.folder_path)
+                        project_id=project_id, project_root=project_root
                     )
-                    total_cleaned += len(missing_files)
+                    total_cleaned = len(missing_files)
                     
                     # Perform permanent cleanup (retention policy)
                     deleted_count = await self.cleanup_manager.perform_cleanup(
-                        project_id=project.id
+                        project_id=project_id
                     )
                     
                     if missing_files or deleted_count:
                         logger.info(
-                            f"Cleanup for {project.name}: "
-                            f"{len(missing_files)} marked, "
+                            f"Cleanup: {len(missing_files)} marked, "
                             f"{deleted_count} permanently deleted"
                         )
                 except Exception as e:
-                    logger.error(
-                        f"Error during cleanup for project {project.name}: {e}"
-                    )
+                    logger.error(f"Error during cleanup: {e}")
+            else:
+                # All projects cleanup (for periodic task)
+                projects = await self.db_manager.get_all_projects()
+                
+                for project in projects:
+                    try:
+                        # Skip projects without folder paths in aliases
+                        if not project.aliases:
+                            continue
+                            
+                        # Use first alias as folder path
+                        folder_path = Path(project.aliases[0])
+                        if not folder_path.exists():
+                            continue
+                            
+                        missing_files = await self.db_manager.cleanup_missing_files(
+                            project_id=project.id, project_root=folder_path
+                        )
+                        total_cleaned += len(missing_files)
+                        
+                        # Perform permanent cleanup (retention policy)
+                        deleted_count = await self.cleanup_manager.perform_cleanup(
+                            project_id=project.id
+                        )
+                        
+                        if missing_files or deleted_count:
+                            logger.info(
+                                f"Cleanup for {project.name}: "
+                                f"{len(missing_files)} marked, "
+                                f"{deleted_count} permanently deleted"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"Error during cleanup for project {project.name}: {e}"
+                        )
             
             logger.info(f"Cleanup completed: {total_cleaned} files processed")
+            return total_cleaned
             
         finally:
             self._cleanup_running = False
