@@ -1001,8 +1001,7 @@ class MCPCodeIndexServer:
         logger.info(f"Recommendation: {recommendation}")
 
         return {
-            "totalTokens": total_tokens,
-            "descriptionsTokens": descriptions_tokens,
+            "fileDescriptionTokens": descriptions_tokens,
             "overviewTokens": overview_tokens,
             "isLarge": is_large,
             "recommendation": recommendation,
