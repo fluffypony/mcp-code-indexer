@@ -742,40 +742,63 @@ class MCPCodeIndexServer:
         """
         Get or create a project ID using intelligent matching.
 
-        Matches projects based on identification factors:
-        1. Project name (normalized, case-insensitive)
-        2. Folder path in aliases
-
-        Projects are now identified primarily by name without git coupling.
+        For local databases: Uses the single project in the database (ignores paths).
+        For global databases: Matches projects based on name and folder path aliases.
         """
         project_name = arguments["projectName"]
         folder_path = arguments["folderPath"]
 
         # Get the appropriate database manager for this folder
         db_manager = await self.db_factory.get_database_manager(folder_path)
-
-        # Normalize project name for case-insensitive matching
-        normalized_name = project_name.lower()
-
-        # Find potential project matches
-        project = await self._find_matching_project(normalized_name, folder_path, db_manager)
-        if project:
-            # Update project metadata and aliases
-            await self._update_existing_project(project, normalized_name, folder_path, db_manager)
+        
+        # Check if this is a local database
+        is_local = self.db_factory.get_path_resolver().is_local_database(folder_path)
+        
+        if is_local:
+            # For local databases: just get the single project (there should only be one)
+            all_projects = await db_manager.get_all_projects()
+            if all_projects:
+                project = all_projects[0]  # Use the first (and should be only) project
+                # Update last accessed time
+                await db_manager.update_project_access_time(project.id)
+                logger.info(f"Using existing local project: {project.name} (ID: {project.id})")
+                return project.id
+            else:
+                # No project in local database - create one
+                project_id = str(uuid.uuid4())
+                project = Project(
+                    id=project_id,
+                    name=project_name.lower(),
+                    aliases=[folder_path],  # Store for reference but don't rely on it for matching
+                    created=datetime.utcnow(),
+                    last_accessed=datetime.utcnow(),
+                )
+                await db_manager.create_project(project)
+                logger.info(f"Created new local project: {project_name} (ID: {project_id})")
+                return project_id
         else:
-            # Create new project with UUID
-            project_id = str(uuid.uuid4())
-            project = Project(
-                id=project_id,
-                name=normalized_name,
-                aliases=[folder_path],
-                created=datetime.utcnow(),
-                last_accessed=datetime.utcnow(),
-            )
-            await db_manager.create_project(project)
-            logger.info(f"Created new project: {normalized_name} ({project_id})")
+            # For global databases: use the existing matching logic
+            normalized_name = project_name.lower()
 
-        return project.id
+            # Find potential project matches
+            project = await self._find_matching_project(normalized_name, folder_path, db_manager)
+            if project:
+                # Update project metadata and aliases
+                await self._update_existing_project(project, normalized_name, folder_path, db_manager)
+            else:
+                # Create new project with UUID
+                project_id = str(uuid.uuid4())
+                project = Project(
+                    id=project_id,
+                    name=normalized_name,
+                    aliases=[folder_path],
+                    created=datetime.utcnow(),
+                    last_accessed=datetime.utcnow(),
+                )
+                await db_manager.create_project(project)
+                logger.info(f"Created new global project: {normalized_name} (ID: {project_id})")
+
+            return project.id
 
     async def _find_matching_project(
         self, normalized_name: str, folder_path: str, db_manager: DatabaseManager

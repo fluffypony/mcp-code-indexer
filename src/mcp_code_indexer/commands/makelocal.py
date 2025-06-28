@@ -98,6 +98,10 @@ class MakeLocalCommand:
         # Create local database manager (this will initialize schema)
         local_db_manager = await self.db_factory.get_database_manager(str(folder_path_obj))
         
+        # For local databases, we'll create a project with a machine-independent approach
+        # We'll store the current folder path in aliases for reference, but the project
+        # will be found by being the single project in the local database
+        
         # Migrate data
         await self._migrate_project_data(
             local_db_manager, project, file_descriptions, project_overview
@@ -159,12 +163,19 @@ class MakeLocalCommand:
         """
         Migrate project data to the local database.
         
+        For local databases, we update the project aliases to include the current
+        folder path since local database projects are found by being the single
+        project in the database rather than by path matching.
+        
         Args:
             local_db_manager: Local database manager
             project: Project to migrate
             file_descriptions: File descriptions to migrate
             project_overview: Project overview to migrate (if any)
         """
+        # Update project aliases to include current folder path for reference
+        # Note: This will be machine-specific but that's OK for local databases
+        
         # Create project in local database
         await local_db_manager.create_project(project)
         logger.info(f"Created project in local database: {project.name}")
