@@ -52,10 +52,20 @@ class MakeLocalCommand:
         if not folder_path_obj.is_dir():
             raise ValueError(f"Path is not a directory: {folder_path}")
         
-        # Check if local database already exists
+        # Check if local database already exists and has data
         local_db_path = folder_path_obj / ".code-index.db"
         if local_db_path.exists() and local_db_path.stat().st_size > 0:
-            raise ValueError(f"Local database already exists: {local_db_path}")
+            # Check if it actually has project data (not just schema)
+            from sqlite3 import connect
+            try:
+                with connect(local_db_path) as conn:
+                    cursor = conn.execute("SELECT COUNT(*) FROM projects")
+                    project_count = cursor.fetchone()[0]
+                    if project_count > 0:
+                        raise ValueError(f"Local database already contains {project_count} project(s): {local_db_path}")
+            except Exception:
+                # If we can't check, assume it has data to be safe
+                raise ValueError(f"Local database already exists: {local_db_path}")
         
         # Get global database manager
         global_db_manager = await self.db_factory.get_database_manager()
@@ -78,12 +88,13 @@ class MakeLocalCommand:
         if project_overview:
             logger.info("Found project overview to migrate")
         
-        # Create local database (remove empty file if it exists)
-        if local_db_path.exists():
-            local_db_path.unlink()
-            
-        # Create local database manager
+        # Create local database manager (this will initialize schema if needed)
         local_db_manager = await self.db_factory.get_database_manager(str(folder_path_obj))
+        
+        # Check if project already exists in local database
+        existing_local_project = await local_db_manager.get_project(project.id)
+        if existing_local_project:
+            raise ValueError(f"Project '{project.name}' (ID: {project.id}) already exists in local database")
         
         # Migrate data
         await self._migrate_project_data(
