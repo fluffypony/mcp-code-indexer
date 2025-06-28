@@ -850,8 +850,11 @@ class MCPCodeIndexServer:
             if not current_basenames:
                 return False
 
+            # Get appropriate database manager for this folder
+            db_manager = await self.db_factory.get_database_manager(folder_path)
+            
             # Get files already indexed for this project
-            indexed_files = await self.db_manager.get_all_file_descriptions(project.id)
+            indexed_files = await db_manager.get_all_file_descriptions(project.id)
             indexed_basenames = {Path(fd.file_path).name for fd in indexed_files}
 
             if not indexed_basenames:
@@ -1043,26 +1046,28 @@ class MCPCodeIndexServer:
         )
         logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
 
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
-        folder_path = Path(arguments["folderPath"])
+        folder_path_obj = Path(folder_path)
 
         logger.info(f"Resolved project_id: {project_id}")
 
         # Get existing file descriptions
         logger.info("Retrieving existing file descriptions...")
-        existing_descriptions = await self.db_manager.get_all_file_descriptions(
+        existing_descriptions = await db_manager.get_all_file_descriptions(
             project_id=project_id
         )
         existing_paths = {desc.file_path for desc in existing_descriptions}
         logger.info(f"Found {len(existing_paths)} existing descriptions")
 
         # Scan directory for files
-        logger.info(f"Scanning project directory: {folder_path}")
-        scanner = FileScanner(folder_path)
+        logger.info(f"Scanning project directory: {folder_path_obj}")
+        scanner = FileScanner(folder_path_obj)
         if not scanner.is_valid_project_directory():
-            logger.error(f"Invalid or inaccessible project directory: {folder_path}")
+            logger.error(f"Invalid or inaccessible project directory: {folder_path_obj}")
             return {
-                "error": f"Invalid or inaccessible project directory: {folder_path}"
+                "error": f"Invalid or inaccessible project directory: {folder_path_obj}"
             }
 
         missing_files = scanner.find_missing_files(existing_paths)
@@ -1201,10 +1206,12 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle get_codebase_overview tool calls for condensed overviews."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
 
         # Try to get existing overview
-        overview = await self.db_manager.get_project_overview(project_id)
+        overview = await db_manager.get_project_overview(project_id)
 
         if overview:
             return {
@@ -1553,9 +1560,10 @@ class MCPCodeIndexServer:
             total_cleaned = 0
             
             if project_id and project_root:
-                # Single project cleanup
+                # Single project cleanup - use appropriate database for this project's folder
                 try:
-                    missing_files = await self.db_manager.cleanup_missing_files(
+                    folder_db_manager = await self.db_factory.get_database_manager(str(project_root))
+                    missing_files = await folder_db_manager.cleanup_missing_files(
                         project_id=project_id, project_root=project_root
                     )
                     total_cleaned = len(missing_files)
@@ -1573,7 +1581,7 @@ class MCPCodeIndexServer:
                 except Exception as e:
                     logger.error(f"Error during cleanup: {e}")
             else:
-                # All projects cleanup (for periodic task)
+                # All projects cleanup (for periodic task) - start with global database
                 projects = await self.db_manager.get_all_projects()
                 
                 for project in projects:
@@ -1586,8 +1594,10 @@ class MCPCodeIndexServer:
                         folder_path = Path(project.aliases[0])
                         if not folder_path.exists():
                             continue
-                            
-                        missing_files = await self.db_manager.cleanup_missing_files(
+                        
+                        # Get appropriate database manager for this project's folder
+                        project_db_manager = await self.db_factory.get_database_manager(str(folder_path))
+                        missing_files = await project_db_manager.cleanup_missing_files(
                             project_id=project.id, project_root=folder_path
                         )
                         total_cleaned += len(missing_files)
