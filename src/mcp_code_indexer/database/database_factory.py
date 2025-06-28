@@ -82,15 +82,6 @@ class DatabaseFactory:
         if db_key in self._database_managers:
             return self._database_managers[db_key]
         
-        # Check if we need to initialize an empty local database
-        if (folder_path and 
-            self.path_resolver.is_local_database(folder_path) and
-            self.path_resolver.should_initialize_local_database(folder_path)):
-            logger.info(f"Initializing empty local database: {db_path}")
-            # Remove the empty file so DatabaseManager can create it properly
-            if db_path.exists():
-                db_path.unlink()
-        
         # Create new database manager
         db_manager = DatabaseManager(
             db_path=db_path,

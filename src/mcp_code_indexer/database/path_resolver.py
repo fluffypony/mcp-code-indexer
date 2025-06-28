@@ -17,8 +17,8 @@ class DatabasePathResolver:
     """
     Resolves database paths, determining whether to use local or global databases.
     
-    Local databases are stored as .code-index.db in project folders.
-    If a local database file exists, it takes precedence over the global database.
+    Local databases are stored as tracker.db in .code-index folders.
+    If a .code-index folder exists, it takes precedence over the global database.
     """
     
     def __init__(self, global_db_path: Path):
@@ -46,13 +46,14 @@ class DatabasePathResolver:
             
         try:
             folder_path_obj = Path(folder_path).resolve()
-            local_db_path = folder_path_obj / ".code-index.db"
+            local_db_folder = folder_path_obj / ".code-index"
             
-            if local_db_path.exists():
-                logger.debug(f"Found local database: {local_db_path}")
+            if local_db_folder.exists() and local_db_folder.is_dir():
+                local_db_path = local_db_folder / "tracker.db"
+                logger.debug(f"Found local database folder: {local_db_path}")
                 return local_db_path
             else:
-                logger.debug(f"No local database found at {local_db_path}, using global database")
+                logger.debug(f"No local database folder found at {local_db_folder}, using global database")
                 return self.global_db_path
                 
         except (OSError, ValueError) as e:
@@ -61,21 +62,21 @@ class DatabasePathResolver:
     
     def is_local_database(self, folder_path: Optional[str] = None) -> bool:
         """
-        Check if a local database exists for the given folder path.
+        Check if a local database folder exists for the given folder path.
         
         Args:
             folder_path: Project folder path to check
             
         Returns:
-            True if a local database exists, False otherwise
+            True if a local database folder exists, False otherwise
         """
         if not folder_path:
             return False
             
         try:
             folder_path_obj = Path(folder_path).resolve()
-            local_db_path = folder_path_obj / ".code-index.db"
-            return local_db_path.exists()
+            local_db_folder = folder_path_obj / ".code-index"
+            return local_db_folder.exists() and local_db_folder.is_dir()
         except (OSError, ValueError):
             return False
     
@@ -89,34 +90,16 @@ class DatabasePathResolver:
         Returns:
             Path where the local database would be located
         """
-        return Path(folder_path).resolve() / ".code-index.db"
+        return Path(folder_path).resolve() / ".code-index" / "tracker.db"
     
-    def is_empty_database_file(self, db_path: Path) -> bool:
+    def get_local_database_folder(self, folder_path: str) -> Path:
         """
-        Check if a database file is empty (0 bytes).
-        
-        Args:
-            db_path: Path to the database file
-            
-        Returns:
-            True if the file exists and is empty, False otherwise
-        """
-        try:
-            return db_path.exists() and db_path.stat().st_size == 0
-        except (OSError, ValueError):
-            return False
-    
-    def should_initialize_local_database(self, folder_path: str) -> bool:
-        """
-        Check if a local database should be initialized.
-        
-        This returns True if .code-index.db exists and is empty.
+        Get the local database folder for a project folder.
         
         Args:
             folder_path: Project folder path
             
         Returns:
-            True if local database should be initialized, False otherwise
+            Path where the local database folder would be located
         """
-        local_db_path = self.get_local_database_path(folder_path)
-        return self.is_empty_database_file(local_db_path)
+        return Path(folder_path).resolve() / ".code-index"

@@ -52,9 +52,12 @@ class MakeLocalCommand:
         if not folder_path_obj.is_dir():
             raise ValueError(f"Path is not a directory: {folder_path}")
         
+        # Get local database folder and path
+        local_db_folder = self.db_factory.get_path_resolver().get_local_database_folder(folder_path)
+        local_db_path = self.db_factory.get_path_resolver().get_local_database_path(folder_path)
+        
         # Check if local database already exists and has data
-        local_db_path = folder_path_obj / ".code-index.db"
-        if local_db_path.exists() and local_db_path.stat().st_size > 0:
+        if local_db_folder.exists() and local_db_path.exists() and local_db_path.stat().st_size > 0:
             # Check if it actually has project data (not just schema)
             from sqlite3 import connect
             try:
@@ -88,18 +91,12 @@ class MakeLocalCommand:
         if project_overview:
             logger.info("Found project overview to migrate")
         
-        # Ensure local database file exists (create empty file if needed)
-        if not local_db_path.exists():
-            local_db_path.touch()
-            logger.info(f"Created empty local database file: {local_db_path}")
+        # Create local database folder (this ensures it exists)
+        local_db_folder.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created local database folder: {local_db_folder}")
         
         # Create local database manager (this will initialize schema)
         local_db_manager = await self.db_factory.get_database_manager(str(folder_path_obj))
-        
-        # Check if project already exists in local database (now that we have a real local DB)
-        existing_local_project = await local_db_manager.get_project(project.id)
-        if existing_local_project:
-            raise ValueError(f"Project '{project.name}' (ID: {project.id}) already exists in local database")
         
         # Migrate data
         await self._migrate_project_data(
@@ -114,6 +111,7 @@ class MakeLocalCommand:
             "project_name": project.name,
             "project_id": project.id,
             "local_database_path": str(local_db_path),
+            "local_database_folder": str(local_db_folder),
             "migrated_files": len(file_descriptions),
             "migrated_overview": project_overview is not None,
         }
