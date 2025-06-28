@@ -88,10 +88,15 @@ class MakeLocalCommand:
         if project_overview:
             logger.info("Found project overview to migrate")
         
-        # Create local database manager (this will initialize schema if needed)
+        # Ensure local database file exists (create empty file if needed)
+        if not local_db_path.exists():
+            local_db_path.touch()
+            logger.info(f"Created empty local database file: {local_db_path}")
+        
+        # Create local database manager (this will initialize schema)
         local_db_manager = await self.db_factory.get_database_manager(str(folder_path_obj))
         
-        # Check if project already exists in local database
+        # Check if project already exists in local database (now that we have a real local DB)
         existing_local_project = await local_db_manager.get_project(project.id)
         if existing_local_project:
             raise ValueError(f"Project '{project.name}' (ID: {project.id}) already exists in local database")
