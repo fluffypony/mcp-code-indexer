@@ -974,19 +974,21 @@ class MCPCodeIndexServer:
         )
         logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
 
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
-        folder_path = Path(arguments["folderPath"])
+        folder_path_obj = Path(folder_path)
 
         logger.info(f"Resolved project_id: {project_id}")
 
         # Run cleanup if needed (respects 30-minute cooldown)
         cleaned_up_count = await self._run_cleanup_if_needed(
-            project_id=project_id, project_root=folder_path
+            project_id=project_id, project_root=folder_path_obj
         )
 
         # Get file descriptions for this project (after cleanup)
         logger.info("Retrieving file descriptions...")
-        file_descriptions = await self.db_manager.get_all_file_descriptions(
+        file_descriptions = await db_manager.get_all_file_descriptions(
             project_id=project_id
         )
         logger.info(f"Found {len(file_descriptions)} file descriptions")
@@ -1001,7 +1003,7 @@ class MCPCodeIndexServer:
         )
 
         # Get overview tokens if available
-        overview = await self.db_manager.get_project_overview(project_id)
+        overview = await db_manager.get_project_overview(project_id)
         overview_tokens = 0
         if overview and overview.overview:
             overview_tokens = self.token_counter.count_tokens(overview.overview)
@@ -1097,11 +1099,13 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle search_descriptions tool calls."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
         max_results = arguments.get("maxResults", 20)
 
         # Perform search
-        search_results = await self.db_manager.search_file_descriptions(
+        search_results = await db_manager.search_file_descriptions(
             project_id=project_id, query=arguments["query"], max_results=max_results
         )
 
@@ -1127,10 +1131,12 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle get_codebase_overview tool calls."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
 
         # Get all file descriptions
-        file_descriptions = await self.db_manager.get_all_file_descriptions(
+        file_descriptions = await db_manager.get_all_file_descriptions(
             project_id=project_id
         )
 
@@ -1219,10 +1225,12 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle update_codebase_overview tool calls."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
 
         # Get current file count and total tokens for context
-        file_descriptions = await self.db_manager.get_all_file_descriptions(
+        file_descriptions = await db_manager.get_all_file_descriptions(
             project_id=project_id
         )
 
@@ -1238,7 +1246,7 @@ class MCPCodeIndexServer:
             total_tokens=total_tokens,
         )
 
-        await self.db_manager.create_project_overview(overview)
+        await db_manager.create_project_overview(overview)
 
         return {
             "success": True,
@@ -1252,11 +1260,13 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle get_word_frequency tool calls."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
         limit = arguments.get("limit", 200)
 
         # Analyze word frequency
-        result = await self.db_manager.analyze_word_frequency(
+        result = await db_manager.analyze_word_frequency(
             project_id=project_id, limit=limit
         )
 
@@ -1273,11 +1283,13 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle search_codebase_overview tool calls."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
         search_word = arguments["searchWord"].lower()
 
         # Get the overview
-        overview = await self.db_manager.get_project_overview(project_id)
+        overview = await db_manager.get_project_overview(project_id)
 
         if not overview or not overview.overview:
             return {
