@@ -110,6 +110,12 @@ def parse_arguments() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "--makelocal",
+        type=str,
+        help="Create local database in specified folder and migrate project data from global DB",
+    )
+
     return parser.parse_args()
 
 
@@ -837,6 +843,52 @@ def generate_project_markdown(project, overview, files, logger):
     return "\n".join(markdown_lines)
 
 
+async def handle_makelocal(args: argparse.Namespace) -> None:
+    """Handle --makelocal command."""
+    try:
+        from .database.database_factory import DatabaseFactory
+        from .commands.makelocal import MakeLocalCommand
+
+        # Initialize database factory
+        db_path = Path(args.db_path).expanduser()
+        cache_dir = Path(args.cache_dir).expanduser()
+
+        # Create directories if they don't exist
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        db_factory = DatabaseFactory(
+            global_db_path=db_path,
+            pool_size=3,
+            retry_count=5,
+            timeout=10.0,
+            enable_wal_mode=True,
+            health_check_interval=30.0,
+            retry_min_wait=0.1,
+            retry_max_wait=2.0,
+            retry_jitter=0.2,
+        )
+
+        # Initialize make local command
+        makelocal_cmd = MakeLocalCommand(db_factory)
+
+        # Execute the command
+        result = await makelocal_cmd.execute(args.makelocal)
+
+        print(f"Successfully migrated project '{result['project_name']}' to local database")
+        print(f"Local database created at: {result['local_database_path']}")
+        print(f"Migrated {result['migrated_files']} file descriptions")
+        if result['migrated_overview']:
+            print("Migrated project overview")
+
+        # Close all database connections
+        await db_factory.close_all()
+
+    except Exception as e:
+        print(f"Make local command error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
@@ -865,6 +917,10 @@ async def main() -> None:
 
     if args.map:
         await handle_map(args)
+        return
+
+    if args.makelocal:
+        await handle_makelocal(args)
         return
 
     # Setup structured logging
