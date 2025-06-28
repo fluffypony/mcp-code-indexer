@@ -95,6 +95,12 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--makelocal",
+        type=str,
+        help="Create local database in specified folder and migrate project data from global DB",
+    )
+
+    parser.add_argument(
         "project_name", nargs="?", help="Project name for --ask and --deepask commands"
     )
 
@@ -388,6 +394,52 @@ async def handle_deepask(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+async def handle_makelocal(args: argparse.Namespace) -> None:
+    """Handle --makelocal command."""
+    try:
+        from src.mcp_code_indexer.database.database_factory import DatabaseFactory
+        from src.mcp_code_indexer.commands.makelocal import MakeLocalCommand
+
+        # Initialize database factory
+        db_path = Path(args.db_path).expanduser()
+        cache_dir = Path(args.cache_dir).expanduser()
+
+        # Create directories if they don't exist
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        db_factory = DatabaseFactory(
+            global_db_path=db_path,
+            pool_size=args.db_pool_size,
+            retry_count=args.db_retry_count,
+            timeout=args.db_timeout,
+            enable_wal_mode=args.enable_wal_mode,
+            health_check_interval=args.health_check_interval,
+            retry_min_wait=args.retry_min_wait,
+            retry_max_wait=args.retry_max_wait,
+            retry_jitter=args.retry_jitter,
+        )
+
+        # Initialize make local command
+        makelocal_cmd = MakeLocalCommand(db_factory)
+
+        # Execute the command
+        result = await makelocal_cmd.execute(args.makelocal)
+
+        print(f"Successfully migrated project '{result['project_name']}' to local database")
+        print(f"Local database created at: {result['local_database_path']}")
+        print(f"Migrated {result['migrated_files']} file descriptions")
+        if result['migrated_overview']:
+            print("Migrated project overview")
+
+        # Close all database connections
+        await db_factory.close_all()
+
+    except Exception as e:
+        print(f"Make local command error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 async def main() -> None:
     """Main entry point for the MCP server."""
     args = parse_arguments()
@@ -403,6 +455,10 @@ async def main() -> None:
 
     if args.deepask:
         await handle_deepask(args)
+        return
+
+    if args.makelocal:
+        await handle_makelocal(args)
         return
 
     # Setup structured logging

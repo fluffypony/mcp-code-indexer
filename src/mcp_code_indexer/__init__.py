@@ -6,7 +6,11 @@ intelligent codebase navigation through searchable file descriptions,
 token-aware overviews, and advanced merge capabilities.
 """
 
-from .server.mcp_server import MCPCodeIndexServer
+# Delay import to avoid dependency issues during testing
+def get_server():
+    """Get MCPCodeIndexServer (lazy import)."""
+    from .server.mcp_server import MCPCodeIndexServer
+    return MCPCodeIndexServer
 
 
 def _get_version() -> str:
@@ -54,4 +58,4 @@ __author__ = "MCP Code Indexer Contributors"
 __email__ = ""
 __license__ = "MIT"
 
-__all__ = ["MCPCodeIndexServer", "__version__"]
+__all__ = ["get_server", "__version__"]

@@ -23,6 +23,7 @@ from mcp.server.stdio import stdio_server
 from pydantic import ValidationError
 
 from mcp_code_indexer.database.database import DatabaseManager
+from mcp_code_indexer.database.database_factory import DatabaseFactory
 from mcp_code_indexer.file_scanner import FileScanner
 from mcp_code_indexer.token_counter import TokenCounter
 from mcp_code_indexer.database.models import (
@@ -97,8 +98,8 @@ class MCPCodeIndexServer:
         }
 
         # Initialize components
-        self.db_manager = DatabaseManager(
-            db_path=self.db_path,
+        self.db_factory = DatabaseFactory(
+            global_db_path=self.db_path,
             pool_size=db_pool_size,
             retry_count=db_retry_count,
             timeout=db_timeout,
@@ -108,8 +109,10 @@ class MCPCodeIndexServer:
             retry_max_wait=retry_max_wait,
             retry_jitter=retry_jitter,
         )
+        # Keep reference to global db_manager for backwards compatibility
+        self.db_manager = None  # Will be set during run()
         self.token_counter = TokenCounter(token_limit)
-        self.cleanup_manager = CleanupManager(self.db_manager, retention_months=6)
+        self.cleanup_manager = None  # Will be set during initialize()
 
         # Setup error handling
         self.logger = get_logger(__name__)
@@ -241,7 +244,10 @@ class MCPCodeIndexServer:
 
     async def initialize(self) -> None:
         """Initialize database and other resources."""
-        await self.db_manager.initialize()
+        # Initialize global database manager for backwards compatibility
+        self.db_manager = await self.db_factory.get_database_manager()
+        # Update cleanup manager with initialized db_manager
+        self.cleanup_manager = CleanupManager(self.db_manager, retention_months=6)
         self._start_background_cleanup()
         logger.info("Server initialized successfully")
 
@@ -745,14 +751,17 @@ class MCPCodeIndexServer:
         project_name = arguments["projectName"]
         folder_path = arguments["folderPath"]
 
+        # Get the appropriate database manager for this folder
+        db_manager = await self.db_factory.get_database_manager(folder_path)
+
         # Normalize project name for case-insensitive matching
         normalized_name = project_name.lower()
 
         # Find potential project matches
-        project = await self._find_matching_project(normalized_name, folder_path)
+        project = await self._find_matching_project(normalized_name, folder_path, db_manager)
         if project:
             # Update project metadata and aliases
-            await self._update_existing_project(project, normalized_name, folder_path)
+            await self._update_existing_project(project, normalized_name, folder_path, db_manager)
         else:
             # Create new project with UUID
             project_id = str(uuid.uuid4())
@@ -763,20 +772,20 @@ class MCPCodeIndexServer:
                 created=datetime.utcnow(),
                 last_accessed=datetime.utcnow(),
             )
-            await self.db_manager.create_project(project)
+            await db_manager.create_project(project)
             logger.info(f"Created new project: {normalized_name} ({project_id})")
 
         return project.id
 
     async def _find_matching_project(
-        self, normalized_name: str, folder_path: str
+        self, normalized_name: str, folder_path: str, db_manager: DatabaseManager
     ) -> Optional[Project]:
         """
         Find a matching project using name and folder path matching.
 
         Returns the best matching project or None if no sufficient match is found.
         """
-        all_projects = await self.db_manager.get_all_projects()
+        all_projects = await db_manager.get_all_projects()
 
         best_match = None
         best_score = 0
@@ -863,11 +872,11 @@ class MCPCodeIndexServer:
             return False
 
     async def _update_existing_project(
-        self, project: Project, normalized_name: str, folder_path: str
+        self, project: Project, normalized_name: str, folder_path: str, db_manager: DatabaseManager
     ) -> None:
         """Update an existing project with new metadata and folder alias."""
         # Update last accessed time
-        await self.db_manager.update_project_access_time(project.id)
+        await db_manager.update_project_access_time(project.id)
 
         should_update = False
 
@@ -891,16 +900,18 @@ class MCPCodeIndexServer:
             )
 
         if should_update:
-            await self.db_manager.update_project(project)
+            await db_manager.update_project(project)
             logger.debug(f"Updated project metadata for {project.name}")
 
     async def _handle_get_file_description(
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle get_file_description tool calls."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
 
-        file_desc = await self.db_manager.get_file_description(
+        file_desc = await db_manager.get_file_description(
             project_id=project_id, file_path=arguments["filePath"]
         )
 
@@ -928,6 +939,8 @@ class MCPCodeIndexServer:
         description_length = len(arguments.get("description", ""))
         logger.info(f"Description length: {description_length} characters")
 
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
 
         logger.info(f"Resolved project_id: {project_id}")
@@ -941,7 +954,7 @@ class MCPCodeIndexServer:
             version=1,
         )
 
-        await self.db_manager.create_file_description(file_desc)
+        await db_manager.create_file_description(file_desc)
 
         logger.info(f"Successfully updated description for: {arguments['filePath']}")
 
