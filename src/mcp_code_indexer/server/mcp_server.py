@@ -1337,16 +1337,15 @@ class MCPCodeIndexServer:
         database_stats = self.db_manager.get_database_stats()
 
         return {
-            "comprehensive_diagnostics": comprehensive_diagnostics,
-            "database_statistics": database_stats,
-            "configuration": {
-                **self.db_config,
-                "retry_executor_config": (
-                    self.db_manager._retry_executor.config.__dict__
-                    if hasattr(self.db_manager, "_retry_executor")
-                    and self.db_manager._retry_executor
-                    else {}
-                ),
+            "is_healthy": comprehensive_diagnostics.get("current_status", {}).get("is_healthy", True),
+            "status": comprehensive_diagnostics.get("current_status", {}),
+            "performance": {
+                "avg_response_time_ms": comprehensive_diagnostics.get("metrics", {}).get("avg_response_time_ms", 0),
+                "success_rate": comprehensive_diagnostics.get("current_status", {}).get("recent_success_rate_percent", 100)
+            },
+            "database": {
+                "total_operations": database_stats.get("retry_executor", {}).get("total_operations", 0),
+                "pool_size": database_stats.get("connection_pool", {}).get("current_size", 0)
             },
             "server_info": {
                 "token_limit": self.token_limit,

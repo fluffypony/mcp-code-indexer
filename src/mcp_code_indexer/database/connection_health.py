@@ -336,13 +336,8 @@ class ConnectionHealthMonitor:
             if retry_executor:
                 health_status["retry_statistics"] = retry_executor.get_retry_stats()
 
-        # Include database-level statistics if available
-        if hasattr(self.database_manager, "get_database_stats"):
-            try:
-                db_stats = self.database_manager.get_database_stats()
-                health_status["database_statistics"] = db_stats
-            except Exception as e:
-                logger.warning(f"Failed to get database statistics: {e}")
+        # Avoid circular dependency - don't include database stats here
+        # (they are included separately in the comprehensive diagnostics)
 
         return health_status
 
