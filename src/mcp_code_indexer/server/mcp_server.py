@@ -64,6 +64,7 @@ class MCPCodeIndexServer:
         retry_min_wait: float = 0.1,
         retry_max_wait: float = 2.0,
         retry_jitter: float = 0.2,
+        transport: Optional[Any] = None,
     ):
         """
         Initialize the MCP Code Index Server.
@@ -80,6 +81,7 @@ class MCPCodeIndexServer:
             retry_min_wait: Minimum wait time between retries in seconds
             retry_max_wait: Maximum wait time between retries in seconds
             retry_jitter: Maximum jitter to add to retry delays in seconds
+            transport: Optional transport instance (if None, uses default stdio)
         """
         self.token_limit = token_limit
         self.db_path = db_path or Path.home() / ".mcp-code-index" / "tracker.db"
@@ -113,6 +115,7 @@ class MCPCodeIndexServer:
         self.db_manager = None  # Will be set during run()
         self.token_counter = TokenCounter(token_limit)
         self.cleanup_manager = None  # Will be set during initialize()
+        self.transport = transport
 
         # Setup error handling
         self.logger = get_logger(__name__)
@@ -1657,91 +1660,39 @@ class MCPCodeIndexServer:
             logger.info("Started background cleanup task (6-hour interval)")
 
     async def run(self) -> None:
-        """Run the MCP server with robust error handling."""
+        """Run the MCP server with transport abstraction."""
         logger.info("Starting server initialization...")
         await self.initialize()
-        logger.info("Server initialization completed, starting MCP protocol...")
+        logger.info("Server initialization completed, starting transport...")
 
-        max_retries = 5
-        base_delay = 2.0  # seconds
-
-        for attempt in range(max_retries + 1):
-            try:
-                async with stdio_server() as (read_stream, write_stream):
-                    logger.info(
-                        f"stdio_server context established (attempt {attempt + 1})"
-                    )
-                    initialization_options = self.server.create_initialization_options()
-                    logger.debug(f"Initialization options: {initialization_options}")
-
-                    await self._run_session_with_retry(
-                        read_stream, write_stream, initialization_options
-                    )
-                    return  # Success, exit retry loop
-
-            except KeyboardInterrupt:
-                logger.info("Server stopped by user interrupt")
-                return
-
-            except Exception as e:
-                import traceback
-
-                # Check if this is a wrapped validation error
-                error_str = str(e)
-                is_validation_error = (
-                    "ValidationError" in error_str
-                    or "Field required" in error_str
-                    or "Input should be" in error_str
-                    or "pydantic_core._pydantic_core.ValidationError" in error_str
-                )
-
-                if is_validation_error:
-                    logger.warning(
-                        f"Detected validation error in session "
-                        f"(attempt {attempt + 1}): Malformed client request",
-                        extra={
-                            "structured_data": {
-                                "error_type": "ValidationError",
-                                "error_message": (
-                                    "Client sent malformed request "
-                                    "(likely missing clientInfo)"
-                                ),
-                                "attempt": attempt + 1,
-                                "max_retries": max_retries,
-                                "will_retry": attempt < max_retries,
-                            }
-                        },
-                    )
-
-                    if attempt < max_retries:
-                        delay = base_delay * (
-                            2 ** min(attempt, 3)
-                        )  # Cap exponential growth
-                        logger.info(f"Retrying server in {delay} seconds...")
-                        await asyncio.sleep(delay)
-                        continue
-                    else:
-                        logger.warning(
-                            "Max retries exceeded for validation errors. Server is "
-                            "robust against malformed requests."
-                        )
-                        return
-                else:
-                    # This is a genuine fatal error
-                    logger.error(
-                        f"Fatal server error: {e}",
-                        extra={
-                            "structured_data": {
-                                "error_type": type(e).__name__,
-                                "error_message": str(e),
-                                "traceback": traceback.format_exc(),
-                            }
-                        },
-                    )
-                    raise
-
-        # Clean shutdown
-        await self.shutdown()
+        try:
+            if self.transport:
+                # Use provided transport
+                await self.transport.initialize()
+                await self.transport._run_with_retry()
+            else:
+                # Fall back to default stdio transport
+                from ..transport.stdio_transport import StdioTransport
+                transport = StdioTransport(self)
+                await transport.initialize()
+                await transport._run_with_retry()
+                
+        except KeyboardInterrupt:
+            logger.info("Server stopped by user interrupt")
+        except Exception as e:
+            logger.error(
+                f"Transport error: {e}",
+                extra={
+                    "structured_data": {
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                    }
+                },
+            )
+            raise
+        finally:
+            # Clean shutdown
+            await self.shutdown()
 
     async def shutdown(self) -> None:
         """Clean shutdown of server resources."""

@@ -54,6 +54,10 @@ aiohttp = ">=3.8.0"
 tenacity = ">=8.0.0"
 tomli = {version = ">=1.2.0", markers = "python_version < '3.11'"}
 importlib-metadata = {version = ">=1.0.0", markers = "python_version < '3.8'"}
+# HTTP transport dependencies
+fastapi = ">=0.104.0"
+uvicorn = ">=0.24.0"
+python-multipart = ">=0.0.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"

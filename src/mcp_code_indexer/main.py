@@ -116,6 +116,41 @@ def parse_arguments() -> argparse.Namespace:
         help="Create local database in specified folder and migrate project data from global DB",
     )
 
+    # HTTP transport options
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="Enable HTTP transport instead of stdio (requires 'http' extras)",
+    )
+    
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host to bind HTTP server to (default: 127.0.0.1)",
+    )
+    
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=7557,
+        help="Port to bind HTTP server to (default: 7557)",
+    )
+    
+    parser.add_argument(
+        "--auth-token",
+        type=str,
+        help="Bearer token for HTTP authentication (optional)",
+    )
+    
+    parser.add_argument(
+        "--cors-origins",
+        type=str,
+        nargs="*",
+        default=["*"],
+        help="Allowed CORS origins for HTTP transport (default: allow all)",
+    )
+
     return parser.parse_args()
 
 
@@ -961,10 +996,40 @@ async def main() -> None:
     try:
         # Import and run the MCP server
         from .server.mcp_server import MCPCodeIndexServer
+        
+        # Create transport based on arguments
+        transport = None
+        if args.http:
+            from .transport.http_transport import HTTPTransport
+            transport = HTTPTransport(
+                server_instance=None,  # Will be set after server creation
+                host=args.host,
+                port=args.port,
+                auth_token=args.auth_token,
+                cors_origins=args.cors_origins,
+            )
+            logger.info(
+                "HTTP transport configured",
+                extra={
+                    "structured_data": {
+                        "host": args.host,
+                        "port": args.port,
+                        "auth_enabled": transport.auth_token is not None,
+                        "cors_origins": args.cors_origins,
+                    }
+                },
+            )
 
         server = MCPCodeIndexServer(
-            token_limit=args.token_limit, db_path=db_path, cache_dir=cache_dir
+            token_limit=args.token_limit,
+            db_path=db_path,
+            cache_dir=cache_dir,
+            transport=transport,
         )
+        
+        # Set server instance in transport after server creation
+        if transport:
+            transport.server = server
 
         await server.run()
 
