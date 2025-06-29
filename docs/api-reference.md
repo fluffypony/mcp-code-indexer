@@ -1,23 +1,50 @@
 # MCP Tools API Reference 📖
 
-Complete reference for all 10 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
+---
+**Last Updated:** 2025-01-15  
+**Verified Against:** src/mcp_code_indexer/server/mcp_server.py  
+**Test Sources:** tests/integration/test_mcp_tools.py, tests/unit/test_query_preprocessor.py  
+**Implementation:** All 11 tools verified against actual server code  
+---
+
+Complete reference for all 11 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
 
 **🎯 New to MCP Code Indexer?** Start with the [Quick Start Guide](../README.md#-quick-start) to set up your server first.
 
+## Quick Reference
+
+| Tool | Purpose | Required Parameters |
+|------|---------|-------------------|
+| [`check_codebase_size`](#check_codebase_size) ⭐ | Navigation recommendations | `projectName`, `folderPath` |
+| [`search_descriptions`](#search_descriptions) | Find files by functionality | `projectName`, `folderPath`, `query` |
+| [`get_file_description`](#get_file_description) | Retrieve file summary | `projectName`, `folderPath`, `filePath` |
+| [`update_file_description`](#update_file_description) | Store file analysis | `projectName`, `folderPath`, `filePath`, `description` |
+| [`get_codebase_overview`](#get_codebase_overview) | Project architecture | `projectName`, `folderPath` |
+| [`find_missing_descriptions`](#find_missing_descriptions) | Scan for undocumented files | `projectName`, `folderPath` |
+| [`get_all_descriptions`](#get_all_descriptions) | Complete project structure | `projectName`, `folderPath` |
+| [`get_word_frequency`](#get_word_frequency) | Technical vocabulary | `projectName`, `folderPath` |
+| [`update_codebase_overview`](#update_codebase_overview) | Create project docs | `projectName`, `folderPath`, `overview` |
+| [`search_codebase_overview`](#search_codebase_overview) | Search overviews | `projectName`, `folderPath`, `searchWord` |
+| [`check_database_health`](#check_database_health) | System monitoring | None |
+
+⭐ **Start here** for new projects  
+📖 **[See Examples →](../examples/)**
+
 ## Table of Contents
 
+- [Quick Reference](#quick-reference)
 - [Core Operations](#core-operations)
   - [get_file_description](#get_file_description)
   - [update_file_description](#update_file_description)
   - [check_codebase_size](#check_codebase_size)
 - [Batch Operations](#batch-operations)
   - [find_missing_descriptions](#find_missing_descriptions)
-  - [update_missing_descriptions](#update_missing_descriptions)
 - [Search & Discovery](#search--discovery)
   - [search_descriptions](#search_descriptions)
   - [get_all_descriptions](#get_all_descriptions)
-  - [get_codebase_overview](#get_codebase_overview)
   - [get_word_frequency](#get_word_frequency)
+  - [get_codebase_overview](#get_codebase_overview)
+  - [search_codebase_overview](#search_codebase_overview)
 - [Advanced Features](#advanced-features)
   - [update_codebase_overview](#update_codebase_overview)
 - [System Monitoring](#system-monitoring)
@@ -175,7 +202,7 @@ const result = await mcp.callTool("check_codebase_size", {
 
 ### find_missing_descriptions
 
-Scans the project folder to find files that don't have descriptions yet. This is stage 1 of a two-stage process for updating missing descriptions. Respects .gitignore and common ignore patterns.
+Scans the project folder to find files that don't have descriptions yet. Use update_file_description to add descriptions for individual files. Respects .gitignore and common ignore patterns.
 
 #### Parameters
 
@@ -183,6 +210,8 @@ Scans the project folder to find files that don't have descriptions yet. This is
 interface FindMissingDescriptionsParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
+  limit?: number;             // Maximum number of missing files to return (optional)
+  randomize?: boolean;        // Randomly shuffle files before applying limit (optional)
 }
 ```
 
@@ -192,14 +221,8 @@ interface FindMissingDescriptionsParams {
 interface FindMissingDescriptionsResponse {
   missingFiles: string[];     // Array of relative file paths without descriptions
   totalMissing: number;       // Count of missing files
-  existingDescriptions: number; // Count of files that already have descriptions
-  projectStats: {             // Project statistics
-    total_files: number;
-    trackable_files: number;
-    ignored_files: number;
-    largest_file_size: number;
-    file_extensions: Record<string, number>;
-  };
+  limit: number;              // Applied limit (from request or default)
+  randomized: boolean;        // Whether results were randomized
 }
 ```
 
@@ -208,7 +231,9 @@ interface FindMissingDescriptionsResponse {
 ```javascript
 const result = await mcp.callTool("find_missing_descriptions", {
   projectName: "new-project",
-  folderPath: "/home/user/projects/new-project"
+  folderPath: "/home/user/projects/new-project",
+  limit: 10,
+  randomize: false
 });
 
 // Response:
@@ -219,84 +244,8 @@ const result = await mcp.callTool("find_missing_descriptions", {
     "tests/integration/api.test.ts"
   ],
   "totalMissing": 3,
-  "existingDescriptions": 12,
-  "projectStats": {
-    "total_files": 45,
-    "trackable_files": 15,
-    "ignored_files": 30,
-    "largest_file_size": 15420,
-    "file_extensions": {
-      ".ts": 8,
-      ".tsx": 4,
-      ".js": 2,
-      ".md": 1
-    }
-  }
-}
-```
-
----
-
-### update_missing_descriptions
-
-Batch updates descriptions for multiple files at once. This is stage 2 after find_missing_descriptions. Provide descriptions for all or some of the missing files identified in stage 1.
-
-#### Parameters
-
-```typescript
-interface UpdateMissingDescriptionsParams {
-  projectName: string;        // The name of the project
-  folderPath: string;         // Absolute path to the project folder
-  descriptions: Array<{      // Array of file paths and their descriptions
-    filePath: string;        // Relative path to the file
-    description: string;     // Detailed description of the file
-  }>;
-}
-```
-
-#### Response
-
-```typescript
-interface UpdateMissingDescriptionsResponse {
-  success: boolean;          // Whether the batch update succeeded
-  updatedFiles: number;      // Number of files successfully updated
-  files: string[];           // Array of file paths that were updated
-  message: string;           // Success message with summary
-}
-```
-
-#### Example
-
-```javascript
-const result = await mcp.callTool("update_missing_descriptions", {
-  projectName: "new-project",
-  folderPath: "/home/user/projects/new-project",
-  descriptions: [
-    {
-      filePath: "src/components/NewFeature.tsx",
-      description: "React component implementing the new dashboard feature with real-time updates"
-    },
-    {
-      filePath: "src/hooks/useLocalStorage.ts",
-      description: "Custom React hook for managing localStorage with TypeScript support and serialization"
-    },
-    {
-      filePath: "tests/integration/api.test.ts", 
-      description: "Integration tests for API endpoints covering authentication and data retrieval"
-    }
-  ]
-});
-
-// Response:
-{
-  "success": true,
-  "updatedFiles": 3,
-  "files": [
-    "src/components/NewFeature.tsx",
-    "src/hooks/useLocalStorage.ts", 
-    "tests/integration/api.test.ts"
-  ],
-  "message": "Successfully updated descriptions for 3 files"
+  "limit": 10,
+  "randomized": false
 }
 ```
 
@@ -422,14 +371,14 @@ const queries = ["HTTP client", "http CLIENT", "Http Client"];
 
 ---
 
-### get_codebase_overview
+### get_all_descriptions
 
 Returns the complete file and folder structure of a codebase with all descriptions. For large codebases (exceeding the configured token limit), this will recommend using search_descriptions instead.
 
 #### Parameters
 
 ```typescript
-interface GetCodebaseOverviewParams {
+interface GetAllDescriptionsParams {
   projectName: string;        // The name of the project
   folderPath: string;         // Absolute path to the project folder
 }
@@ -438,7 +387,7 @@ interface GetCodebaseOverviewParams {
 #### Response
 
 ```typescript
-interface GetCodebaseOverviewResponse {
+interface GetAllDescriptionsResponse {
   projectName: string;       // Project name
   totalFiles: number;       // Total number of tracked files
   totalTokens: number;      // Total token count for all descriptions
@@ -466,7 +415,7 @@ interface FileNode {
 #### Example (Small Codebase)
 
 ```javascript
-const result = await mcp.callTool("get_codebase_overview", {
+const result = await mcp.callTool("get_all_descriptions", {
   projectName: "small-app",
   folderPath: "/home/user/projects/small-app"
 });
@@ -520,6 +469,164 @@ const result = await mcp.callTool("get_codebase_overview", {
   "message": "Codebase has 45000 tokens (limit: 32000). Use search_descriptions instead for better performance."
 }
 ```
+
+---
+
+### get_word_frequency
+
+Analyzes all file descriptions to find the most frequently used technical terms. Filters out common English stop words and symbols, returning the top 200 meaningful terms. Useful for understanding the codebase's domain vocabulary and finding all functions/files related to specific concepts.
+
+#### Parameters
+
+```typescript
+interface GetWordFrequencyParams {
+  projectName: string;        // The name of the project
+  folderPath: string;         // Absolute path to the project folder on disk
+  limit?: number;             // Number of top terms to return (default: 200)
+}
+```
+
+#### Response
+
+```typescript
+interface GetWordFrequencyResponse {
+  wordFrequency: Array<{     // Array of words and their frequencies
+    word: string;            // The technical term
+    count: number;           // How many times it appears
+    percentage: number;      // Percentage of total meaningful words
+  }>;
+  totalWords: number;        // Total number of meaningful words analyzed
+  projectName: string;       // Project name
+  limit: number;             // Applied limit
+}
+```
+
+#### Example
+
+```javascript
+const result = await mcp.callTool("get_word_frequency", {
+  projectName: "web-app",
+  folderPath: "/home/user/projects/web-app",
+  limit: 10
+});
+
+// Response:
+{
+  "wordFrequency": [
+    { "word": "component", "count": 45, "percentage": 8.2 },
+    { "word": "authentication", "count": 32, "percentage": 5.8 },
+    { "word": "api", "count": 28, "percentage": 5.1 },
+    { "word": "database", "count": 24, "percentage": 4.4 },
+    { "word": "middleware", "count": 19, "percentage": 3.5 }
+  ],
+  "totalWords": 550,
+  "projectName": "web-app",
+  "limit": 10
+}
+```
+
+💡 **Use cases**: Discover domain vocabulary, find related files by topic, understand system concepts, identify technical debt areas by frequency of error-related terms.
+
+---
+
+### get_codebase_overview
+
+Returns a condensed, interpretive overview of the entire codebase. This is a single comprehensive narrative that captures the architecture, key components, relationships, and design patterns. Unlike get_all_descriptions which lists every file, this provides a holistic view suitable for understanding the codebase's structure and purpose. If no overview exists, returns empty string.
+
+#### Parameters
+
+```typescript
+interface GetCodebaseOverviewParams {
+  projectName: string;        // The name of the project
+  folderPath: string;         // Absolute path to the project folder on disk
+}
+```
+
+#### Response
+
+```typescript
+interface GetCodebaseOverviewResponse {
+  overview: string;          // Condensed narrative overview of the codebase
+  lastModified?: string;     // ISO timestamp of last update
+  totalFiles: number;        // Number of files included in overview
+  totalTokensInFullDescriptions: number; // Token count of all file descriptions
+}
+```
+
+#### Example
+
+```javascript
+const result = await mcp.callTool("get_codebase_overview", {
+  projectName: "microservice-api",
+  folderPath: "/home/user/projects/microservice-api"
+});
+
+// Response:
+{
+  "overview": "## System Summary\nMicroservice API built with Node.js and Express providing user authentication, data processing, and third-party integrations.\n\n## Architecture\nRESTful API with JWT authentication, PostgreSQL database, Redis caching, and Docker containerization. Uses dependency injection pattern with service layer separation.\n\n## Key Components\n- Authentication service handles JWT tokens and user sessions\n- Data processing pipeline with async job queues\n- Third-party API integrations for payment processing",
+  "lastModified": "2024-01-15T14:30:00Z",
+  "totalFiles": 45,
+  "totalTokensInFullDescriptions": 12500
+}
+```
+
+💡 **When to use**: Perfect for getting a high-level understanding of large codebases without loading individual file descriptions. Provides the narrative context needed for AI agents to understand system architecture and design decisions.
+
+---
+
+### search_codebase_overview
+
+Search for a single word in the codebase overview and return 2 sentences before and after where the word is found. Useful for quickly finding specific information in large overviews.
+
+#### Parameters
+
+```typescript
+interface SearchCodebaseOverviewParams {
+  projectName: string;        // The name of the project
+  folderPath: string;         // Absolute path to the project folder on disk
+  searchWord: string;         // Single word to search for in the overview
+}
+```
+
+#### Response
+
+```typescript
+interface SearchCodebaseOverviewResponse {
+  found: boolean;            // Whether the search word was found
+  results: Array<{          // Array of context snippets around the search word
+    context: string;         // 2 sentences before + match + 2 sentences after
+    position: number;        // Character position in the overview
+  }>;
+  searchWord: string;        // The word that was searched for
+  totalMatches: number;      // Total number of matches found
+}
+```
+
+#### Example
+
+```javascript
+// SOURCE: tests/integration/test_mcp_tools.py:315-324
+const result = await mcp.callTool("search_codebase_overview", {
+  projectName: "large-project",
+  folderPath: "/home/user/projects/large-project",
+  searchWord: "authentication"
+});
+
+// Response:
+{
+  "found": true,
+  "results": [
+    {
+      "context": "The application uses JWT tokens for session management. Authentication middleware validates tokens on protected routes. User credentials are stored securely using bcrypt hashing.",
+      "position": 1250
+    }
+  ],
+  "searchWord": "authentication",
+  "totalMatches": 1
+}
+```
+
+💡 **When to use**: Perfect for quickly finding specific topics in comprehensive codebase overviews without reading the entire document. Especially useful for large projects where the overview exceeds several thousand words.
 
 ---
 

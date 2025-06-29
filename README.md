@@ -171,28 +171,38 @@ mypy src/
 
 ## 🛠️ MCP Tools Available
 
-The server provides **12 powerful MCP tools** for intelligent codebase management. Whether you're an AI agent or human developer, these tools make navigating code effortless.
+The server provides **11 powerful MCP tools** for intelligent codebase management. Whether you're an AI agent or human developer, these tools make navigating code effortless.
 
-### 🎯 For Everyone: Start Here
-- **`check_codebase_size`** - Get instant recommendations for how to navigate your codebase
-- **`search_descriptions`** - Find files by what they do, not just their names
-- **`get_codebase_overview`** - Get a high-level understanding of any project
+### 🎯 Essential Tools (Start Here)
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| **`check_codebase_size`** | Get navigation recommendations | First tool to call for any project |
+| **`search_descriptions`** | Find files by functionality | When you need specific files |
+| **`get_codebase_overview`** | Project architectural summary | Understanding system design |
 
-### 👨‍💻 For Developers: Core Operations
-- **`get_file_description`** - Retrieve stored file descriptions instantly
-- **`update_file_description`** - Store detailed file summaries and metadata  
-- **`find_missing_descriptions`** - Scan projects for files without descriptions
-- **`update_missing_descriptions`** - Bulk update multiple file descriptions
+### 🔧 Core Operations
+| Tool | Purpose | Best For |
+|------|---------|----------|
+| **`get_file_description`** | Retrieve file summaries | Quick file understanding |
+| **`update_file_description`** | Store detailed file analysis | AI agents updating descriptions |
+| **`find_missing_descriptions`** | Scan for undocumented files | Maintenance and coverage |
 
-### 🔍 For Advanced Users: Search & Discovery
-- **`get_all_descriptions`** - Complete hierarchical project structure
-- **`get_word_frequency`** - Technical vocabulary analysis with stop-word filtering
-- **`update_codebase_overview`** - Create comprehensive codebase documentation
+### 🔍 Advanced Features
+| Tool | Purpose | Use Case |
+|------|---------|----------|
+| **`get_all_descriptions`** | Complete project structure | Small-to-medium codebases |
+| **`get_word_frequency`** | Technical vocabulary analysis | Domain understanding |
+| **`update_codebase_overview`** | Create project documentation | Architecture documentation |
+| **`search_codebase_overview`** | Search in project overviews | Finding specific topics |
 
-### 🏥 For System Monitoring: Health & Performance
-- **`check_database_health`** - Real-time database health monitoring and diagnostics
+### 🏥 System Health
+| Tool | Purpose | For |
+|------|---------|-----|
+| **`check_database_health`** | Real-time performance monitoring | Production deployments |
 
 💡 **Pro Tip**: Always start with `check_codebase_size` to get personalized recommendations for navigating your specific codebase.
+
+**📖 Complete API Documentation**: [View all 11 tools with examples →](docs/api-reference.md)
 
 ## 🔗 Git Hook Integration
 
@@ -250,21 +260,38 @@ See the **[Git Hook Setup Guide](docs/git-hook-setup.md)** for complete installa
 
 ## 📖 Documentation
 
-### 👤 For Users
-- **[Git Hook Setup Guide](docs/git-hook-setup.md)** - Automated code indexing setup
-- **[Configuration Guide](docs/configuration.md)** - Production deployment and tuning
+Comprehensive documentation organized by user journey and expertise level.
 
-### 👨‍💻 For Developers  
-- **[API Reference](docs/api-reference.md)** - Complete MCP tool documentation with examples
-- **[Architecture Overview](docs/architecture.md)** - Technical deep dive into system design
-- **[Database Resilience Guide](docs/database-resilience.md)** - Advanced database optimization and monitoring
+### 🚀 Getting Started (New Users)
+| Guide | Purpose | Time Investment |
+|-------|---------|-----------------|
+| **[Quick Start](#-quick-start)** | Install and run your first server | 2 minutes |
+| **[Git Hook Setup](docs/git-hook-setup.md)** | Automate your workflow | 5 minutes |
+| **[API Reference](docs/api-reference.md)** | Master all 11 MCP tools | 15 minutes |
 
-### 🔧 For System Administrators
-- **[Performance Tuning Guide](docs/performance-tuning.md)** - High-concurrency deployment optimization
-- **[Monitoring & Diagnostics](docs/monitoring.md)** - Production monitoring setup and troubleshooting
+### 🏗️ Production Deployment (Teams & Admins)
+| Guide | Focus | Best For |
+|-------|-------|----------|
+| **[Configuration Guide](docs/configuration.md)** | Production setup & tuning | System administrators |
+| **[Performance Tuning](docs/performance-tuning.md)** | High-concurrency optimization | DevOps teams |
+| **[Monitoring & Diagnostics](docs/monitoring.md)** | Production monitoring | Operations teams |
 
-### 🤝 For Contributors
-- **[Contributing Guide](docs/contributing.md)** - Development setup and workflow guidelines
+### 🔧 Advanced Topics (Power Users)
+| Guide | Depth | For |
+|-------|-------|-----|
+| **[Architecture Overview](docs/architecture.md)** | System design deep dive | Developers & architects |
+| **[Database Resilience](docs/database-resilience.md)** | Advanced error handling | Senior developers |
+| **[Contributing Guide](docs/contributing.md)** | Development workflow | Contributors |
+
+### 📋 Quick References
+- **[Examples & Integrations](examples/)** - Ready-to-use configurations
+- **[Troubleshooting](#🚨-troubleshooting)** - Common issues & solutions  
+- **[API Tools Summary](#🛠️-mcp-tools-available)** - All 11 tools at a glance
+
+**📚 Reading Paths:**
+- **New to MCP Code Indexer?** Quick Start → Git Hooks → API Reference
+- **Setting up for a team?** Configuration → Performance → Monitoring  
+- **Contributing to the project?** Architecture → Contributing → API Reference
 
 ## 🚦 System Requirements
 
@@ -468,22 +495,45 @@ mcp-code-indexer --dumpdescriptions PROJECT_ID
 - **Error sanitization** to prevent information leakage
 - **Async resource cleanup** to prevent memory leaks
 
+## 🚨 Quick Troubleshooting
+
+**Common issues and instant solutions:**
+
+| Issue | Quick Fix | Learn More |
+|-------|-----------|------------|
+| **"No module named 'mcp_code_indexer'"** | `pip install -e .` (for development) | [Contributing Guide](docs/contributing.md#development-setup) |
+| **"OPENROUTER_API_KEY not found"** | `export OPENROUTER_API_KEY="your-key"` | [Git Hook Setup](docs/git-hook-setup.md#prerequisites) |
+| **"Database is locked"** | Enable WAL mode: `--enable-wal-mode` | [Performance Tuning](docs/performance-tuning.md#database-configuration) |
+| **"Large codebase - use search"** | Normal for 200+ files. Use `search_descriptions` | [API Reference](docs/api-reference.md#search_descriptions) |
+| **High memory usage** | Reduce token limit: `--token-limit 10000` | [Configuration Guide](docs/configuration.md#performance-tuning) |
+
+**💡 Not finding your issue?** Check the [complete troubleshooting guides](docs/monitoring.md#troubleshooting-runbook) in our documentation.
+
 ## 🚀 Next Steps
 
 Ready to supercharge your AI agents with intelligent codebase navigation?
 
-### 👤 Getting Started
+### 🎯 Choose Your Path
+
+**🆕 New to MCP Code Indexer?**
 1. **[Install and run your first server](#-quick-start)** - Get up and running in 2 minutes
-2. **[Set up git hooks](docs/git-hook-setup.md)** - Automate your workflow
-3. **[Configure for production](docs/configuration.md)** - Deploy for your team
+2. **[Set up git hooks](docs/git-hook-setup.md)** - Automate your workflow  
+3. **[Master the API tools](docs/api-reference.md)** - Learn all 11 tools with examples
 
-### 👨‍💻 For Developers
-4. **[Explore the API tools](docs/api-reference.md)** - Master all 11 MCP tools
-5. **[Understand the architecture](docs/architecture.md)** - Deep dive into the technical design
+**👥 Setting up for a team?**
+1. **[Configure for production](docs/configuration.md)** - Production deployment guide
+2. **[Performance optimization](docs/performance-tuning.md)** - High-concurrency setup
+3. **[Monitoring & alerts](docs/monitoring.md)** - Production monitoring
 
-### 🤝 Join the Community
-6. **[Contribute to the project](docs/contributing.md)** - Help make it even better
-7. **[Report issues on GitHub](https://github.com/fluffypony/mcp-code-indexer/issues)** - Share feedback and suggestions
+**🔧 Want to contribute?**
+1. **[Understand the architecture](docs/architecture.md)** - Technical deep dive
+2. **[Development setup](docs/contributing.md)** - Contribution workflow
+3. **[Report issues](https://github.com/fluffypony/mcp-code-indexer/issues)** - Share feedback and suggestions
+
+**📚 Learning Resources:**
+- **[Examples & integrations](examples/)** - Ready-to-use configurations
+- **[Video tutorials](#)** - Coming soon!
+- **[Community discussions](https://github.com/fluffypony/mcp-code-indexer/discussions)** - Ask questions and share tips
 
 ## 🤝 Contributing
 

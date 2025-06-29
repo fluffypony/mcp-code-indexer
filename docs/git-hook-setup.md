@@ -1,8 +1,13 @@
 # Git Hook Integration Setup 🔗
 
-Transform your development workflow with automated code analysis! The MCP Code Indexer can automatically update file descriptions every time you commit, keeping your codebase documentation perfectly synchronized with your code.
+---
+**✨ What you'll learn**: How to automate file description updates with git hooks  
+**🎯 Best for**: Development teams wanting effortless documentation maintenance  
+**⏱️ Time required**: 5-10 minutes for complete setup  
+**📖 Related**: [Examples](../examples/) • [Configuration Guide](configuration.md) • [API Reference](api-reference.md)  
+---
 
-**🎯 Perfect for**: Development teams wanting effortless documentation maintenance
+Transform your development workflow with automated code analysis! The MCP Code Indexer can automatically update file descriptions every time you commit, keeping your codebase documentation perfectly synchronized with your code.
 
 ## How It Works
 
