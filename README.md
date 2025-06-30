@@ -37,6 +37,43 @@ mcp-code-indexer
 # See API Reference for complete tool documentation
 ```
 
+### 🌐 For Web Applications
+
+Enable HTTP/REST API access for browser-based applications:
+
+```bash
+# Start HTTP server with authentication
+mcp-code-indexer --http --auth-token "your-secret-token"
+
+# Custom host and port
+mcp-code-indexer --http --host 0.0.0.0 --port 8080
+
+# CORS configuration for web apps
+mcp-code-indexer --http --cors-origins "https://localhost:3000" "https://myapp.com"
+```
+
+**🔗 [Complete HTTP API Reference →](docs/http-api.md)**
+
+### 🤖 For AI-Powered Q&A
+
+Ask questions about your codebase using natural language:
+
+```bash
+# Set OpenRouter API key for Claude access
+export OPENROUTER_API_KEY="your-openrouter-api-key"
+
+# Simple questions about project architecture
+mcp-code-indexer --ask "What does this project do?" my-project
+
+# Enhanced analysis with file search
+mcp-code-indexer --deepask "How is authentication implemented?" web-app
+
+# JSON output for programmatic use
+mcp-code-indexer --ask "List the main components" my-project --json
+```
+
+**🤖 [Complete Q&A Interface Guide →](docs/qa-interface.md)**
+
 ### 🔧 For System Administrators
 
 Deploy and configure the server for your team:
@@ -266,12 +303,16 @@ Comprehensive documentation organized by user journey and expertise level.
 | Guide | Purpose | Time Investment |
 |-------|---------|-----------------|
 | **[Quick Start](#-quick-start)** | Install and run your first server | 2 minutes |
-| **[Git Hook Setup](docs/git-hook-setup.md)** | Automate your workflow | 5 minutes |
 | **[API Reference](docs/api-reference.md)** | Master all 11 MCP tools | 15 minutes |
+| **[HTTP API Reference](docs/http-api.md)** | REST API for web applications | 10 minutes |
+| **[Q&A Interface](docs/qa-interface.md)** | AI-powered codebase analysis | 8 minutes |
+| **[Git Hook Setup](docs/git-hook-setup.md)** | Automate your workflow | 5 minutes |
 
 ### 🏗️ Production Deployment (Teams & Admins)
 | Guide | Focus | Best For |
 |-------|-------|----------|
+| **[CLI Reference](docs/cli-reference.md)** | Complete command documentation | All users |
+| **[Administrative Commands](docs/admin-commands.md)** | Project & database management | System administrators |
 | **[Configuration Guide](docs/configuration.md)** | Production setup & tuning | System administrators |
 | **[Performance Tuning](docs/performance-tuning.md)** | High-concurrency optimization | DevOps teams |
 | **[Monitoring & Diagnostics](docs/monitoring.md)** | Production monitoring | Operations teams |
@@ -289,8 +330,10 @@ Comprehensive documentation organized by user journey and expertise level.
 - **[API Tools Summary](#🛠️-mcp-tools-available)** - All 11 tools at a glance
 
 **📚 Reading Paths:**
-- **New to MCP Code Indexer?** Quick Start → Git Hooks → API Reference
-- **Setting up for a team?** Configuration → Performance → Monitoring  
+- **New to MCP Code Indexer?** Quick Start → API Reference → HTTP API → Q&A Interface
+- **Web developers?** Quick Start → HTTP API Reference → Q&A Interface → Git Hooks
+- **AI/ML engineers?** Quick Start → Q&A Interface → API Reference → Git Hooks
+- **Setting up for a team?** CLI Reference → Configuration → Administrative Commands → Monitoring  
 - **Contributing to the project?** Architecture → Contributing → API Reference
 
 ## 🚦 System Requirements
@@ -475,7 +518,31 @@ mcp-code-indexer --githook [OPTIONS]
 # Requires: OPENROUTER_API_KEY environment variable
 ```
 
-### Utility Commands
+### HTTP Server Mode
+```bash
+# Start HTTP/REST API server
+mcp-code-indexer --http [OPTIONS]
+
+# HTTP server with authentication
+mcp-code-indexer --http --auth-token "your-secret-token"
+
+# Custom host and port configuration
+mcp-code-indexer --http --host 0.0.0.0 --port 8080
+```
+
+### Q&A Commands
+```bash
+# Simple AI-powered questions (requires OPENROUTER_API_KEY)
+mcp-code-indexer --ask "What does this project do?" PROJECT_NAME
+
+# Enhanced analysis with file search
+mcp-code-indexer --deepask "How is authentication implemented?" PROJECT_NAME
+
+# JSON output for programmatic use
+mcp-code-indexer --ask "Question" PROJECT_NAME --json
+```
+
+### Administrative Commands
 ```bash
 # List all projects
 mcp-code-indexer --getprojects
@@ -485,6 +552,12 @@ mcp-code-indexer --runcommand '{"method": "tools/call", "params": {...}}'
 
 # Export descriptions for a project
 mcp-code-indexer --dumpdescriptions PROJECT_ID
+
+# Create local database for a project
+mcp-code-indexer --makelocal /path/to/project
+
+# Generate project documentation map
+mcp-code-indexer --map PROJECT_NAME
 ```
 
 ## 🛡️ Security Features
@@ -503,8 +576,10 @@ mcp-code-indexer --dumpdescriptions PROJECT_ID
 |-------|-----------|------------|
 | **"No module named 'mcp_code_indexer'"** | `pip install -e .` (for development) | [Contributing Guide](docs/contributing.md#development-setup) |
 | **"OPENROUTER_API_KEY not found"** | `export OPENROUTER_API_KEY="your-key"` | [Git Hook Setup](docs/git-hook-setup.md#prerequisites) |
-| **"Database is locked"** | Enable WAL mode: `--enable-wal-mode` | [Performance Tuning](docs/performance-tuning.md#database-configuration) |
+| **"Database is locked"** | Enable WAL mode: `--enable-wal-mode` | [CLI Reference](docs/cli-reference.md#database-configuration) |
 | **"Large codebase - use search"** | Normal for 200+ files. Use `search_descriptions` | [API Reference](docs/api-reference.md#search_descriptions) |
+| **HTTP authentication failed** | Check `--auth-token` configuration | [HTTP API Reference](docs/http-api.md#authentication) |
+| **Q&A commands not working** | Set `OPENROUTER_API_KEY` environment variable | [Q&A Interface](docs/qa-interface.md#getting-started) |
 | **High memory usage** | Reduce token limit: `--token-limit 10000` | [Configuration Guide](docs/configuration.md#performance-tuning) |
 
 **💡 Not finding your issue?** Check the [complete troubleshooting guides](docs/monitoring.md#troubleshooting-runbook) in our documentation.
@@ -517,13 +592,17 @@ Ready to supercharge your AI agents with intelligent codebase navigation?
 
 **🆕 New to MCP Code Indexer?**
 1. **[Install and run your first server](#-quick-start)** - Get up and running in 2 minutes
-2. **[Set up git hooks](docs/git-hook-setup.md)** - Automate your workflow  
-3. **[Master the API tools](docs/api-reference.md)** - Learn all 11 tools with examples
+2. **[Master the API tools](docs/api-reference.md)** - Learn all 11 tools with examples
+3. **[Try HTTP API access](docs/http-api.md)** - REST API for web applications
+4. **[Explore AI-powered Q&A](docs/qa-interface.md)** - Ask questions about your code
+5. **[Set up git hooks](docs/git-hook-setup.md)** - Automate your workflow  
 
 **👥 Setting up for a team?**
-1. **[Configure for production](docs/configuration.md)** - Production deployment guide
-2. **[Performance optimization](docs/performance-tuning.md)** - High-concurrency setup
-3. **[Monitoring & alerts](docs/monitoring.md)** - Production monitoring
+1. **[Learn all CLI commands](docs/cli-reference.md)** - Complete command reference
+2. **[Configure for production](docs/configuration.md)** - Production deployment guide
+3. **[Set up administrative workflows](docs/admin-commands.md)** - Project & database management
+4. **[Performance optimization](docs/performance-tuning.md)** - High-concurrency setup
+5. **[Monitoring & alerts](docs/monitoring.md)** - Production monitoring
 
 **🔧 Want to contribute?**
 1. **[Understand the architecture](docs/architecture.md)** - Technical deep dive
