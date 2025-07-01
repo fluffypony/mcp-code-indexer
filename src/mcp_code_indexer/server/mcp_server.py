@@ -1039,7 +1039,19 @@ class MCPCodeIndexServer:
 
         total_tokens = descriptions_tokens + overview_tokens
         is_large = total_tokens > token_limit
-        recommendation = "use_search" if is_large else "use_overview"
+        
+        # Smart recommendation logic:
+        # - If total is small, use overview
+        # - If total is large but overview is reasonable (< 8k tokens), recommend viewing overview + search
+        # - If both are large, use search only
+        overview_size_limit = 32000
+        
+        if not is_large:
+            recommendation = "use_overview"
+        elif overview_tokens > 0 and overview_tokens <= overview_size_limit:
+            recommendation = "view_overview_then_search"
+        else:
+            recommendation = "use_search"
 
         logger.info(
             f"Codebase analysis complete: {total_tokens} tokens total "
