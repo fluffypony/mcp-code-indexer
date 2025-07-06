@@ -5,10 +5,11 @@ Tests file discovery, gitignore integration, and pattern-based filtering
 to ensure correct identification of trackable files.
 """
 
-import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from src.mcp_code_indexer.file_scanner import FileScanner
 

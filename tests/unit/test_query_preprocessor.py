@@ -6,6 +6,7 @@ special characters, FTS5 operator handling, and multi-word queries.
 """
 
 import pytest
+
 from mcp_code_indexer.query_preprocessor import (
     QueryPreprocessor,
     preprocess_search_query,

@@ -16,10 +16,10 @@ import aiosqlite
 from tenacity import (
     AsyncRetrying,
     RetryError,
+    after_log,
+    before_sleep_log,
     stop_after_attempt,
     wait_exponential_jitter,
-    before_sleep_log,
-    after_log,
 )
 
 logger = logging.getLogger(__name__)

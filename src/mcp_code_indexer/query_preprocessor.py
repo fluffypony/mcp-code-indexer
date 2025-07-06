@@ -15,8 +15,8 @@ Key features:
 - Special character handling: preserves special characters in quoted terms
 """
 
-import re
 import logging
+import re
 from typing import List, Set
 
 logger = logging.getLogger(__name__)

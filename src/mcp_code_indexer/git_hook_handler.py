@@ -12,15 +12,14 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
-
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 from tenacity import (
     retry,
-    wait_exponential,
-    stop_after_attempt,
     retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
 )
 
 from .database.database import DatabaseManager
@@ -1239,8 +1238,9 @@ Return ONLY a JSON object:
             # Update file descriptions
             file_updates = updates.get("file_updates", {})
             for file_path, description in file_updates.items():
-                from mcp_code_indexer.database.models import FileDescription
                 from datetime import datetime
+
+                from mcp_code_indexer.database.models import FileDescription
 
                 file_desc = FileDescription(
                     project_id=project.id,
@@ -1256,8 +1256,9 @@ Return ONLY a JSON object:
             # Update project overview if provided
             overview_update = updates.get("overview_update")
             if overview_update and overview_update.strip():
-                from mcp_code_indexer.database.models import ProjectOverview
                 from datetime import datetime
+
+                from mcp_code_indexer.database.models import ProjectOverview
 
                 overview = ProjectOverview(
                     project_id=project.id,

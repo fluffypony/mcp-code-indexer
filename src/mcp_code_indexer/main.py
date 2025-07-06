@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .logging_config import setup_logging
 from .error_handler import setup_error_handling
+from .logging_config import setup_logging
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -197,8 +197,8 @@ async def handle_getprojects(args: argparse.Namespace) -> None:
 
 async def handle_runcommand(args: argparse.Namespace) -> None:
     """Handle --runcommand command."""
-    from .server.mcp_server import MCPCodeIndexServer
     from .logging_config import setup_command_logger
+    from .server.mcp_server import MCPCodeIndexServer
 
     # Set up dedicated logging for runcommand
     cache_dir = Path(args.cache_dir).expanduser()
@@ -877,8 +877,8 @@ def generate_project_markdown(project, overview, files, logger):
 async def handle_makelocal(args: argparse.Namespace) -> None:
     """Handle --makelocal command."""
     try:
-        from .database.database_factory import DatabaseFactory
         from .commands.makelocal import MakeLocalCommand
+        from .database.database_factory import DatabaseFactory
 
         # Initialize database factory
         db_path = Path(args.db_path).expanduser()

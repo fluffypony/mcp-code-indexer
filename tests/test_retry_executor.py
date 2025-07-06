@@ -6,18 +6,18 @@ context manager retry pattern with proper separation of concerns.
 """
 
 import asyncio
-import pytest
 import tempfile
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import aiosqlite
+import pytest
 
 from src.mcp_code_indexer.database.retry_executor import (
-    RetryExecutor,
-    RetryConfig,
-    RetryStats,
     DatabaseLockError,
+    RetryConfig,
+    RetryExecutor,
+    RetryStats,
     create_retry_executor,
 )
 

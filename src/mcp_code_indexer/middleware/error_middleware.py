@@ -16,8 +16,8 @@ from mcp import types
 from mcp_code_indexer.error_handler import ErrorHandler
 from mcp_code_indexer.logging_config import (
     get_logger,
-    log_tool_usage,
     log_performance_metrics,
+    log_tool_usage,
 )
 
 logger = get_logger(__name__)

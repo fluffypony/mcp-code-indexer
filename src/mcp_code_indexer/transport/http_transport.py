@@ -12,12 +12,12 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 try:
-    from fastapi import FastAPI, HTTPException, Depends
-    from fastapi.responses import StreamingResponse
-    from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-    from pydantic import BaseModel, ValidationError
     import uvicorn
+    from fastapi import Depends, FastAPI, HTTPException
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import StreamingResponse
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+    from pydantic import BaseModel, ValidationError
 except ImportError as e:
     raise ImportError(
         "HTTP transport dependencies not installed. "
@@ -25,12 +25,12 @@ except ImportError as e:
         "Please reinstall mcp-code-indexer."
     ) from e
 
-from .base import Transport
+from ..middleware.auth import HTTPAuthMiddleware
 
 # Import middleware
 from ..middleware.logging import HTTPLoggingMiddleware, HTTPMetricsCollector
-from ..middleware.auth import HTTPAuthMiddleware
 from ..middleware.security import HTTPSecurityMiddleware
+from .base import Transport
 
 logger = logging.getLogger(__name__)
 

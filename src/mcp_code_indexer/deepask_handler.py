@@ -9,9 +9,9 @@ Handles enhanced question-answering with two-stage processing:
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
-from .claude_api_handler import ClaudeAPIHandler, ClaudeAPIError
+from .claude_api_handler import ClaudeAPIError, ClaudeAPIHandler
 from .database.database import DatabaseManager
 
 

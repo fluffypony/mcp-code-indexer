@@ -258,6 +258,7 @@ class StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as structured JSON."""
         import json
+
         from . import __version__
 
         log_data = {

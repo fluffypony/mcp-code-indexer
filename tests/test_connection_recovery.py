@@ -7,19 +7,18 @@ and edge cases in database connection management.
 
 import asyncio
 import os
+import sqlite3
 import tempfile
-import pytest
 from pathlib import Path
 
-
-import sqlite3
 import aiosqlite
+import pytest
 
-from src.mcp_code_indexer.database.database import DatabaseManager
 from src.mcp_code_indexer.database.connection_health import (
     ConnectionHealthMonitor,
     DatabaseMetricsCollector,
 )
+from src.mcp_code_indexer.database.database import DatabaseManager
 
 # ConnectionRecoveryManager removed - recovery is now handled by RetryExecutor
 

@@ -6,7 +6,7 @@ methods (stdio, HTTP) while maintaining common interface and functionality.
 """
 
 from .base import Transport
-from .stdio_transport import StdioTransport
 from .http_transport import HTTPTransport
+from .stdio_transport import StdioTransport
 
 __all__ = ["Transport", "StdioTransport", "HTTPTransport"]

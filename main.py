@@ -14,8 +14,8 @@ import sys
 from pathlib import Path
 
 from src.mcp_code_indexer import __version__
-from src.mcp_code_indexer.logging_config import setup_logging
 from src.mcp_code_indexer.error_handler import setup_error_handling
+from src.mcp_code_indexer.logging_config import setup_logging
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -226,8 +226,8 @@ async def handle_githook(args: argparse.Namespace) -> None:
 async def handle_ask(args: argparse.Namespace) -> None:
     """Handle --ask command."""
     try:
-        from src.mcp_code_indexer.database.database import DatabaseManager
         from src.mcp_code_indexer.ask_handler import AskHandler
+        from src.mcp_code_indexer.database.database import DatabaseManager
 
         # Validate arguments
         if not args.project_name:
@@ -396,8 +396,8 @@ async def handle_deepask(args: argparse.Namespace) -> None:
 async def handle_makelocal(args: argparse.Namespace) -> None:
     """Handle --makelocal command."""
     try:
-        from src.mcp_code_indexer.database.database_factory import DatabaseFactory
         from src.mcp_code_indexer.commands.makelocal import MakeLocalCommand
+        from src.mcp_code_indexer.database.database_factory import DatabaseFactory
 
         # Initialize database factory
         db_path = Path(args.db_path).expanduser()

@@ -5,11 +5,12 @@ Verifies that tiktoken works correctly with the bundled cache file
 for offline operation and token counting accuracy.
 """
 
-import pytest
 from pathlib import Path
 
-from src.mcp_code_indexer.token_counter import TokenCounter, verify_tiktoken_setup
+import pytest
+
 from src.mcp_code_indexer.database.models import FileDescription
+from src.mcp_code_indexer.token_counter import TokenCounter, verify_tiktoken_setup
 
 
 class TestTokenCounter:

@@ -9,25 +9,26 @@ import asyncio
 import json
 import logging
 from unittest.mock import Mock
+
 import pytest
 import pytest_asyncio
 
 from src.mcp_code_indexer.error_handler import (
-    ErrorHandler,
-    MCPError,
     DatabaseError,
-    ValidationError,
-    FileSystemError,
-    ResourceError,
     ErrorCategory,
-    setup_error_handling,
+    ErrorHandler,
+    FileSystemError,
+    MCPError,
+    ResourceError,
     StructuredFormatter,
+    ValidationError,
+    setup_error_handling,
 )
+from src.mcp_code_indexer.logging_config import get_logger, setup_logging
 from src.mcp_code_indexer.middleware.error_middleware import (
-    ToolMiddleware,
     AsyncTaskManager,
+    ToolMiddleware,
 )
-from src.mcp_code_indexer.logging_config import setup_logging, get_logger
 
 
 class TestMCPErrors:

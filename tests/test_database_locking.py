@@ -9,14 +9,14 @@ import asyncio
 import logging
 import os
 import tempfile
-import pytest
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import aiosqlite
+import pytest
 
 from src.mcp_code_indexer.database.database import DatabaseManager
-from src.mcp_code_indexer.database.models import Project, FileDescription
+from src.mcp_code_indexer.database.models import FileDescription, Project
 
 
 class TestDatabaseLocking:
@@ -402,8 +402,8 @@ class TestConcurrentAccess:
 @pytest.mark.asyncio
 async def test_database_locking_error_detection():
     """Test that database locking errors are properly detected."""
-    from src.mcp_code_indexer.middleware.error_middleware import ToolMiddleware
     from src.mcp_code_indexer.error_handler import ErrorHandler
+    from src.mcp_code_indexer.middleware.error_middleware import ToolMiddleware
 
     error_handler = ErrorHandler(logging.getLogger(__name__))
     middleware = ToolMiddleware(error_handler)

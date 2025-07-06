@@ -6,10 +6,10 @@ while respecting .gitignore patterns and common ignore patterns. It enables
 efficient discovery of files that need description tracking.
 """
 
+import fnmatch
 import logging
 from pathlib import Path
-from typing import List, Set, Optional, Generator
-import fnmatch
+from typing import Generator, List, Optional, Set
 
 try:
     from gitignore_parser import parse_gitignore

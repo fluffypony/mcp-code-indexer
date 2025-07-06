@@ -9,14 +9,15 @@ import asyncio
 import tempfile
 from pathlib import Path
 from typing import AsyncGenerator, Generator
+
 import pytest
 import pytest_asyncio
 
 from mcp_code_indexer.database.database import DatabaseManager
-from mcp_code_indexer.database.models import Project, FileDescription
-from mcp_code_indexer.token_counter import TokenCounter
+from mcp_code_indexer.database.models import FileDescription, Project
 from mcp_code_indexer.error_handler import setup_error_handling
 from mcp_code_indexer.logging_config import setup_logging
+from mcp_code_indexer.token_counter import TokenCounter
 
 
 @pytest.fixture(scope="session")

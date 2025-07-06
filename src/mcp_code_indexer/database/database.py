@@ -5,36 +5,36 @@ This module provides async database operations using aiosqlite with proper
 connection management, transaction handling, and performance optimizations.
 """
 
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Dict, Any, AsyncIterator
+from typing import Any, AsyncIterator, Dict, List, Optional
 
-import asyncio
 import aiosqlite
 
-from mcp_code_indexer.database.models import (
-    Project,
-    FileDescription,
-    SearchResult,
-    ProjectOverview,
-    WordFrequencyResult,
-    WordFrequencyTerm,
+from mcp_code_indexer.cleanup_manager import CleanupManager
+from mcp_code_indexer.database.connection_health import (
+    ConnectionHealthMonitor,
+    DatabaseMetricsCollector,
 )
-from mcp_code_indexer.database.retry_executor import create_retry_executor
 from mcp_code_indexer.database.exceptions import (
     DatabaseError,
     classify_sqlite_error,
     is_retryable_error,
 )
-from mcp_code_indexer.database.connection_health import (
-    ConnectionHealthMonitor,
-    DatabaseMetricsCollector,
+from mcp_code_indexer.database.models import (
+    FileDescription,
+    Project,
+    ProjectOverview,
+    SearchResult,
+    WordFrequencyResult,
+    WordFrequencyTerm,
 )
+from mcp_code_indexer.database.retry_executor import create_retry_executor
 from mcp_code_indexer.query_preprocessor import preprocess_search_query
-from mcp_code_indexer.cleanup_manager import CleanupManager
 
 logger = logging.getLogger(__name__)
 
@@ -683,8 +683,9 @@ class DatabaseManager:
             return project
 
         # Create new project
-        from ..database.models import Project
         import uuid
+
+        from ..database.models import Project
 
         new_project = Project(
             id=str(uuid.uuid4()),
@@ -1096,8 +1097,8 @@ class DatabaseManager:
         Returns:
             WordFrequencyResult with top terms and statistics
         """
-        from collections import Counter
         import re
+        from collections import Counter
 
         # Load stop words from bundled file
         stop_words_path = (

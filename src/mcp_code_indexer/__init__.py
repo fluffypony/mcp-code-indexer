@@ -36,8 +36,8 @@ def _get_version() -> str:
 
     # Fallback to reading from pyproject.toml (for development)
     try:
-        from pathlib import Path
         import sys
+        from pathlib import Path
 
         if sys.version_info >= (3, 11):
             import tomllib

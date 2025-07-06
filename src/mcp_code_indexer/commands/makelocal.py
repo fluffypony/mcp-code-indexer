@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from mcp_code_indexer.database.database import DatabaseManager
 from mcp_code_indexer.database.database_factory import DatabaseFactory
-from mcp_code_indexer.database.models import Project, FileDescription, ProjectOverview
+from mcp_code_indexer.database.models import FileDescription, Project, ProjectOverview
 
 logger = logging.getLogger(__name__)
 

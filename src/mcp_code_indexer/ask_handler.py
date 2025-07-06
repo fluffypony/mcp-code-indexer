@@ -8,9 +8,9 @@ and sending them to Claude via OpenRouter API for direct responses.
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
-from .claude_api_handler import ClaudeAPIHandler, ClaudeAPIError
+from .claude_api_handler import ClaudeAPIError, ClaudeAPIHandler
 from .database.database import DatabaseManager
 
 

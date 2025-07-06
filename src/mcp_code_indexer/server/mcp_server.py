@@ -21,23 +21,22 @@ from mcp import types
 from mcp.server import Server
 from pydantic import ValidationError
 
+from mcp_code_indexer.cleanup_manager import CleanupManager
 from mcp_code_indexer.database.database import DatabaseManager
 from mcp_code_indexer.database.database_factory import DatabaseFactory
-from mcp_code_indexer.file_scanner import FileScanner
-from mcp_code_indexer.token_counter import TokenCounter
 from mcp_code_indexer.database.models import (
-    Project,
     FileDescription,
+    Project,
     ProjectOverview,
 )
 from mcp_code_indexer.error_handler import setup_error_handling
-from mcp_code_indexer.middleware.error_middleware import (
-    create_tool_middleware,
-    AsyncTaskManager,
-)
+from mcp_code_indexer.file_scanner import FileScanner
 from mcp_code_indexer.logging_config import get_logger
-from mcp_code_indexer.cleanup_manager import CleanupManager
-
+from mcp_code_indexer.middleware.error_middleware import (
+    AsyncTaskManager,
+    create_tool_middleware,
+)
+from mcp_code_indexer.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
 

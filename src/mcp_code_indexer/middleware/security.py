@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from collections import defaultdict, deque
-from typing import Dict, Any
+from typing import Any, Dict
 
 try:
     from fastapi import HTTPException, Request, Response

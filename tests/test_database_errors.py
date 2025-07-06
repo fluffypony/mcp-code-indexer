@@ -10,16 +10,16 @@ from datetime import datetime
 import aiosqlite
 
 from src.mcp_code_indexer.database.exceptions import (
-    DatabaseError,
-    DatabaseLockError,
     DatabaseBusyError,
     DatabaseConnectionError,
-    DatabaseSchemaError,
+    DatabaseError,
     DatabaseIntegrityError,
+    DatabaseLockError,
+    DatabaseSchemaError,
     DatabaseTimeoutError,
     classify_sqlite_error,
-    is_retryable_error,
     get_error_classification_stats,
+    is_retryable_error,
 )
 
 
