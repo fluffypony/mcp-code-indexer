@@ -328,7 +328,7 @@ def get_error_classification_stats(errors: list) -> Dict[str, Any]:
             classified = error
         else:
             classified = classify_sqlite_error(error)
-            
+
         error_type = type(classified).__name__
 
         # Count by type

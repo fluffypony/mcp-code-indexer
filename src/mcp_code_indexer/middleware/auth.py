@@ -56,7 +56,9 @@ class HTTPAuthMiddleware(BaseHTTPMiddleware):
         else:
             self.logger.info("HTTP authentication disabled")
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """
         Process HTTP request and validate authentication.
 

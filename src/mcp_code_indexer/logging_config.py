@@ -58,7 +58,9 @@ def setup_logging(
             log_file.parent.mkdir(parents=True, exist_ok=True)
 
             # Rotating file handler
-            file_handler: Union[logging.handlers.RotatingFileHandler, logging.FileHandler]
+            file_handler: Union[
+                logging.handlers.RotatingFileHandler, logging.FileHandler
+            ]
             if max_bytes > 0:
                 file_handler = logging.handlers.RotatingFileHandler(
                     log_file,
@@ -176,7 +178,9 @@ def setup_command_logger(
 
 
 def _setup_component_loggers_for_command(
-    command_name: str, file_handler: logging.handlers.RotatingFileHandler, formatter: logging.Formatter
+    command_name: str,
+    file_handler: logging.handlers.RotatingFileHandler,
+    formatter: logging.Formatter,
 ) -> None:
     """
     Set up component loggers to also send logs to the command's log file.
@@ -209,7 +213,7 @@ def _setup_component_loggers_for_command(
         command_handler.setFormatter(formatter)
 
         # Add a marker to identify which command this handler belongs to
-        setattr(command_handler, '_command_name', command_name)
+        setattr(command_handler, "_command_name", command_name)
 
         # Remove any existing handlers for this command (in case of multiple calls)
         existing_handlers = [

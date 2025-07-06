@@ -15,7 +15,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Callable, cast
+from typing import Any, Dict, List, Optional, Callable, cast
 
 from mcp import types
 from mcp.server import Server
@@ -112,7 +112,9 @@ class MCPCodeIndexServer:
         # Keep reference to global db_manager for backwards compatibility
         self.db_manager: Optional[DatabaseManager] = None  # Will be set during run()
         self.token_counter = TokenCounter(token_limit)
-        self.cleanup_manager: Optional[CleanupManager] = None  # Will be set during initialize()
+        self.cleanup_manager: Optional[CleanupManager] = (
+            None  # Will be set during initialize()
+        )
         self.transport = transport
 
         # Setup error handling
@@ -241,7 +243,9 @@ class MCPCodeIndexServer:
                     logger.info(f"Repaired: {repaired[:100]}...")
                     return result
                 else:
-                    raise ValueError(f"Repaired JSON is not a dictionary: {type(result)}")
+                    raise ValueError(
+                        f"Repaired JSON is not a dictionary: {type(result)}"
+                    )
             except json.JSONDecodeError as repair_error:
                 logger.error(f"JSON repair failed. Original: {json_str}")
                 logger.error(f"Repaired attempt: {repaired}")
@@ -726,7 +730,9 @@ class MCPCodeIndexServer:
                 )
 
                 # Ensure result is List[types.TextContent]
-                if isinstance(result, list) and all(isinstance(item, types.TextContent) for item in result):
+                if isinstance(result, list) and all(
+                    isinstance(item, types.TextContent) for item in result
+                ):
                     return result
                 else:
                     # Fallback: convert to proper format
@@ -824,7 +830,9 @@ class MCPCodeIndexServer:
                     f"Created new global project: {normalized_name} (ID: {project_id})"
                 )
 
-            assert project is not None  # project is always set in if/else branches above
+            assert (
+                project is not None
+            )  # project is always set in if/else branches above
             return project.id
 
     async def _find_matching_project(

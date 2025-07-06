@@ -10,7 +10,7 @@ import logging
 import traceback
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional, Callable, Union
+from typing import Any, Dict, Optional, Callable
 from functools import wraps
 
 from mcp import types
@@ -305,7 +305,9 @@ def setup_error_handling(logger: logging.Logger) -> ErrorHandler:
     error_handler = ErrorHandler(logger)
 
     # Set up asyncio exception handler
-    def asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: Dict[str, Any]) -> None:
+    def asyncio_exception_handler(
+        loop: asyncio.AbstractEventLoop, context: Dict[str, Any]
+    ) -> None:
         exception = context.get("exception")
         if exception:
             # Convert BaseException to Exception for log_error
@@ -315,7 +317,8 @@ def setup_error_handling(logger: logging.Logger) -> ErrorHandler:
                 )
             else:
                 error_handler.log_error(
-                    Exception(str(exception)), context={"asyncio_context": context, "loop": str(loop)}
+                    Exception(str(exception)),
+                    context={"asyncio_context": context, "loop": str(loop)},
                 )
         else:
             logger.error(f"Asyncio error: {context}")
@@ -364,12 +367,16 @@ def handle_file_errors(func: Callable) -> Callable:
     return wrapper
 
 
-def validate_arguments(required_fields: list, optional_fields: Optional[list] = None) -> Callable:
+def validate_arguments(
+    required_fields: list, optional_fields: Optional[list] = None
+) -> Callable:
     """Decorator to validate tool arguments."""
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(self: Any, arguments: Dict[str, Any], *args: Any, **kwargs: Any) -> Any:
+        async def wrapper(
+            self: Any, arguments: Dict[str, Any], *args: Any, **kwargs: Any
+        ) -> Any:
             # Check required fields
             missing_fields = [
                 field for field in required_fields if field not in arguments

@@ -160,7 +160,9 @@ class HTTPTransport(Transport):
             return {"status": "healthy", "transport": "http"}
 
         @app.get("/metrics")
-        async def get_metrics(authenticated: bool = Depends(verify_token)) -> Dict[str, Any]:
+        async def get_metrics(
+            authenticated: bool = Depends(verify_token),
+        ) -> Dict[str, Any]:
             """Get HTTP transport metrics."""
             metrics = {}
 
@@ -175,7 +177,9 @@ class HTTPTransport(Transport):
             return metrics
 
         @app.get("/tools")
-        async def list_tools(authenticated: bool = Depends(verify_token)) -> Dict[str, Any]:
+        async def list_tools(
+            authenticated: bool = Depends(verify_token),
+        ) -> Dict[str, Any]:
             """List available MCP tools."""
             tools = await self.server._handle_list_tools()
             return {"tools": tools}

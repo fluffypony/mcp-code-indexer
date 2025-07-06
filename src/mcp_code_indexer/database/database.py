@@ -11,7 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional, Union, Callable
+from typing import Any, AsyncIterator, Dict, List, Optional, Callable
 
 import aiosqlite
 
@@ -70,8 +70,12 @@ class DatabaseManager:
         self.retry_max_wait = retry_max_wait
         self.retry_jitter = retry_jitter
         self._connection_pool: List[aiosqlite.Connection] = []
-        self._pool_lock: Optional[asyncio.Lock] = None  # Will be initialized in async context
-        self._write_lock: Optional[asyncio.Lock] = None  # Write serialization lock, async context
+        self._pool_lock: Optional[asyncio.Lock] = (
+            None  # Will be initialized in async context
+        )
+        self._write_lock: Optional[asyncio.Lock] = (
+            None  # Write serialization lock, async context
+        )
 
         # Retry and recovery components - configure with provided settings
         self._retry_executor = create_retry_executor(
@@ -82,11 +86,15 @@ class DatabaseManager:
         )
 
         # Health monitoring and metrics
-        self._health_monitor: Optional[ConnectionHealthMonitor] = None  # Initialized in async context
+        self._health_monitor: Optional[ConnectionHealthMonitor] = (
+            None  # Initialized in async context
+        )
         self._metrics_collector = DatabaseMetricsCollector()
 
         # Cleanup manager for retention policies
-        self._cleanup_manager: Optional[CleanupManager] = None  # Initialized in async context
+        self._cleanup_manager: Optional[CleanupManager] = (
+            None  # Initialized in async context
+        )
 
     async def initialize(self) -> None:
         """Initialize database schema and configuration."""
@@ -434,7 +442,9 @@ class DatabaseManager:
         async with self.get_write_connection_with_retry(operation_name) as conn:
             try:
                 # Start immediate transaction with timeout
-                await asyncio.wait_for(conn.execute("BEGIN IMMEDIATE"), timeout=timeout_seconds)
+                await asyncio.wait_for(
+                    conn.execute("BEGIN IMMEDIATE"), timeout=timeout_seconds
+                )
                 yield conn
                 await conn.commit()
             except asyncio.TimeoutError:
@@ -1224,7 +1234,9 @@ class DatabaseManager:
             await db.commit()
             return removed_count
 
-    async def get_project_map_data(self, project_identifier: str) -> Optional[Dict[str, Any]]:
+    async def get_project_map_data(
+        self, project_identifier: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Get all data needed to generate a project map.
 

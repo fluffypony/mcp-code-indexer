@@ -43,7 +43,9 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
         self.logger = logger.getChild("http_access")
         self.logger.setLevel(self.log_level)
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """
         Process HTTP request and log access information.
 

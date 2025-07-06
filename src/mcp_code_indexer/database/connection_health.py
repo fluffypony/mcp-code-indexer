@@ -159,8 +159,10 @@ class ConnectionHealthMonitor:
                     return result
 
             # Use timeout for the health check
-            result = await asyncio.wait_for(perform_check(), timeout=self.timeout_seconds)
-            
+            result = await asyncio.wait_for(
+                perform_check(), timeout=self.timeout_seconds
+            )
+
             if result and result[0] == 1:
                 response_time = (time.time() - start_time) * 1000
                 return HealthCheckResult(

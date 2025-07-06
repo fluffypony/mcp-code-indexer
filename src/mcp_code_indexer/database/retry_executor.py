@@ -10,7 +10,16 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, AsyncContextManager, AsyncIterator, Awaitable, Callable, Dict, Optional, TypeVar, Union
+from typing import (
+    Any,
+    AsyncContextManager,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    Optional,
+    TypeVar,
+)
 
 import aiosqlite
 from tenacity import (
@@ -127,7 +136,9 @@ class RetryExecutor:
         )
 
     async def execute_with_retry(
-        self, operation: Callable[[], Awaitable[T]], operation_name: str = "database_operation"
+        self,
+        operation: Callable[[], Awaitable[T]],
+        operation_name: str = "database_operation",
     ) -> T:
         """
         Execute an operation with retry logic.
@@ -242,7 +253,7 @@ class RetryExecutor:
         finally:
             # Clean up tracking
             self._operation_start_times.pop(operation_name, None)
-        
+
         # This should never be reached due to tenacity's retry logic
         # but MyPy requires it for completeness
         raise RuntimeError("Unexpected end of retry logic")
@@ -284,7 +295,7 @@ class RetryExecutor:
             yield connection
         finally:
             # Close the connection properly
-            if hasattr(connection, 'close'):
+            if hasattr(connection, "close"):
                 await connection.close()
 
     def _should_retry_exception(self, retry_state: RetryCallState) -> bool:

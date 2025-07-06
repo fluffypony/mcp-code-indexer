@@ -10,7 +10,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 import logging
 
 from . import __version__
@@ -786,7 +786,9 @@ async def handle_map(args: argparse.Namespace) -> None:
             logger.removeHandler(handler)
 
 
-def generate_project_markdown(project: Any, overview: Optional[Any], files: List[Any], logger: logging.Logger) -> str:
+def generate_project_markdown(
+    project: Any, overview: Optional[Any], files: List[Any], logger: logging.Logger
+) -> str:
     """Generate the markdown content for the project map."""
     import re
     from collections import defaultdict

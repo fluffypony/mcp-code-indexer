@@ -8,7 +8,7 @@ error handling across all MCP tool implementations.
 import asyncio
 import functools
 import time
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
 import aiosqlite
 from mcp import types

@@ -24,7 +24,9 @@ class CleanupManager:
     periodic cleanup to permanently remove old records after the retention period.
     """
 
-    def __init__(self, db_manager: "DatabaseManager", retention_months: int = 6) -> None:
+    def __init__(
+        self, db_manager: "DatabaseManager", retention_months: int = 6
+    ) -> None:
         """
         Initialize cleanup manager.
 

@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from collections import defaultdict, deque
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict
 
 try:
     from fastapi import HTTPException, Request, Response
@@ -74,7 +74,9 @@ class HTTPSecurityMiddleware(BaseHTTPMiddleware):
             },
         )
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """
         Process HTTP request with security checks.
 
