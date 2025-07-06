@@ -10,7 +10,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +48,11 @@ class ConnectionHealthMonitor:
 
     def __init__(
         self,
-        database_manager,
+        database_manager: "DatabaseManager",
         check_interval: float = 30.0,
         failure_threshold: int = 3,
         timeout_seconds: float = 5.0,
-    ):
+    ) -> None:
         """
         Initialize connection health monitor.
 
@@ -147,24 +150,28 @@ class ConnectionHealthMonitor:
         start_time = time.time()
 
         try:
-            # Use a timeout for the health check
-            async with asyncio.timeout(self.timeout_seconds):
+            # Simple timeout wrapper
+            async def perform_check() -> Any:
                 async with self.database_manager.get_connection() as conn:
                     # Simple query to test connectivity
                     cursor = await conn.execute("SELECT 1")
                     result = await cursor.fetchone()
+                    return result
 
-                    if result and result[0] == 1:
-                        response_time = (time.time() - start_time) * 1000
-                        return HealthCheckResult(
-                            is_healthy=True, response_time_ms=response_time
-                        )
-                    else:
-                        return HealthCheckResult(
-                            is_healthy=False,
-                            response_time_ms=(time.time() - start_time) * 1000,
-                            error_message="Unexpected query result",
-                        )
+            # Use timeout for the health check
+            result = await asyncio.wait_for(perform_check(), timeout=self.timeout_seconds)
+            
+            if result and result[0] == 1:
+                response_time = (time.time() - start_time) * 1000
+                return HealthCheckResult(
+                    is_healthy=True, response_time_ms=response_time
+                )
+            else:
+                return HealthCheckResult(
+                    is_healthy=False,
+                    response_time_ms=(time.time() - start_time) * 1000,
+                    error_message="Unexpected query result",
+                )
 
         except asyncio.TimeoutError:
             return HealthCheckResult(
@@ -561,10 +568,10 @@ class ConnectionHealthMonitor:
 class DatabaseMetricsCollector:
     """Collects and aggregates database performance metrics."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics collector."""
-        self._operation_metrics = {}
-        self._locking_events = []
+        self._operation_metrics: Dict[str, Any] = {}
+        self._locking_events: List[Dict[str, Any]] = []
         self._max_events_history = 50
 
     def record_operation(
@@ -655,7 +662,7 @@ class DatabaseMetricsCollector:
         ]
 
         # Count by operation
-        operation_counts = {}
+        operation_counts: Dict[str, int] = {}
         for event in self._locking_events:
             op = event["operation_name"]
             operation_counts[op] = operation_counts.get(op, 0) + 1

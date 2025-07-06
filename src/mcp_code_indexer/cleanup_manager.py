@@ -8,7 +8,10 @@ and manual cleanup methods.
 
 import logging
 import time
-from typing import List, Optional
+from typing import Any, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .database.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,7 @@ class CleanupManager:
     periodic cleanup to permanently remove old records after the retention period.
     """
 
-    def __init__(self, db_manager, retention_months: int = 6):
+    def __init__(self, db_manager: "DatabaseManager", retention_months: int = 6) -> None:
         """
         Initialize cleanup manager.
 
@@ -80,7 +83,7 @@ class CleanupManager:
 
         cleanup_timestamp = int(time.time())
 
-        async def batch_operation(conn):
+        async def batch_operation(conn: Any) -> int:
             data = [(cleanup_timestamp, project_id, path) for path in file_paths]
             cursor = await conn.executemany(
                 """
@@ -90,7 +93,7 @@ class CleanupManager:
                 """,
                 data,
             )
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
         marked_count = await self.db_manager.execute_transaction_with_retry(
             batch_operation,
@@ -99,7 +102,7 @@ class CleanupManager:
         )
 
         logger.info(f"Marked {marked_count} files for cleanup in project {project_id}")
-        return marked_count
+        return int(marked_count)
 
     async def restore_file_from_cleanup(self, project_id: str, file_path: str) -> bool:
         """
@@ -177,7 +180,7 @@ class CleanupManager:
         )  # Approximate months to seconds
         cutoff_timestamp = int(time.time()) - cutoff_seconds
 
-        async def cleanup_operation(conn):
+        async def cleanup_operation(conn: Any) -> int:
             if project_id:
                 cursor = await conn.execute(
                     """
@@ -196,7 +199,7 @@ class CleanupManager:
                     (cutoff_timestamp,),
                 )
 
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
         deleted_count = await self.db_manager.execute_transaction_with_retry(
             cleanup_operation,
@@ -208,7 +211,7 @@ class CleanupManager:
             scope = f"project {project_id}" if project_id else "all projects"
             logger.info(f"Permanently deleted {deleted_count} old records from {scope}")
 
-        return deleted_count
+        return int(deleted_count)
 
     async def get_cleanup_stats(self, project_id: Optional[str] = None) -> dict:
         """
@@ -226,7 +229,7 @@ class CleanupManager:
         async with self.db_manager.get_connection() as db:
             if project_id:
                 base_where = "WHERE project_id = ?"
-                params = (project_id,)
+                params: tuple[Any, ...] = (project_id,)
             else:
                 base_where = ""
                 params = ()
@@ -239,7 +242,8 @@ class CleanupManager:
                 ),
                 params,
             )
-            active_count = (await cursor.fetchone())[0]
+            row = await cursor.fetchone()
+            active_count = row[0] if row else 0
 
             # Files marked for cleanup
             cursor = await db.execute(
@@ -249,7 +253,8 @@ class CleanupManager:
                 ),
                 params,
             )
-            marked_count = (await cursor.fetchone())[0]
+            row = await cursor.fetchone()
+            marked_count = row[0] if row else 0
 
             # Files eligible for permanent deletion
             if project_id:
@@ -268,7 +273,8 @@ class CleanupManager:
                     ),
                     (cutoff_timestamp,),
                 )
-            eligible_for_deletion = (await cursor.fetchone())[0]
+            row = await cursor.fetchone()
+            eligible_for_deletion = row[0] if row else 0
 
             return {
                 "active_files": active_count,

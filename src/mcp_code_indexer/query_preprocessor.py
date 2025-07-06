@@ -33,7 +33,7 @@ class QueryPreprocessor:
     # FTS5 operators that need to be escaped when used as literal search terms
     FTS5_OPERATORS: Set[str] = {"AND", "OR", "NOT", "NEAR"}
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the query preprocessor."""
         pass
 
