@@ -12,7 +12,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import aiohttp
 from tenacity import (
@@ -72,7 +72,7 @@ class GitHookHandler:
         self.token_counter = TokenCounter()
 
         # Git hook specific settings
-        self.config = {
+        self.config: Dict[str, Union[str, int, float]] = {
             "model": os.getenv("MCP_GITHOOK_MODEL", self.OPENROUTER_MODEL),
             "max_diff_tokens": 136000,  # Skip if diff larger than this (in tokens)
             "chunk_token_limit": 100000,  # Target token limit per chunk
@@ -247,7 +247,7 @@ class GitHookHandler:
         self.logger.info(f"Single-stage prompt: {prompt_tokens} tokens")
         self.logger.info(f"Token limit: {token_limit}")
 
-        if prompt_tokens <= token_limit:
+        if prompt_tokens <= int(token_limit):
             # Use single-stage approach
             self._log_and_print("Using single-stage analysis")
             result = await self._call_openrouter(single_stage_prompt)
@@ -758,7 +758,7 @@ Return ONLY a JSON object:
         prompt_tokens = self.token_counter.count_tokens(prompt)
         self.logger.info(f"Stage 1 prompt: {prompt_tokens} tokens")
 
-        if prompt_tokens > self.config["max_diff_tokens"]:
+        if prompt_tokens > int(self.config["max_diff_tokens"]):
             raise GitHookError(f"Stage 1 prompt too large ({prompt_tokens} tokens)")
 
         # Call OpenRouter API
@@ -830,7 +830,7 @@ Return ONLY a JSON object:
         prompt_tokens = self.token_counter.count_tokens(prompt)
         self.logger.info(f"Stage 2 prompt: {prompt_tokens} tokens")
 
-        if prompt_tokens > self.config["max_diff_tokens"]:
+        if prompt_tokens > int(self.config["max_diff_tokens"]):
             raise GitHookError(f"Stage 2 prompt too large ({prompt_tokens} tokens)")
 
         # Call OpenRouter API
@@ -916,7 +916,7 @@ Return ONLY a JSON object:
 
         # Calculate chunk size with buffer for overhead
         overhead_factor = 0.7  # Reserve 30% for prompt overhead
-        effective_limit = chunk_limit * overhead_factor
+        effective_limit = int(chunk_limit) * overhead_factor
 
         chunk_size = max(1, int(effective_limit / avg_tokens_per_file))
 
@@ -1017,7 +1017,7 @@ Return ONLY a JSON object:
         prompt_tokens = self.token_counter.count_tokens(prompt)
         self.logger.info(f"Chunk prompt: {prompt_tokens} tokens")
 
-        if prompt_tokens > self.config.get("chunk_token_limit", 100000):
+        if prompt_tokens > int(self.config.get("chunk_token_limit", 100000)):
             self.logger.warning(
                 f"Chunk still too large ({prompt_tokens} tokens), "
                 f"skipping {len(chunk_files)} files"
@@ -1071,7 +1071,7 @@ Return ONLY a JSON object:
             "max_tokens": 24000,
         }
 
-        timeout = aiohttp.ClientTimeout(total=self.config["timeout"])
+        timeout = aiohttp.ClientTimeout(total=float(self.config["timeout"]))
 
         self.logger.info("Sending request to OpenRouter API...")
         self.logger.info(f"  Model: {self.config['model']}")
@@ -1210,7 +1210,7 @@ Return ONLY a JSON object:
                     "Response must contain 'file_updates' and/or 'overview_update'"
                 )
 
-            return data
+            return cast(Dict[str, Any], data)
 
         except json.JSONDecodeError as e:
             self.logger.error(f"Raw response content: {repr(response_text)}")
@@ -1243,7 +1243,10 @@ Return ONLY a JSON object:
                 from mcp_code_indexer.database.models import FileDescription
 
                 file_desc = FileDescription(
+                    id=None,
                     project_id=project.id,
+                    source_project_id=None,
+                    to_be_cleaned=None,
                     file_path=file_path,
                     description=description,
                     file_hash=None,
@@ -1296,8 +1299,9 @@ Return ONLY a JSON object:
             stdout, stderr = await process.communicate()
 
             if process.returncode != 0:
+                returncode = process.returncode if process.returncode is not None else 1
                 raise subprocess.CalledProcessError(
-                    process.returncode, full_cmd, stdout, stderr
+                    returncode, full_cmd, stdout, stderr
                 )
 
             return stdout.decode("utf-8")

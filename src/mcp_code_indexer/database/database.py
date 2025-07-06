@@ -11,7 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Union, Callable
 
 import aiosqlite
 
@@ -70,8 +70,8 @@ class DatabaseManager:
         self.retry_max_wait = retry_max_wait
         self.retry_jitter = retry_jitter
         self._connection_pool: List[aiosqlite.Connection] = []
-        self._pool_lock = None  # Will be initialized in async context
-        self._write_lock = None  # Write serialization lock, async context
+        self._pool_lock: Optional[asyncio.Lock] = None  # Will be initialized in async context
+        self._write_lock: Optional[asyncio.Lock] = None  # Write serialization lock, async context
 
         # Retry and recovery components - configure with provided settings
         self._retry_executor = create_retry_executor(
@@ -82,11 +82,11 @@ class DatabaseManager:
         )
 
         # Health monitoring and metrics
-        self._health_monitor = None  # Initialized in async context
+        self._health_monitor: Optional[ConnectionHealthMonitor] = None  # Initialized in async context
         self._metrics_collector = DatabaseMetricsCollector()
 
         # Cleanup manager for retention policies
-        self._cleanup_manager = None  # Initialized in async context
+        self._cleanup_manager: Optional[CleanupManager] = None  # Initialized in async context
 
     async def initialize(self) -> None:
         """Initialize database schema and configuration."""
@@ -323,8 +323,10 @@ class DatabaseManager:
                 "DatabaseManager not initialized - call initialize() first"
             )
 
-        async def get_write_connection():
+        async def get_write_connection() -> aiosqlite.Connection:
             """Inner function to get connection - retried by executor."""
+            if self._write_lock is None:
+                raise RuntimeError("Write lock not initialized")
             async with self._write_lock:
                 async with self.get_connection() as conn:
                     return conn
@@ -432,10 +434,9 @@ class DatabaseManager:
         async with self.get_write_connection_with_retry(operation_name) as conn:
             try:
                 # Start immediate transaction with timeout
-                async with asyncio.timeout(timeout_seconds):
-                    await conn.execute("BEGIN IMMEDIATE")
-                    yield conn
-                    await conn.commit()
+                await asyncio.wait_for(conn.execute("BEGIN IMMEDIATE"), timeout=timeout_seconds)
+                yield conn
+                await conn.commit()
             except asyncio.TimeoutError:
                 logger.warning(
                     (
@@ -460,7 +461,7 @@ class DatabaseManager:
 
     async def execute_transaction_with_retry(
         self,
-        operation_func,
+        operation_func: Callable[[aiosqlite.Connection], Any],
         operation_name: str = "transaction_operation",
         max_retries: int = 3,
         timeout_seconds: float = 10.0,
@@ -493,7 +494,7 @@ class DatabaseManager:
             )
         """
 
-        async def execute_transaction():
+        async def execute_transaction() -> Any:
             """Inner function to execute transaction - retried by executor."""
             try:
                 async with self.get_immediate_transaction(
@@ -1032,7 +1033,7 @@ class DatabaseManager:
         Returns:
             List of file paths that were marked for cleanup
         """
-        removed_files = []
+        removed_files: List[str] = []
 
         async def cleanup_operation(conn: aiosqlite.Connection) -> List[str]:
             # Get all active file descriptions for this project
@@ -1223,7 +1224,7 @@ class DatabaseManager:
             await db.commit()
             return removed_count
 
-    async def get_project_map_data(self, project_identifier: str) -> dict:
+    async def get_project_map_data(self, project_identifier: str) -> Optional[Dict[str, Any]]:
         """
         Get all data needed to generate a project map.
 

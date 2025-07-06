@@ -10,7 +10,8 @@ import logging
 import traceback
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, Union
+from functools import wraps
 
 from mcp import types
 
@@ -146,14 +147,14 @@ class ErrorHandler:
             error_data["tool_name"] = tool_name
 
         if context:
-            error_data["context"] = context
+            error_data["context"] = str(context)
 
         if isinstance(error, MCPError):
             error_data.update(
                 {
                     "category": error.category.value,
-                    "code": error.code,
-                    "details": error.details,
+                    "code": str(error.code),
+                    "details": str(error.details),
                 }
             )
 
@@ -243,11 +244,19 @@ class ErrorHandler:
             if task.done() and not task.cancelled():
                 exception = task.exception()
                 if exception:
-                    self.log_error(
-                        exception,
-                        context={**(context or {}), "task_name": task_name},
-                        tool_name="async_task",
-                    )
+                    # Convert BaseException to Exception for log_error
+                    if isinstance(exception, Exception):
+                        self.log_error(
+                            exception,
+                            context={**(context or {}), "task_name": task_name},
+                            tool_name="async_task",
+                        )
+                    else:
+                        self.log_error(
+                            Exception(str(exception)),
+                            context={**(context or {}), "task_name": task_name},
+                            tool_name="async_task",
+                        )
         except Exception as e:
             self.logger.error(f"Error handling task error for {task_name}: {e}")
 
@@ -296,12 +305,18 @@ def setup_error_handling(logger: logging.Logger) -> ErrorHandler:
     error_handler = ErrorHandler(logger)
 
     # Set up asyncio exception handler
-    def asyncio_exception_handler(loop, context):
+    def asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: Dict[str, Any]) -> None:
         exception = context.get("exception")
         if exception:
-            error_handler.log_error(
-                exception, context={"asyncio_context": context, "loop": str(loop)}
-            )
+            # Convert BaseException to Exception for log_error
+            if isinstance(exception, Exception):
+                error_handler.log_error(
+                    exception, context={"asyncio_context": context, "loop": str(loop)}
+                )
+            else:
+                error_handler.log_error(
+                    Exception(str(exception)), context={"asyncio_context": context, "loop": str(loop)}
+                )
         else:
             logger.error(f"Asyncio error: {context}")
 
@@ -319,10 +334,11 @@ def setup_error_handling(logger: logging.Logger) -> ErrorHandler:
 # Decorators for common error handling patterns
 
 
-def handle_database_errors(func):
+def handle_database_errors(func: Callable) -> Callable:
     """Decorator to handle database errors."""
 
-    async def wrapper(*args, **kwargs):
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await func(*args, **kwargs)
         except Exception as e:
@@ -333,10 +349,11 @@ def handle_database_errors(func):
     return wrapper
 
 
-def handle_file_errors(func):
+def handle_file_errors(func: Callable) -> Callable:
     """Decorator to handle file system errors."""
 
-    async def wrapper(*args, **kwargs):
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await func(*args, **kwargs)
         except (FileNotFoundError, PermissionError, OSError) as e:
@@ -347,11 +364,12 @@ def handle_file_errors(func):
     return wrapper
 
 
-def validate_arguments(required_fields: list, optional_fields: list = None):
+def validate_arguments(required_fields: list, optional_fields: Optional[list] = None) -> Callable:
     """Decorator to validate tool arguments."""
 
-    def decorator(func):
-        async def wrapper(self, arguments: Dict[str, Any], *args, **kwargs):
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(self: Any, arguments: Dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             # Check required fields
             missing_fields = [
                 field for field in required_fields if field not in arguments

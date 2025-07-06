@@ -9,7 +9,7 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from .error_handler import StructuredFormatter
 
@@ -58,6 +58,7 @@ def setup_logging(
             log_file.parent.mkdir(parents=True, exist_ok=True)
 
             # Rotating file handler
+            file_handler: Union[logging.handlers.RotatingFileHandler, logging.FileHandler]
             if max_bytes > 0:
                 file_handler = logging.handlers.RotatingFileHandler(
                     log_file,
@@ -175,7 +176,7 @@ def setup_command_logger(
 
 
 def _setup_component_loggers_for_command(
-    command_name: str, file_handler: logging.Handler, formatter: logging.Formatter
+    command_name: str, file_handler: logging.handlers.RotatingFileHandler, formatter: logging.Formatter
 ) -> None:
     """
     Set up component loggers to also send logs to the command's log file.
@@ -208,7 +209,7 @@ def _setup_component_loggers_for_command(
         command_handler.setFormatter(formatter)
 
         # Add a marker to identify which command this handler belongs to
-        command_handler._command_name = command_name
+        setattr(command_handler, '_command_name', command_name)
 
         # Remove any existing handlers for this command (in case of multiple calls)
         existing_handlers = [
@@ -228,7 +229,7 @@ def _setup_component_loggers_for_command(
 
 
 def log_performance_metrics(
-    logger: logging.Logger, operation: str, duration: float, **metrics
+    logger: logging.Logger, operation: str, duration: float, **metrics: object
 ) -> None:
     """
     Log performance metrics in structured format.

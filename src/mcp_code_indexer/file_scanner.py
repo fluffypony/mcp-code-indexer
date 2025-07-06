@@ -9,7 +9,7 @@ efficient discovery of files that need description tracking.
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Generator, List, Optional, Set
+from typing import Dict, Generator, List, Optional, Set, Union, Any, cast
 
 try:
     from gitignore_parser import parse_gitignore
@@ -148,7 +148,7 @@ class FileScanner:
             project_root: Root directory of the project to scan
         """
         self.project_root = Path(project_root).resolve()
-        self._gitignore_cache: dict = {}
+        self._gitignore_cache: Dict[str, Any] = {}
         self._load_gitignore_patterns()
 
     def _load_gitignore_patterns(self) -> None:
@@ -348,19 +348,19 @@ class FileScanner:
             return (
                 self.project_root.exists()
                 and self.project_root.is_dir()
-                and self.project_root.stat().st_mode & 0o444  # Readable
+                and bool(self.project_root.stat().st_mode & 0o444)  # Readable
             )
         except (OSError, PermissionError):
             return False
 
-    def get_project_stats(self) -> dict:
+    def get_project_stats(self) -> Dict[str, Union[int, Dict[str, int]]]:
         """
         Get statistics about the project directory.
 
         Returns:
             Dictionary with project statistics for trackable files only
         """
-        stats = {
+        stats: Dict[str, Union[int, Dict[str, int]]] = {
             "total_files": 0,
             "trackable_files": 0,
             "ignored_files": 0,
@@ -375,24 +375,27 @@ class FileScanner:
 
                 # Check if trackable first
                 if self.should_ignore_file(file_path):
-                    stats["ignored_files"] += 1
+                    ignored_files = cast(int, stats["ignored_files"])
+                    stats["ignored_files"] = ignored_files + 1
                     continue
 
                 # Only process trackable files for detailed stats
-                stats["trackable_files"] += 1
+                trackable_files = cast(int, stats["trackable_files"])
+                stats["trackable_files"] = trackable_files + 1
 
                 # Track file size
                 try:
                     file_size = file_path.stat().st_size
-                    stats["largest_file_size"] = max(
-                        stats["largest_file_size"], file_size
-                    )
+                    largest_file_size = cast(int, stats["largest_file_size"])
+                    stats["largest_file_size"] = max(largest_file_size, file_size)
                 except OSError:
                     pass
 
                 # Track extensions for trackable files only
                 ext = file_path.suffix.lower()
-                stats["file_extensions"][ext] = stats["file_extensions"].get(ext, 0) + 1
+                file_extensions = stats["file_extensions"]
+                if isinstance(file_extensions, dict):
+                    file_extensions[ext] = file_extensions.get(ext, 0) + 1
 
             # Total files is just trackable files
             stats["total_files"] = stats["trackable_files"]

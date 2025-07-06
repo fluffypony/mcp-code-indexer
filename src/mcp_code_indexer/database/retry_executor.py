@@ -10,7 +10,7 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Callable, Dict, Optional, TypeVar
+from typing import Any, AsyncContextManager, AsyncIterator, Awaitable, Callable, Dict, Optional, TypeVar, Union
 
 import aiosqlite
 from tenacity import (
@@ -127,7 +127,7 @@ class RetryExecutor:
         )
 
     async def execute_with_retry(
-        self, operation: Callable[[], T], operation_name: str = "database_operation"
+        self, operation: Callable[[], Awaitable[T]], operation_name: str = "database_operation"
     ) -> T:
         """
         Execute an operation with retry logic.
@@ -242,11 +242,15 @@ class RetryExecutor:
         finally:
             # Clean up tracking
             self._operation_start_times.pop(operation_name, None)
+        
+        # This should never be reached due to tenacity's retry logic
+        # but MyPy requires it for completeness
+        raise RuntimeError("Unexpected end of retry logic")
 
     @asynccontextmanager
     async def get_connection_with_retry(
         self,
-        connection_factory: Callable[[], AsyncIterator[aiosqlite.Connection]],
+        connection_factory: Callable[[], AsyncContextManager[aiosqlite.Connection]],
         operation_name: str = "database_connection",
     ) -> AsyncIterator[aiosqlite.Connection]:
         """
@@ -265,22 +269,23 @@ class RetryExecutor:
             Database connection
         """
 
-        async def get_connection() -> aiosqlite.Connection:
+        async def acquire_connection() -> aiosqlite.Connection:
             # This function will be retried by execute_with_retry
-            async with connection_factory() as conn:
-                # Store connection for the outer context manager
-                return conn
+            # Get the async context manager and enter it
+            ctx_manager = connection_factory()
+            conn = await ctx_manager.__aenter__()
+            return conn
 
         # Use execute_with_retry to handle the retry logic
         # We create a connection and store it for the context manager
-        connection = await self.execute_with_retry(get_connection, operation_name)
+        connection = await self.execute_with_retry(acquire_connection, operation_name)
 
         try:
             yield connection
         finally:
-            # Connection cleanup is handled by the original context manager
-            # in the connection_factory, so nothing to do here
-            pass
+            # Close the connection properly
+            if hasattr(connection, 'close'):
+                await connection.close()
 
     def _should_retry_exception(self, retry_state: RetryCallState) -> bool:
         """
@@ -299,6 +304,10 @@ class RetryExecutor:
 
         exception = retry_state.outcome.exception()
         if exception is None:
+            return False
+
+        # Only retry if it's an Exception (not BaseException)
+        if not isinstance(exception, Exception):
             return False
 
         return self._is_sqlite_retryable_error(exception)

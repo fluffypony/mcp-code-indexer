@@ -239,7 +239,7 @@ class ClaudeAPIHandler:
             raise ClaudeAPIError("Claude API request timed out")
 
     def validate_json_response(
-        self, response_text: str, required_keys: List[str] = None
+        self, response_text: str, required_keys: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Validate and parse JSON response from Claude.
@@ -295,6 +295,12 @@ class ClaudeAPIHandler:
                 if extracted_json != response_text.strip():
                     self.logger.debug(f"Extracted JSON from response: {extracted_json}")
                 data = json.loads(extracted_json)
+
+            # Ensure data is a dictionary
+            if not isinstance(data, dict):
+                raise ClaudeValidationError(
+                    f"Expected JSON object, got {type(data).__name__}"
+                )
 
             # Validate required keys if specified
             if required_keys:
