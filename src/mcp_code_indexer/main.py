@@ -10,6 +10,8 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+import logging
 
 from . import __version__
 from .error_handler import setup_error_handling
@@ -388,8 +390,8 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
 
             return html.unescape(text)
 
-        def clean_arguments(arguments: dict) -> dict:
-            cleaned = {}
+        def clean_arguments(arguments: Dict[str, Any]) -> Dict[str, Any]:
+            cleaned: Dict[str, Any] = {}
             for key, value in arguments.items():
                 if isinstance(value, str):
                     cleaned[key] = clean_html_entities(value)
@@ -784,7 +786,7 @@ async def handle_map(args: argparse.Namespace) -> None:
             logger.removeHandler(handler)
 
 
-def generate_project_markdown(project, overview, files, logger):
+def generate_project_markdown(project: Any, overview: Optional[Any], files: List[Any], logger: logging.Logger) -> str:
     """Generate the markdown content for the project map."""
     import re
     from collections import defaultdict
@@ -1037,7 +1039,7 @@ async def main() -> None:
         raise
 
 
-def cli_main():
+def cli_main() -> None:
     """Console script entry point."""
     try:
         asyncio.run(main())

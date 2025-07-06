@@ -8,7 +8,7 @@ error handling across all MCP tool implementations.
 import asyncio
 import functools
 import time
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import aiosqlite
 from mcp import types
@@ -30,7 +30,7 @@ class ToolMiddleware:
         """Initialize middleware with error handler."""
         self.error_handler = error_handler
 
-    def wrap_tool_handler(self, tool_name: str):
+    def wrap_tool_handler(self, tool_name: str) -> Callable[[Callable], Callable]:
         """
         Decorator to wrap tool handlers with error handling and logging.
 
@@ -84,7 +84,7 @@ class ToolMiddleware:
                         arguments_count=len(arguments),
                     )
 
-                    return result
+                    return result  # type: ignore
 
                 except Exception as e:
                     duration = time.time() - start_time
@@ -135,8 +135,8 @@ class ToolMiddleware:
         return decorator
 
     def validate_tool_arguments(
-        self, required_fields: List[str], optional_fields: List[str] = None
-    ):
+        self, required_fields: List[str], optional_fields: Optional[List[str]] = None
+    ) -> Callable[[Callable], Callable]:
         """
         Decorator to validate tool arguments.
 
@@ -220,7 +220,7 @@ class AsyncTaskManager:
         self.error_handler = error_handler
         self._tasks: List[asyncio.Task] = []
 
-    def create_task(self, coro, name: str = None) -> asyncio.Task:
+    def create_task(self, coro: Any, name: Optional[str] = None) -> asyncio.Task:
         """
         Create a managed async task.
 
@@ -257,7 +257,7 @@ class AsyncTaskManager:
             if task in self._tasks:
                 self._tasks.remove(task)
 
-    async def wait_for_all(self, timeout: float = None) -> None:
+    async def wait_for_all(self, timeout: Optional[float] = None) -> None:
         """
         Wait for all managed tasks to complete.
 
@@ -309,12 +309,12 @@ def create_tool_middleware(error_handler: ErrorHandler) -> ToolMiddleware:
 # Convenience decorators for common patterns
 
 
-def require_fields(*required_fields):
+def require_fields(*required_fields: str) -> Callable[[Callable], Callable]:
     """Decorator that requires specific fields in arguments."""
 
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        async def wrapper(self, arguments: Dict[str, Any]):
+        async def wrapper(self: Any, arguments: Dict[str, Any]) -> Any:
             from ..error_handler import ValidationError
 
             missing = [field for field in required_fields if field not in arguments]
@@ -328,11 +328,11 @@ def require_fields(*required_fields):
     return decorator
 
 
-def handle_file_operations(func):
+def handle_file_operations(func: Callable) -> Callable:
     """Decorator for file operation error handling."""
 
     @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await func(*args, **kwargs)
         except (FileNotFoundError, PermissionError, OSError) as e:
@@ -343,11 +343,11 @@ def handle_file_operations(func):
     return wrapper
 
 
-def handle_database_operations(func):
+def handle_database_operations(func: Callable) -> Callable:
     """Decorator for database operation error handling."""
 
     @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await func(*args, **kwargs)
         except Exception as e:

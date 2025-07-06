@@ -15,7 +15,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, Callable, cast
 
 from mcp import types
 from mcp.server import Server
@@ -110,9 +110,9 @@ class MCPCodeIndexServer:
             retry_jitter=retry_jitter,
         )
         # Keep reference to global db_manager for backwards compatibility
-        self.db_manager = None  # Will be set during run()
+        self.db_manager: Optional[DatabaseManager] = None  # Will be set during run()
         self.token_counter = TokenCounter(token_limit)
-        self.cleanup_manager = None  # Will be set during initialize()
+        self.cleanup_manager: Optional[CleanupManager] = None  # Will be set during initialize()
         self.transport = transport
 
         # Setup error handling
@@ -122,7 +122,7 @@ class MCPCodeIndexServer:
         self.task_manager = AsyncTaskManager(self.error_handler)
 
         # Create MCP server
-        self.server = Server("mcp-code-indexer")
+        self.server: Server = Server("mcp-code-indexer")
 
         # Register handlers
         self._register_handlers()
@@ -166,7 +166,7 @@ class MCPCodeIndexServer:
         Returns:
             Dictionary with HTML entities decoded in all string values
         """
-        cleaned = {}
+        cleaned: Dict[str, Any] = {}
 
         for key, value in arguments.items():
             if isinstance(value, str):
@@ -201,7 +201,11 @@ class MCPCodeIndexServer:
         """
         # First try normal parsing
         try:
-            return json.loads(json_str)
+            result = json.loads(json_str)
+            if isinstance(result, dict):
+                return result
+            else:
+                raise ValueError(f"Parsed JSON is not a dictionary: {type(result)}")
         except json.JSONDecodeError as original_error:
             logger.warning(f"Initial JSON parse failed: {original_error}")
 
@@ -230,11 +234,14 @@ class MCPCodeIndexServer:
 
             try:
                 result = json.loads(repaired)
-                logger.info(
-                    f"Successfully repaired JSON. Original: {json_str[:100]}..."
-                )
-                logger.info(f"Repaired: {repaired[:100]}...")
-                return result
+                if isinstance(result, dict):
+                    logger.info(
+                        f"Successfully repaired JSON. Original: {json_str[:100]}..."
+                    )
+                    logger.info(f"Repaired: {repaired[:100]}...")
+                    return result
+                else:
+                    raise ValueError(f"Repaired JSON is not a dictionary: {type(result)}")
             except json.JSONDecodeError as repair_error:
                 logger.error(f"JSON repair failed. Original: {json_str}")
                 logger.error(f"Repaired attempt: {repaired}")
@@ -248,14 +255,15 @@ class MCPCodeIndexServer:
         # Initialize global database manager for backwards compatibility
         self.db_manager = await self.db_factory.get_database_manager()
         # Update cleanup manager with initialized db_manager
-        self.cleanup_manager = CleanupManager(self.db_manager, retention_months=6)
+        if self.db_manager is not None:
+            self.cleanup_manager = CleanupManager(self.db_manager, retention_months=6)
         self._start_background_cleanup()
         logger.info("Server initialized successfully")
 
     def _register_handlers(self) -> None:
         """Register MCP tool and resource handlers."""
 
-        @self.server.list_tools()
+        @self.server.list_tools()  # type: ignore[misc]
         async def list_tools() -> List[types.Tool]:
             """Return list of available tools."""
             return [
@@ -671,7 +679,7 @@ class MCPCodeIndexServer:
                 ),
             ]
 
-        @self.server.call_tool()
+        @self.server.call_tool()  # type: ignore[misc]
         async def call_tool(
             name: str, arguments: Dict[str, Any]
         ) -> List[types.TextContent]:
@@ -717,7 +725,12 @@ class MCPCodeIndexServer:
                     f"MCP Tool '{name}' completed successfully in {elapsed_time:.2f}s"
                 )
 
-                return result
+                # Ensure result is List[types.TextContent]
+                if isinstance(result, list) and all(isinstance(item, types.TextContent) for item in result):
+                    return result
+                else:
+                    # Fallback: convert to proper format
+                    return [types.TextContent(type="text", text=str(result))]
             except Exception as e:
                 elapsed_time = time.time() - start_time
                 logger.error(f"MCP Tool '{name}' failed after {elapsed_time:.2f}s: {e}")
@@ -725,7 +738,7 @@ class MCPCodeIndexServer:
                 raise
 
     async def _execute_tool_handler(
-        self, handler, arguments: Dict[str, Any]
+        self, handler: Callable[[Dict[str, Any]], Any], arguments: Dict[str, Any]
     ) -> List[types.TextContent]:
         """Execute a tool handler and format the result."""
         # Clean HTML entities from all arguments before processing
@@ -788,7 +801,7 @@ class MCPCodeIndexServer:
             normalized_name = project_name.lower()
 
             # Find potential project matches
-            project = await self._find_matching_project(
+            project = await self._find_matching_project(  # type: ignore[assignment]
                 normalized_name, folder_path, db_manager
             )
             if project:
@@ -811,6 +824,7 @@ class MCPCodeIndexServer:
                     f"Created new global project: {normalized_name} (ID: {project_id})"
                 )
 
+            assert project is not None  # project is always set in if/else branches above
             return project.id
 
     async def _find_matching_project(
@@ -836,11 +850,7 @@ class MCPCodeIndexServer:
                 match_factors.append("name")
 
             # Factor 2: Folder path in aliases
-            project_aliases = (
-                json.loads(project.aliases)
-                if isinstance(project.aliases, str)
-                else project.aliases
-            )
+            project_aliases = project.aliases
             if folder_path in project_aliases:
                 score += 1
                 match_factors.append("folder_path")
@@ -929,11 +939,7 @@ class MCPCodeIndexServer:
             should_update = True
 
         # Add folder path to aliases if not already present
-        project_aliases = (
-            json.loads(project.aliases)
-            if isinstance(project.aliases, str)
-            else project.aliases
-        )
+        project_aliases = project.aliases
         if folder_path not in project_aliases:
             project_aliases.append(folder_path)
             project.aliases = project_aliases
@@ -989,12 +995,15 @@ class MCPCodeIndexServer:
         logger.info(f"Resolved project_id: {project_id}")
 
         file_desc = FileDescription(
+            id=None,  # Will be set by database
             project_id=project_id,
             file_path=arguments["filePath"],
             description=arguments["description"],
             file_hash=arguments.get("fileHash"),
             last_modified=datetime.utcnow(),
             version=1,
+            source_project_id=None,
+            to_be_cleaned=None,
         )
 
         await db_manager.create_file_description(file_desc)
@@ -1223,28 +1232,28 @@ class MCPCodeIndexServer:
         root = {"path": "", "files": [], "folders": {}}
 
         for file_desc in file_descriptions:
-            path_parts = Path(file_desc.file_path).parts
+            path_parts = cast(List[str], list(Path(file_desc.file_path).parts))
             current = root
 
             # Navigate/create folder structure
             for i, part in enumerate(path_parts[:-1]):
                 folder_path = "/".join(path_parts[: i + 1])
                 if part not in current["folders"]:
-                    current["folders"][part] = {
+                    current["folders"][part] = {  # type: ignore[index]
                         "path": folder_path,
                         "files": [],
                         "folders": {},
                     }
-                current = current["folders"][part]
+                current = current["folders"][part]  # type: ignore[index]
 
             # Add file to current folder
             if path_parts:  # Handle empty paths
-                current["files"].append(
+                current["files"].append(  # type: ignore[attr-defined]
                     {"path": file_desc.file_path, "description": file_desc.description}
                 )
 
         # Convert nested dict structure to list format, skipping empty folders
-        def convert_structure(node):
+        def convert_structure(node: Dict[str, Any]) -> Dict[str, Any]:
             folders = []
             for folder in node["folders"].values():
                 converted_folder = convert_structure(folder)
@@ -1405,22 +1414,27 @@ class MCPCodeIndexServer:
         """
         # Get comprehensive health diagnostics from the enhanced monitor
         if (
-            hasattr(self.db_manager, "_health_monitor")
+            self.db_manager
+            and hasattr(self.db_manager, "_health_monitor")
             and self.db_manager._health_monitor
         ):
             comprehensive_diagnostics = (
                 self.db_manager._health_monitor.get_comprehensive_diagnostics()
             )
-        else:
+        elif self.db_manager:
             # Fallback to basic health check if monitor not available
             health_check = await self.db_manager.check_health()
             comprehensive_diagnostics = {
                 "basic_health_check": health_check,
                 "note": "Enhanced health monitoring not available",
             }
+        else:
+            comprehensive_diagnostics = {
+                "error": "Database manager not initialized",
+            }
 
         # Get additional database-level statistics
-        database_stats = self.db_manager.get_database_stats()
+        database_stats = self.db_manager.get_database_stats() if self.db_manager else {}
 
         return {
             "is_healthy": comprehensive_diagnostics.get("current_status", {}).get(
@@ -1448,7 +1462,8 @@ class MCPCodeIndexServer:
                 "db_path": str(self.db_path),
                 "cache_dir": str(self.cache_dir),
                 "health_monitoring_enabled": (
-                    hasattr(self.db_manager, "_health_monitor")
+                    self.db_manager is not None
+                    and hasattr(self.db_manager, "_health_monitor")
                     and self.db_manager._health_monitor is not None
                 ),
             },
@@ -1493,7 +1508,7 @@ class MCPCodeIndexServer:
         }
 
     async def _run_session_with_retry(
-        self, read_stream, write_stream, initialization_options
+        self, read_stream: Any, write_stream: Any, initialization_options: Any
     ) -> None:
         """Run a single MCP session with error handling and retry logic."""
         max_retries = 3
@@ -1601,7 +1616,7 @@ class MCPCodeIndexServer:
                 # Continue running despite errors
 
     async def _run_cleanup_if_needed(
-        self, project_id: str = None, project_root: Path = None
+        self, project_id: Optional[str] = None, project_root: Optional[Path] = None
     ) -> int:
         """Run cleanup if conditions are met (not running, not run recently)."""
         current_time = time.time()
@@ -1636,9 +1651,11 @@ class MCPCodeIndexServer:
                     total_cleaned = len(missing_files)
 
                     # Perform permanent cleanup (retention policy)
-                    deleted_count = await self.cleanup_manager.perform_cleanup(
-                        project_id=project_id
-                    )
+                    deleted_count = 0
+                    if self.cleanup_manager:
+                        deleted_count = await self.cleanup_manager.perform_cleanup(
+                            project_id=project_id
+                        )
 
                     if missing_files or deleted_count:
                         logger.info(
@@ -1649,6 +1666,9 @@ class MCPCodeIndexServer:
                     logger.error(f"Error during cleanup: {e}")
             else:
                 # All projects cleanup (for periodic task) - start with global database
+                if not self.db_manager:
+                    logger.error("Database manager not initialized")
+                    return 0
                 projects = await self.db_manager.get_all_projects()
 
                 for project in projects:
@@ -1672,9 +1692,11 @@ class MCPCodeIndexServer:
                         total_cleaned += len(missing_files)
 
                         # Perform permanent cleanup (retention policy)
-                        deleted_count = await self.cleanup_manager.perform_cleanup(
-                            project_id=project.id
-                        )
+                        deleted_count = 0
+                        if self.cleanup_manager:
+                            deleted_count = await self.cleanup_manager.perform_cleanup(
+                                project_id=project.id
+                            )
 
                         if missing_files or deleted_count:
                             logger.info(
@@ -1752,7 +1774,8 @@ class MCPCodeIndexServer:
             self.task_manager.cancel_all()
 
             # Close database connections
-            await self.db_manager.close_pool()
+            if self.db_manager:
+                await self.db_manager.close_pool()
 
             self.logger.info("Server shutdown completed successfully")
 
@@ -1760,7 +1783,7 @@ class MCPCodeIndexServer:
             self.error_handler.log_error(e, context={"phase": "shutdown"})
 
 
-async def main():
+async def main() -> None:
     """Main entry point for the MCP server."""
     import sys
 
