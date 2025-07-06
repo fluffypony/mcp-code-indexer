@@ -5,11 +5,12 @@ Provides Bearer token authentication for HTTP transport.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Awaitable, Callable, List, Optional
 
 try:
     from fastapi import HTTPException, Request
     from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import Response
 except ImportError as e:
     raise ImportError(
         "HTTP middleware dependencies not installed. "
@@ -30,10 +31,10 @@ class HTTPAuthMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: Any,
         auth_token: Optional[str] = None,
-        public_paths: Optional[list] = None,
-    ):
+        public_paths: Optional[List[str]] = None,
+    ) -> None:
         """
         Initialize HTTP authentication middleware.
 
@@ -55,7 +56,7 @@ class HTTPAuthMiddleware(BaseHTTPMiddleware):
         else:
             self.logger.info("HTTP authentication disabled")
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """
         Process HTTP request and validate authentication.
 
@@ -158,7 +159,7 @@ class HTTPAuthMiddleware(BaseHTTPMiddleware):
             return real_ip
 
         # Fall back to direct client IP
-        if hasattr(request.client, "host"):
+        if request.client and hasattr(request.client, "host"):
             return request.client.host
 
         return "unknown"

@@ -15,6 +15,7 @@ from typing import Any, AsyncIterator, Callable, Dict, Optional, TypeVar
 import aiosqlite
 from tenacity import (
     AsyncRetrying,
+    RetryCallState,
     RetryError,
     after_log,
     before_sleep_log,
@@ -100,7 +101,7 @@ class RetryExecutor:
     It replaces the broken async context manager retry pattern.
     """
 
-    def __init__(self, config: Optional[RetryConfig] = None):
+    def __init__(self, config: Optional[RetryConfig] = None) -> None:
         """
         Initialize retry executor.
 
@@ -264,7 +265,7 @@ class RetryExecutor:
             Database connection
         """
 
-        async def get_connection():
+        async def get_connection() -> aiosqlite.Connection:
             # This function will be retried by execute_with_retry
             async with connection_factory() as conn:
                 # Store connection for the outer context manager
@@ -281,7 +282,7 @@ class RetryExecutor:
             # in the connection_factory, so nothing to do here
             pass
 
-    def _should_retry_exception(self, retry_state) -> bool:
+    def _should_retry_exception(self, retry_state: RetryCallState) -> bool:
         """
         Determine if an exception should trigger a retry.
 

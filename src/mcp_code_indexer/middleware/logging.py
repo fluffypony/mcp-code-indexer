@@ -6,7 +6,7 @@ Provides request/response logging and monitoring for HTTP transport.
 
 import logging
 import time
-from typing import Any, Dict
+from typing import Any, Awaitable, Callable, Dict, List
 
 try:
     from fastapi import Request, Response
@@ -43,7 +43,7 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
         self.logger = logger.getChild("http_access")
         self.logger.setLevel(self.log_level)
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """
         Process HTTP request and log access information.
 
@@ -144,7 +144,7 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
             return real_ip
 
         # Fall back to direct client IP
-        if hasattr(request.client, "host"):
+        if request.client and hasattr(request.client, "host"):
             return request.client.host
 
         return "unknown"
@@ -212,12 +212,12 @@ class HTTPMetricsCollector:
     Tracks request counts, response times, and error rates.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics collector."""
         self.request_count = 0
         self.error_count = 0
         self.total_response_time = 0.0
-        self.response_times = []
+        self.response_times: List[float] = []
         self.max_response_times = 1000  # Keep last 1000 response times
 
     def record_request(
