@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 try:
     import uvicorn
@@ -97,7 +97,7 @@ class HTTPTransport(Transport):
         self.app = await self._create_app()
 
     @asynccontextmanager
-    async def _lifespan(self, app: FastAPI):
+    async def _lifespan(self, app: FastAPI) -> AsyncGenerator[None, None]:
         """FastAPI lifespan context manager."""
         self.logger.info("HTTP transport starting up")
         yield
@@ -155,12 +155,12 @@ class HTTPTransport(Transport):
             return True
 
         @app.get("/health")
-        async def health_check():
+        async def health_check() -> Dict[str, str]:
             """Health check endpoint."""
             return {"status": "healthy", "transport": "http"}
 
         @app.get("/metrics")
-        async def get_metrics(authenticated: bool = Depends(verify_token)):
+        async def get_metrics(authenticated: bool = Depends(verify_token)) -> Dict[str, Any]:
             """Get HTTP transport metrics."""
             metrics = {}
 
@@ -175,7 +175,7 @@ class HTTPTransport(Transport):
             return metrics
 
         @app.get("/tools")
-        async def list_tools(authenticated: bool = Depends(verify_token)):
+        async def list_tools(authenticated: bool = Depends(verify_token)) -> Dict[str, Any]:
             """List available MCP tools."""
             tools = await self.server._handle_list_tools()
             return {"tools": tools}
@@ -183,7 +183,7 @@ class HTTPTransport(Transport):
         @app.post("/mcp", response_model=MCPResponse)
         async def handle_mcp_request(
             request: MCPRequest, authenticated: bool = Depends(verify_token)
-        ):
+        ) -> MCPResponse:
             """Handle MCP JSON-RPC requests."""
             try:
                 # Route to appropriate tool handler
@@ -253,12 +253,12 @@ class HTTPTransport(Transport):
         @app.get("/events/{connection_id}")
         async def server_sent_events(
             connection_id: str, authenticated: bool = Depends(verify_token)
-        ):
+        ) -> Any:
             """Server-Sent Events endpoint for streaming responses."""
 
-            async def event_stream():
+            async def event_stream() -> AsyncGenerator[str, None]:
                 # Create connection queue
-                queue = asyncio.Queue()
+                queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
                 self.active_connections[connection_id] = queue
 
                 try:
@@ -313,6 +313,8 @@ class HTTPTransport(Transport):
         )
 
         # Configure uvicorn
+        if not self.app:
+            raise RuntimeError("FastAPI app not initialized")
         config = uvicorn.Config(
             app=self.app,
             host=self.host,
