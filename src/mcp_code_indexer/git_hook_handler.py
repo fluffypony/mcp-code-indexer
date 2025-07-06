@@ -946,7 +946,6 @@ Return ONLY a JSON object:
         """
         lines = git_diff.split("\n")
         chunk_lines = []
-        current_file = None
         include_section = False
 
         for line in lines:
@@ -955,7 +954,6 @@ Return ONLY a JSON object:
                 parts = line.split(" ")
                 if len(parts) >= 4:
                     file_path = parts[2][2:]  # Remove 'a/' prefix
-                    current_file = file_path
                     include_section = file_path in chunk_files
 
             if include_section:

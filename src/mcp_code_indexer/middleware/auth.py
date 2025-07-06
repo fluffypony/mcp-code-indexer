@@ -9,7 +9,6 @@ from typing import Optional
 
 try:
     from fastapi import HTTPException, Request
-    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError as e:
     raise ImportError(

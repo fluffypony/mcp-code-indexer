@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 try:
-    from fastapi import FastAPI, HTTPException, Request, Depends
+    from fastapi import FastAPI, HTTPException, Depends
     from fastapi.responses import StreamingResponse
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
