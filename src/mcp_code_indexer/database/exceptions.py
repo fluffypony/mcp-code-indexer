@@ -287,7 +287,7 @@ def is_retryable_error(error: Exception) -> bool:
         True if the error should trigger a retry
     """
     if isinstance(error, DatabaseError):
-        return error.error_context.get("retryable", False)
+        return bool(error.error_context.get("retryable", False))
 
     # For raw exceptions, use simple classification
     error_message = str(error).lower()
@@ -312,7 +312,7 @@ def get_error_classification_stats(errors: list) -> Dict[str, Any]:
     Returns:
         Dictionary with error classification statistics
     """
-    stats = {
+    stats: Dict[str, Any] = {
         "total_errors": len(errors),
         "error_types": {},
         "retryable_count": 0,
@@ -320,15 +320,15 @@ def get_error_classification_stats(errors: list) -> Dict[str, Any]:
         "most_common_errors": {},
     }
 
-    error_messages = {}
+    error_messages: Dict[str, int] = {}
 
     for error in errors:
         # Classify error
-        classified = (
-            classify_sqlite_error(error)
-            if not isinstance(error, DatabaseError)
-            else error
-        )
+        if isinstance(error, DatabaseError):
+            classified = error
+        else:
+            classified = classify_sqlite_error(error)
+            
         error_type = type(classified).__name__
 
         # Count by type
@@ -336,9 +336,9 @@ def get_error_classification_stats(errors: list) -> Dict[str, Any]:
 
         # Count retryable vs non-retryable
         if is_retryable_error(classified):
-            stats["retryable_count"] += 1
+            stats["retryable_count"] = stats["retryable_count"] + 1
         else:
-            stats["non_retryable_count"] += 1
+            stats["non_retryable_count"] = stats["non_retryable_count"] + 1
 
         # Track common error messages
         message = str(error)
