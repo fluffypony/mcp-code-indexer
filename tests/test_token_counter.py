@@ -46,8 +46,7 @@ class TestTokenCounter:
             branch="main",
             file_path="src/main.py",
             description=(
-                "Main entry point for the application with argument parsing "
-                "and setup."
+                "Main entry point for the application with argument parsing and setup."
             ),
         )
 

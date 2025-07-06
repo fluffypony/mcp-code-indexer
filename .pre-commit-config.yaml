@@ -1,0 +1,61 @@
+repos:
+  # ----- code style and linting -----
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.0
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+
+  # ----- type checking -----
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: poetry run mypy
+        language: system
+        types: [python]
+        args: ["--config-file", "pyproject.toml"]
+        files: ^src/.*\.py$
+        exclude: ^(tests/|src/network/messages\.py$)
+
+  # ----- security (excluding tests) -----
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.5
+    hooks:
+      - id: bandit
+        args: ["--severity-level", "medium", "--skip", "B608"]
+        files: ^src/.*\.py$
+
+  # ----- dead code (including tests) -----
+  - repo: local
+    hooks:
+      - id: vulture
+        name: vulture
+        entry: vulture
+        language: system
+        types: [python]
+        pass_filenames: false
+        args: ["src", "tests", ".vulture_whitelist.py"]
+
+  # ----- misc hygiene -----
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ^mkdocs\.yml$
+      - id: check-json
+        exclude: ^models/
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=5000"]
+
+default_language_version:
+  python: python3.12
+
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] automated fixes
+  autoupdate_schedule: weekly

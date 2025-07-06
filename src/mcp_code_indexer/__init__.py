@@ -6,10 +6,12 @@ intelligent codebase navigation through searchable file descriptions,
 token-aware overviews, and advanced merge capabilities.
 """
 
+
 # Delay import to avoid dependency issues during testing
 def get_server():
     """Get MCPCodeIndexServer (lazy import)."""
     from .server.mcp_server import MCPCodeIndexServer
+
     return MCPCodeIndexServer
 
 

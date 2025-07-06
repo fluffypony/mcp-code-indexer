@@ -111,9 +111,9 @@ class TestDatabaseLocking:
             ["start_3", "end_3", "start_2", "end_2", "start_1", "end_1"],
         ]
 
-        assert (
-            write_operations in expected_patterns
-        ), f"Operations were interleaved: {write_operations}"
+        assert write_operations in expected_patterns, (
+            f"Operations were interleaved: {write_operations}"
+        )
 
     @pytest.mark.asyncio
     async def test_immediate_transaction_timeout(self, temp_db_manager):
@@ -210,9 +210,9 @@ class TestDatabaseLocking:
         assert len(all_descriptions) == 100
 
         # Batch operation should be reasonably fast (less than 5 seconds)
-        assert (
-            batch_time < 5.0
-        ), f"Batch operation took {batch_time:.2f}s, expected < 5.0s"
+        assert batch_time < 5.0, (
+            f"Batch operation took {batch_time:.2f}s, expected < 5.0s"
+        )
 
     @pytest.mark.asyncio
     async def test_connection_health_monitoring(self, temp_db_manager):

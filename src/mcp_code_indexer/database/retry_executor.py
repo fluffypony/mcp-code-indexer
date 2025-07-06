@@ -198,10 +198,7 @@ class RetryExecutor:
 
             original_error = e.last_attempt.exception()
             logger.error(
-                (
-                    f"Operation '{operation_name}' failed after "
-                    f"{attempt_count} attempts"
-                ),
+                (f"Operation '{operation_name}' failed after {attempt_count} attempts"),
                 extra={
                     "structured_data": {
                         "retry_exhausted": {

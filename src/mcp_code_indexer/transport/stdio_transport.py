@@ -19,24 +19,24 @@ logger = logging.getLogger(__name__)
 class StdioTransport(Transport):
     """
     Stdio transport implementation using MCP's built-in stdio server.
-    
+
     This transport maintains compatibility with the existing stdio-based
     MCP protocol while fitting into the transport abstraction.
     """
-    
+
     def __init__(self, server_instance: Any):
         """
         Initialize stdio transport.
-        
+
         Args:
             server_instance: The MCPCodeIndexServer instance
         """
         super().__init__(server_instance)
-        
+
     async def run(self) -> None:
         """
         Run the stdio transport server.
-        
+
         Uses the mcp library's stdio_server context manager to handle
         JSON-RPC communication over stdin/stdout with retry logic.
         """
@@ -49,7 +49,7 @@ class StdioTransport(Transport):
                 }
             },
         )
-        
+
         max_retries = 5
         base_delay = 2.0  # seconds
 
@@ -59,8 +59,12 @@ class StdioTransport(Transport):
                     self.logger.info(
                         f"stdio_server context established (attempt {attempt + 1})"
                     )
-                    initialization_options = self.server.server.create_initialization_options()
-                    self.logger.debug(f"Initialization options: {initialization_options}")
+                    initialization_options = (
+                        self.server.server.create_initialization_options()
+                    )
+                    self.logger.debug(
+                        f"Initialization options: {initialization_options}"
+                    )
 
                     await self.server._run_session_with_retry(
                         read_stream, write_stream, initialization_options

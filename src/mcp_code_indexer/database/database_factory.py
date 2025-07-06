@@ -18,11 +18,11 @@ logger = logging.getLogger(__name__)
 class DatabaseFactory:
     """
     Factory for creating and managing DatabaseManager instances.
-    
+
     Maintains a cache of database managers for different database paths
     to avoid creating multiple instances for the same database.
     """
-    
+
     def __init__(
         self,
         global_db_path: Path,
@@ -37,7 +37,7 @@ class DatabaseFactory:
     ):
         """
         Initialize the database factory.
-        
+
         Args:
             global_db_path: Path to the global database
             pool_size: Database connection pool size
@@ -60,43 +60,42 @@ class DatabaseFactory:
             "retry_max_wait": retry_max_wait,
             "retry_jitter": retry_jitter,
         }
-        
+
         self.path_resolver = DatabasePathResolver(global_db_path)
         self._database_managers: Dict[str, DatabaseManager] = {}
         self._initialized_dbs: set = set()
-    
-    async def get_database_manager(self, folder_path: Optional[str] = None) -> DatabaseManager:
+
+    async def get_database_manager(
+        self, folder_path: Optional[str] = None
+    ) -> DatabaseManager:
         """
         Get a database manager for the appropriate database (local or global).
-        
+
         Args:
             folder_path: Project folder path to check for local database
-            
+
         Returns:
             DatabaseManager instance for the appropriate database
         """
         db_path = self.path_resolver.resolve_database_path(folder_path)
         db_key = str(db_path)
-        
+
         # Return existing manager if available
         if db_key in self._database_managers:
             return self._database_managers[db_key]
-        
+
         # Create new database manager
-        db_manager = DatabaseManager(
-            db_path=db_path,
-            **self.db_config
-        )
-        
+        db_manager = DatabaseManager(db_path=db_path, **self.db_config)
+
         # Initialize if not already done
         if db_key not in self._initialized_dbs:
             await db_manager.initialize()
             self._initialized_dbs.add(db_key)
             logger.info(f"Initialized database: {db_path}")
-        
+
         self._database_managers[db_key] = db_manager
         return db_manager
-    
+
     async def close_all(self) -> None:
         """Close all database managers and their connection pools."""
         for db_manager in self._database_managers.values():
@@ -104,15 +103,15 @@ class DatabaseFactory:
         self._database_managers.clear()
         self._initialized_dbs.clear()
         logger.info("Closed all database connections")
-    
+
     def get_path_resolver(self) -> DatabasePathResolver:
         """Get the database path resolver."""
         return self.path_resolver
-    
+
     def list_active_databases(self) -> Dict[str, str]:
         """
         List all active database connections.
-        
+
         Returns:
             Dictionary mapping database paths to their types (global/local)
         """

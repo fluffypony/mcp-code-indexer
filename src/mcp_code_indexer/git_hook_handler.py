@@ -91,14 +91,14 @@ class GitHookHandler:
     def _log_and_print(self, message: str, level: str = "info") -> None:
         """
         Log message and also print to stdout for user visibility.
-        
+
         Args:
             message: Message to log and print
             level: Log level (info, warning, error)
         """
         # Log to logger
         getattr(self.logger, level)(message)
-        
+
         # Also print to stdout with prefix for visibility
         prefix = "🔍" if level == "info" else "⚠️" if level == "warning" else "❌"
         print(f"{prefix} {message}")
@@ -130,9 +130,7 @@ class GitHookHandler:
 
             # Get git info from current directory
             project_info = await self._identify_project_from_git()
-            self._log_and_print(
-                f"Project: {project_info.get('name', 'Unknown')}"
-            )
+            self._log_and_print(f"Project: {project_info.get('name', 'Unknown')}")
 
             # Get git diff and commit message based on mode
             if commit_hash:
@@ -187,11 +185,11 @@ class GitHookHandler:
 
             # Apply updates to database
             await self._apply_updates(project_info, updates)
-            
+
             # Count actual updates
             file_update_count = len(updates.get("file_updates", {}))
             overview_updated = bool(updates.get("overview_update"))
-            
+
             if file_update_count > 0 or overview_updated:
                 update_parts = []
                 if file_update_count > 0:
@@ -262,18 +260,22 @@ class GitHookHandler:
             # Try two-stage analysis first
             try:
                 return await self._analyze_with_two_stage(
-                    git_diff, commit_message, current_overview,
-                    current_descriptions, changed_files
+                    git_diff,
+                    commit_message,
+                    current_overview,
+                    current_descriptions,
+                    changed_files,
                 )
             except GitHookError as e:
                 if "too large" in str(e).lower():
                     # Fall back to chunked processing
-                    self._log_and_print(
-                        "Using chunked processing (very large diff)"
-                    )
+                    self._log_and_print("Using chunked processing (very large diff)")
                     return await self._analyze_with_chunking(
-                        git_diff, commit_message, current_overview,
-                        current_descriptions, changed_files
+                        git_diff,
+                        commit_message,
+                        current_overview,
+                        current_descriptions,
+                        changed_files,
                     )
                 else:
                     raise
@@ -319,7 +321,7 @@ CURRENT FILE DESCRIPTIONS (for changed files only):
 {json.dumps(relevant_descriptions, indent=2)}
 
 CHANGED FILES:
-{', '.join(changed_files)}
+{", ".join(changed_files)}
 
 GIT DIFF:
 {git_diff}
@@ -663,44 +665,39 @@ Return ONLY a JSON object:
             )
 
         # Break changed files into chunks and process file descriptions
-        chunk_size = await self._calculate_optimal_chunk_size(
-            git_diff, changed_files
-        )
-        
+        chunk_size = await self._calculate_optimal_chunk_size(git_diff, changed_files)
+
         self._log_and_print(f"Processing in {chunk_size}-file chunks")
-        
+
         all_file_updates = {}
-        
+
         for i in range(0, len(changed_files), chunk_size):
-            chunk_files = changed_files[i:i + chunk_size]
+            chunk_files = changed_files[i : i + chunk_size]
             chunk_number = (i // chunk_size) + 1
             total_chunks = (len(changed_files) + chunk_size - 1) // chunk_size
-            
+
             self._log_and_print(
                 f"Processing chunk {chunk_number}/{total_chunks} "
                 f"({len(chunk_files)} files)"
             )
-            
+
             # Extract diff content for this chunk
             chunk_diff = self._extract_chunk_diff(git_diff, chunk_files)
-            
+
             # Process this chunk
             chunk_updates = await self._analyze_file_chunk(
                 chunk_diff, commit_message, current_descriptions, chunk_files
             )
-            
+
             # Merge results
             if chunk_updates and "file_updates" in chunk_updates:
                 all_file_updates.update(chunk_updates["file_updates"])
-        
+
         self.logger.info(
             f"Chunked processing completed: updated {len(all_file_updates)} files"
         )
-        
-        return {
-            "file_updates": all_file_updates,
-            "overview_update": overview_update
-        }
+
+        return {"file_updates": all_file_updates, "overview_update": overview_update}
 
     async def _analyze_overview_updates(
         self,
@@ -733,7 +730,7 @@ CURRENT PROJECT OVERVIEW:
 {current_overview or "No overview available"}
 
 CHANGED FILES:
-{', '.join(changed_files)}
+{", ".join(changed_files)}
 
 GIT DIFF:
 {git_diff}
@@ -763,9 +760,7 @@ Return ONLY a JSON object:
         self.logger.info(f"Stage 1 prompt: {prompt_tokens} tokens")
 
         if prompt_tokens > self.config["max_diff_tokens"]:
-            raise GitHookError(
-                f"Stage 1 prompt too large ({prompt_tokens} tokens)"
-            )
+            raise GitHookError(f"Stage 1 prompt too large ({prompt_tokens} tokens)")
 
         # Call OpenRouter API
         result = await self._call_openrouter(prompt)
@@ -811,7 +806,7 @@ CURRENT FILE DESCRIPTIONS (for changed files only):
 {json.dumps(relevant_descriptions, indent=2)}
 
 CHANGED FILES:
-{', '.join(changed_files)}
+{", ".join(changed_files)}
 
 GIT DIFF:
 {git_diff}
@@ -837,9 +832,7 @@ Return ONLY a JSON object:
         self.logger.info(f"Stage 2 prompt: {prompt_tokens} tokens")
 
         if prompt_tokens > self.config["max_diff_tokens"]:
-            raise GitHookError(
-                f"Stage 2 prompt too large ({prompt_tokens} tokens)"
-            )
+            raise GitHookError(f"Stage 2 prompt too large ({prompt_tokens} tokens)")
 
         # Call OpenRouter API
         result = await self._call_openrouter(prompt)
@@ -875,7 +868,7 @@ CURRENT PROJECT OVERVIEW:
 {current_overview or "No overview available"}
 
 CHANGED FILES:
-{', '.join(changed_files)}
+{", ".join(changed_files)}
 
 INSTRUCTIONS:
 Update project overview ONLY if there are major structural changes like:
@@ -918,26 +911,26 @@ Return ONLY a JSON object:
         # Estimate average diff size per file
         total_diff_tokens = self.token_counter.count_tokens(git_diff)
         avg_tokens_per_file = total_diff_tokens / len(changed_files)
-        
+
         # Target chunk token limit
         chunk_limit = self.config.get("chunk_token_limit", 100000)
-        
+
         # Calculate chunk size with buffer for overhead
         overhead_factor = 0.7  # Reserve 30% for prompt overhead
         effective_limit = chunk_limit * overhead_factor
-        
+
         chunk_size = max(1, int(effective_limit / avg_tokens_per_file))
-        
+
         # Cap at reasonable limits
         chunk_size = min(chunk_size, 50)  # Max 50 files per chunk
-        chunk_size = max(chunk_size, 5)   # Min 5 files per chunk
-        
+        chunk_size = max(chunk_size, 5)  # Min 5 files per chunk
+
         self.logger.info(
             f"Calculated chunk size: {chunk_size} files "
             f"(avg {avg_tokens_per_file:.0f} tokens/file, "
             f"target {chunk_limit} tokens/chunk)"
         )
-        
+
         return chunk_size
 
     def _extract_chunk_diff(self, git_diff: str, chunk_files: List[str]) -> str:
@@ -951,24 +944,24 @@ Return ONLY a JSON object:
         Returns:
             Filtered diff content for chunk files only
         """
-        lines = git_diff.split('\n')
+        lines = git_diff.split("\n")
         chunk_lines = []
         current_file = None
         include_section = False
-        
+
         for line in lines:
-            if line.startswith('diff --git'):
+            if line.startswith("diff --git"):
                 # Parse file path from diff header
-                parts = line.split(' ')
+                parts = line.split(" ")
                 if len(parts) >= 4:
                     file_path = parts[2][2:]  # Remove 'a/' prefix
                     current_file = file_path
                     include_section = file_path in chunk_files
-            
+
             if include_section:
                 chunk_lines.append(line)
-        
-        return '\n'.join(chunk_lines)
+
+        return "\n".join(chunk_lines)
 
     async def _analyze_file_chunk(
         self,
@@ -1005,7 +998,7 @@ CURRENT FILE DESCRIPTIONS (for chunk files only):
 {json.dumps(relevant_descriptions, indent=2)}
 
 CHUNK FILES:
-{', '.join(chunk_files)}
+{", ".join(chunk_files)}
 
 GIT DIFF (chunk only):
 {chunk_diff}
@@ -1094,7 +1087,6 @@ Return ONLY a JSON object:
                 async with session.post(
                     self.OPENROUTER_API_URL, headers=headers, json=payload
                 ) as response:
-
                     self.logger.info(
                         f"OpenRouter API response status: {response.status}"
                     )

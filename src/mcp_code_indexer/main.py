@@ -77,8 +77,7 @@ def parse_arguments() -> argparse.Namespace:
         nargs="+",
         metavar="PROJECT_ID",
         help=(
-            "Export descriptions for a project. Usage: "
-            "--dumpdescriptions PROJECT_ID"
+            "Export descriptions for a project. Usage: --dumpdescriptions PROJECT_ID"
         ),
     )
 
@@ -105,8 +104,7 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         metavar="PROJECT_NAME_OR_ID",
         help=(
-            "Generate a markdown project map for the specified project "
-            "(by name or ID)"
+            "Generate a markdown project map for the specified project (by name or ID)"
         ),
     )
 
@@ -122,27 +120,27 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Enable HTTP transport instead of stdio (requires 'http' extras)",
     )
-    
+
     parser.add_argument(
         "--host",
         type=str,
         default="127.0.0.1",
         help="Host to bind HTTP server to (default: 127.0.0.1)",
     )
-    
+
     parser.add_argument(
         "--port",
         type=int,
         default=7557,
         help="Port to bind HTTP server to (default: 7557)",
     )
-    
+
     parser.add_argument(
         "--auth-token",
         type=str,
         help="Bearer token for HTTP authentication (optional)",
     )
-    
+
     parser.add_argument(
         "--cors-origins",
         type=str,
@@ -753,9 +751,7 @@ async def handle_map(args: argparse.Namespace) -> None:
         )
 
         # Generate markdown
-        markdown_content = generate_project_markdown(
-            project, overview, files, logger
-        )
+        markdown_content = generate_project_markdown(project, overview, files, logger)
 
         # Output the markdown
         print(markdown_content)
@@ -910,10 +906,12 @@ async def handle_makelocal(args: argparse.Namespace) -> None:
         # Execute the command
         result = await makelocal_cmd.execute(args.makelocal)
 
-        print(f"Successfully migrated project '{result['project_name']}' to local database")
+        print(
+            f"Successfully migrated project '{result['project_name']}' to local database"
+        )
         print(f"Local database created at: {result['local_database_path']}")
         print(f"Migrated {result['migrated_files']} file descriptions")
-        if result['migrated_overview']:
+        if result["migrated_overview"]:
             print("Migrated project overview")
 
         # Close all database connections
@@ -996,11 +994,12 @@ async def main() -> None:
     try:
         # Import and run the MCP server
         from .server.mcp_server import MCPCodeIndexServer
-        
+
         # Create transport based on arguments
         transport = None
         if args.http:
             from .transport.http_transport import HTTPTransport
+
             transport = HTTPTransport(
                 server_instance=None,  # Will be set after server creation
                 host=args.host,
@@ -1026,7 +1025,7 @@ async def main() -> None:
             cache_dir=cache_dir,
             transport=transport,
         )
-        
+
         # Set server instance in transport after server creation
         if transport:
             transport.server = server

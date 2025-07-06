@@ -144,7 +144,10 @@ def setup_command_logger(
 
         # File handler with 50MB limit
         file_handler = logging.handlers.RotatingFileHandler(
-            log_file, maxBytes=50 * 1024 * 1024, backupCount=2, encoding="utf-8"  # 50MB
+            log_file,
+            maxBytes=50 * 1024 * 1024,
+            backupCount=2,
+            encoding="utf-8",  # 50MB
         )
         file_handler.setLevel(logging.DEBUG)
 

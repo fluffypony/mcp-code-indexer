@@ -74,15 +74,15 @@ class TestFileScanner:
 
         # Check that tracked files are found
         for tracked_file in tracked_files:
-            assert (
-                tracked_file in found_relative
-            ), f"Expected {tracked_file} to be tracked"
+            assert tracked_file in found_relative, (
+                f"Expected {tracked_file} to be tracked"
+            )
 
         # Check that ignored files are not found
         for ignored_file in ignored_files:
-            assert (
-                ignored_file not in found_relative
-            ), f"Expected {ignored_file} to be ignored"
+            assert ignored_file not in found_relative, (
+                f"Expected {ignored_file} to be ignored"
+            )
 
     def test_ignored_extensions(self):
         """Test that files with ignored extensions are filtered out."""
@@ -163,15 +163,15 @@ private/
 
         # Check tracked files are found
         for tracked_file in tracked_files:
-            assert (
-                tracked_file in found_relative
-            ), f"Expected {tracked_file} to be tracked"
+            assert tracked_file in found_relative, (
+                f"Expected {tracked_file} to be tracked"
+            )
 
         # Check ignored files are not found
         for ignored_file in ignored_files:
-            assert (
-                ignored_file not in found_relative
-            ), f"Expected {ignored_file} to be ignored"
+            assert ignored_file not in found_relative, (
+                f"Expected {ignored_file} to be ignored"
+            )
 
     def test_relative_path_conversion(self):
         """Test relative path conversion."""

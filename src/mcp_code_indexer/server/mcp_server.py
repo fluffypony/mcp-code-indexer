@@ -19,7 +19,6 @@ from typing import Any, Dict, List, Optional
 
 from mcp import types
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
 from pydantic import ValidationError
 
 from mcp_code_indexer.database.database import DatabaseManager
@@ -753,10 +752,10 @@ class MCPCodeIndexServer:
 
         # Get the appropriate database manager for this folder
         db_manager = await self.db_factory.get_database_manager(folder_path)
-        
+
         # Check if this is a local database
         is_local = self.db_factory.get_path_resolver().is_local_database(folder_path)
-        
+
         if is_local:
             # For local databases: just get the single project (there should only be one)
             all_projects = await db_manager.get_all_projects()
@@ -764,7 +763,9 @@ class MCPCodeIndexServer:
                 project = all_projects[0]  # Use the first (and should be only) project
                 # Update last accessed time
                 await db_manager.update_project_access_time(project.id)
-                logger.info(f"Using existing local project: {project.name} (ID: {project.id})")
+                logger.info(
+                    f"Using existing local project: {project.name} (ID: {project.id})"
+                )
                 return project.id
             else:
                 # No project in local database - create one
@@ -772,22 +773,30 @@ class MCPCodeIndexServer:
                 project = Project(
                     id=project_id,
                     name=project_name.lower(),
-                    aliases=[folder_path],  # Store for reference but don't rely on it for matching
+                    aliases=[
+                        folder_path
+                    ],  # Store for reference but don't rely on it for matching
                     created=datetime.utcnow(),
                     last_accessed=datetime.utcnow(),
                 )
                 await db_manager.create_project(project)
-                logger.info(f"Created new local project: {project_name} (ID: {project_id})")
+                logger.info(
+                    f"Created new local project: {project_name} (ID: {project_id})"
+                )
                 return project_id
         else:
             # For global databases: use the existing matching logic
             normalized_name = project_name.lower()
 
             # Find potential project matches
-            project = await self._find_matching_project(normalized_name, folder_path, db_manager)
+            project = await self._find_matching_project(
+                normalized_name, folder_path, db_manager
+            )
             if project:
                 # Update project metadata and aliases
-                await self._update_existing_project(project, normalized_name, folder_path, db_manager)
+                await self._update_existing_project(
+                    project, normalized_name, folder_path, db_manager
+                )
             else:
                 # Create new project with UUID
                 project_id = str(uuid.uuid4())
@@ -799,7 +808,9 @@ class MCPCodeIndexServer:
                     last_accessed=datetime.utcnow(),
                 )
                 await db_manager.create_project(project)
-                logger.info(f"Created new global project: {normalized_name} (ID: {project_id})")
+                logger.info(
+                    f"Created new global project: {normalized_name} (ID: {project_id})"
+                )
 
             return project.id
 
@@ -878,7 +889,7 @@ class MCPCodeIndexServer:
 
             # Get appropriate database manager for this folder
             db_manager = await self.db_factory.get_database_manager(folder_path)
-            
+
             # Get files already indexed for this project
             indexed_files = await db_manager.get_all_file_descriptions(project.id)
             indexed_basenames = {Path(fd.file_path).name for fd in indexed_files}
@@ -901,7 +912,11 @@ class MCPCodeIndexServer:
             return False
 
     async def _update_existing_project(
-        self, project: Project, normalized_name: str, folder_path: str, db_manager: DatabaseManager
+        self,
+        project: Project,
+        normalized_name: str,
+        folder_path: str,
+        db_manager: DatabaseManager,
     ) -> None:
         """Update an existing project with new metadata and folder alias."""
         # Update last accessed time
@@ -1039,13 +1054,13 @@ class MCPCodeIndexServer:
 
         total_tokens = descriptions_tokens + overview_tokens
         is_large = total_tokens > token_limit
-        
+
         # Smart recommendation logic:
         # - If total is small, use overview
         # - If total is large but overview is reasonable (< 8k tokens), recommend viewing overview + search
         # - If both are large, use search only
         overview_size_limit = 32000
-        
+
         if not is_large:
             recommendation = "use_overview"
         elif overview_tokens > 0 and overview_tokens <= overview_size_limit:
@@ -1103,7 +1118,9 @@ class MCPCodeIndexServer:
         logger.info(f"Scanning project directory: {folder_path_obj}")
         scanner = FileScanner(folder_path_obj)
         if not scanner.is_valid_project_directory():
-            logger.error(f"Invalid or inaccessible project directory: {folder_path_obj}")
+            logger.error(
+                f"Invalid or inaccessible project directory: {folder_path_obj}"
+            )
             return {
                 "error": f"Invalid or inaccessible project directory: {folder_path_obj}"
             }
@@ -1407,15 +1424,25 @@ class MCPCodeIndexServer:
         database_stats = self.db_manager.get_database_stats()
 
         return {
-            "is_healthy": comprehensive_diagnostics.get("current_status", {}).get("is_healthy", True),
+            "is_healthy": comprehensive_diagnostics.get("current_status", {}).get(
+                "is_healthy", True
+            ),
             "status": comprehensive_diagnostics.get("current_status", {}),
             "performance": {
-                "avg_response_time_ms": comprehensive_diagnostics.get("metrics", {}).get("avg_response_time_ms", 0),
-                "success_rate": comprehensive_diagnostics.get("current_status", {}).get("recent_success_rate_percent", 100)
+                "avg_response_time_ms": comprehensive_diagnostics.get(
+                    "metrics", {}
+                ).get("avg_response_time_ms", 0),
+                "success_rate": comprehensive_diagnostics.get("current_status", {}).get(
+                    "recent_success_rate_percent", 100
+                ),
             },
             "database": {
-                "total_operations": database_stats.get("retry_executor", {}).get("total_operations", 0),
-                "pool_size": database_stats.get("connection_pool", {}).get("current_size", 0)
+                "total_operations": database_stats.get("retry_executor", {}).get(
+                    "total_operations", 0
+                ),
+                "pool_size": database_stats.get("connection_pool", {}).get(
+                    "current_size", 0
+                ),
             },
             "server_info": {
                 "token_limit": self.token_limit,
@@ -1566,7 +1593,7 @@ class MCPCodeIndexServer:
             try:
                 await asyncio.sleep(6 * 60 * 60)  # 6 hours
                 await self._run_cleanup_if_needed()
-                
+
             except asyncio.CancelledError:
                 logger.info("Periodic cleanup task cancelled")
                 break
@@ -1574,43 +1601,46 @@ class MCPCodeIndexServer:
                 logger.error(f"Error in periodic cleanup: {e}")
                 # Continue running despite errors
 
-    async def _run_cleanup_if_needed(self, project_id: str = None, project_root: Path = None) -> int:
+    async def _run_cleanup_if_needed(
+        self, project_id: str = None, project_root: Path = None
+    ) -> int:
         """Run cleanup if conditions are met (not running, not run recently)."""
         current_time = time.time()
-        
+
         # Check if cleanup is already running
         if self._cleanup_running:
             logger.debug("Cleanup already running, skipping")
             return 0
-            
+
         # Check if cleanup was run in the last 30 minutes
-        if (self._last_cleanup_time and 
-            current_time - self._last_cleanup_time < 30 * 60):
+        if self._last_cleanup_time and current_time - self._last_cleanup_time < 30 * 60:
             logger.debug("Cleanup ran recently, skipping")
             return 0
-            
+
         # Set running flag and update time
         self._cleanup_running = True
         self._last_cleanup_time = current_time
-        
+
         try:
             logger.info("Starting cleanup")
             total_cleaned = 0
-            
+
             if project_id and project_root:
                 # Single project cleanup - use appropriate database for this project's folder
                 try:
-                    folder_db_manager = await self.db_factory.get_database_manager(str(project_root))
+                    folder_db_manager = await self.db_factory.get_database_manager(
+                        str(project_root)
+                    )
                     missing_files = await folder_db_manager.cleanup_missing_files(
                         project_id=project_id, project_root=project_root
                     )
                     total_cleaned = len(missing_files)
-                    
+
                     # Perform permanent cleanup (retention policy)
                     deleted_count = await self.cleanup_manager.perform_cleanup(
                         project_id=project_id
                     )
-                    
+
                     if missing_files or deleted_count:
                         logger.info(
                             f"Cleanup: {len(missing_files)} marked, "
@@ -1621,30 +1651,32 @@ class MCPCodeIndexServer:
             else:
                 # All projects cleanup (for periodic task) - start with global database
                 projects = await self.db_manager.get_all_projects()
-                
+
                 for project in projects:
                     try:
                         # Skip projects without folder paths in aliases
                         if not project.aliases:
                             continue
-                            
+
                         # Use first alias as folder path
                         folder_path = Path(project.aliases[0])
                         if not folder_path.exists():
                             continue
-                        
+
                         # Get appropriate database manager for this project's folder
-                        project_db_manager = await self.db_factory.get_database_manager(str(folder_path))
+                        project_db_manager = await self.db_factory.get_database_manager(
+                            str(folder_path)
+                        )
                         missing_files = await project_db_manager.cleanup_missing_files(
                             project_id=project.id, project_root=folder_path
                         )
                         total_cleaned += len(missing_files)
-                        
+
                         # Perform permanent cleanup (retention policy)
                         deleted_count = await self.cleanup_manager.perform_cleanup(
                             project_id=project.id
                         )
-                        
+
                         if missing_files or deleted_count:
                             logger.info(
                                 f"Cleanup for {project.name}: "
@@ -1655,10 +1687,10 @@ class MCPCodeIndexServer:
                         logger.error(
                             f"Error during cleanup for project {project.name}: {e}"
                         )
-            
+
             logger.info(f"Cleanup completed: {total_cleaned} files processed")
             return total_cleaned
-            
+
         finally:
             self._cleanup_running = False
 
@@ -1666,8 +1698,7 @@ class MCPCodeIndexServer:
         """Start the background cleanup task."""
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = self.task_manager.create_task(
-                self._periodic_cleanup(),
-                name="periodic_cleanup"
+                self._periodic_cleanup(), name="periodic_cleanup"
             )
             logger.info("Started background cleanup task (6-hour interval)")
 
@@ -1685,10 +1716,11 @@ class MCPCodeIndexServer:
             else:
                 # Fall back to default stdio transport
                 from ..transport.stdio_transport import StdioTransport
+
                 transport = StdioTransport(self)
                 await transport.initialize()
                 await transport._run_with_retry()
-                
+
         except KeyboardInterrupt:
             logger.info("Server stopped by user interrupt")
         except Exception as e:
@@ -1716,7 +1748,7 @@ class MCPCodeIndexServer:
                     await self._cleanup_task
                 except asyncio.CancelledError:
                     pass
-            
+
             # Cancel any running tasks
             self.task_manager.cancel_all()
 

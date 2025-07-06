@@ -194,7 +194,6 @@ class ClaudeAPIHandler:
                 async with session.post(
                     self.OPENROUTER_API_URL, headers=headers, json=payload
                 ) as response:
-
                     self.logger.info(f"Claude API response status: {response.status}")
 
                     if response.status == 429:

@@ -127,8 +127,7 @@ def parse_arguments() -> argparse.Namespace:
         type=float,
         default=float(os.getenv("DB_TIMEOUT", "10.0")),
         help=(
-            "Database transaction timeout in seconds "
-            "(default: 10.0, env: DB_TIMEOUT)"
+            "Database transaction timeout in seconds (default: 10.0, env: DB_TIMEOUT)"
         ),
     )
 
@@ -426,10 +425,12 @@ async def handle_makelocal(args: argparse.Namespace) -> None:
         # Execute the command
         result = await makelocal_cmd.execute(args.makelocal)
 
-        print(f"Successfully migrated project '{result['project_name']}' to local database")
+        print(
+            f"Successfully migrated project '{result['project_name']}' to local database"
+        )
         print(f"Local database created at: {result['local_database_path']}")
         print(f"Migrated {result['migrated_files']} file descriptions")
-        if result['migrated_overview']:
+        if result["migrated_overview"]:
             print("Migrated project overview")
 
         # Close all database connections

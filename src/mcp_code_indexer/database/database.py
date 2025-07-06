@@ -233,8 +233,7 @@ class DatabaseManager:
         await db.commit()
         if include_wal_mode:
             logger.info(
-                "Database optimizations configured for concurrent access "
-                "with WAL mode"
+                "Database optimizations configured for concurrent access with WAL mode"
             )
         else:
             logger.debug("Connection optimizations applied")
