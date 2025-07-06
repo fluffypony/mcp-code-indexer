@@ -140,17 +140,17 @@ The git hook integration provides intelligent automation:
 
 - **📊 Git Analysis**: Automatically analyzes git diffs after commits/merges
 - **🤖 AI Processing**: Uses OpenRouter API with Anthropic's Claude Sonnet 4
-- **⚡ Smart Updates**: Only processes files that actually changed  
+- **⚡ Smart Updates**: Only processes files that actually changed
 - **🔄 Overview Maintenance**: Updates project overview when structure changes
 - **🛡️ Error Isolation**: Git operations continue even if indexing fails
 - **⏱️ Rate Limiting**: Built-in retry logic with exponential backoff
 
 ### 🎯 Key Benefits
 
-💡 **Zero Manual Work**: Descriptions stay current without any effort  
-⚡ **Performance**: Only analyzes changed files, not entire codebase  
-🔒 **Reliability**: Robust error handling ensures git operations never fail  
-🎛️ **Configurable**: Support for custom models and timeout settings  
+💡 **Zero Manual Work**: Descriptions stay current without any effort
+⚡ **Performance**: Only analyzes changed files, not entire codebase
+🔒 **Reliability**: Robust error handling ensures git operations never fail
+🎛️ **Configurable**: Support for custom models and timeout settings
 
 **Learn More**: See [Git Hook Setup Guide](docs/git-hook-setup.md) for complete configuration options and troubleshooting.
 
@@ -326,14 +326,14 @@ Comprehensive documentation organized by user journey and expertise level.
 
 ### 📋 Quick References
 - **[Examples & Integrations](examples/)** - Ready-to-use configurations
-- **[Troubleshooting](#🚨-troubleshooting)** - Common issues & solutions  
+- **[Troubleshooting](#🚨-troubleshooting)** - Common issues & solutions
 - **[API Tools Summary](#🛠️-mcp-tools-available)** - All 11 tools at a glance
 
 **📚 Reading Paths:**
 - **New to MCP Code Indexer?** Quick Start → API Reference → HTTP API → Q&A Interface
 - **Web developers?** Quick Start → HTTP API Reference → Q&A Interface → Git Hooks
 - **AI/ML engineers?** Quick Start → Q&A Interface → API Reference → Git Hooks
-- **Setting up for a team?** CLI Reference → Configuration → Administrative Commands → Monitoring  
+- **Setting up for a team?** CLI Reference → Configuration → Administrative Commands → Monitoring
 - **Contributing to the project?** Architecture → Contributing → API Reference
 
 ## 🚦 System Requirements
@@ -347,7 +347,7 @@ Comprehensive documentation organized by user journey and expertise level.
 
 Tested with codebases up to **10,000 files**:
 - File description retrieval: **< 10ms**
-- Full-text search: **< 100ms** 
+- Full-text search: **< 100ms**
 - Codebase overview generation: **< 2s**
 - Merge conflict detection: **< 5s**
 
@@ -417,11 +417,11 @@ async def analyze_codebase(project_path):
         "projectName": "my-project",
         "folderPath": project_path
     })
-    
+
     if size_info["isLarge"]:
         # Use search for large codebases
         results = await mcp_client.call_tool("search_descriptions", {
-            "projectName": "my-project", 
+            "projectName": "my-project",
             "folderPath": project_path,
             "query": "authentication logic"
         })
@@ -441,18 +441,18 @@ async def analyze_codebase(project_path):
     python -c "
     import asyncio
     from mcp_client import MCPClient
-    
+
     async def update_descriptions():
         client = MCPClient('mcp-code-indexer')
-        
+
         # Find files without descriptions
         missing = await client.call_tool('find_missing_descriptions', {
             'projectName': '${{ github.repository }}',
             'folderPath': '.'
         })
-        
+
         # Process with AI and update...
-    
+
     asyncio.run(update_descriptions())
     "
 ```
@@ -563,7 +563,7 @@ mcp-code-indexer --map PROJECT_NAME
 ## 🛡️ Security Features
 
 - **Input validation** on all MCP tool parameters
-- **SQL injection protection** via parameterized queries  
+- **SQL injection protection** via parameterized queries
 - **File system sandboxing** with .gitignore respect
 - **Error sanitization** to prevent information leakage
 - **Async resource cleanup** to prevent memory leaks
@@ -595,7 +595,7 @@ Ready to supercharge your AI agents with intelligent codebase navigation?
 2. **[Master the API tools](docs/api-reference.md)** - Learn all 11 tools with examples
 3. **[Try HTTP API access](docs/http-api.md)** - REST API for web applications
 4. **[Explore AI-powered Q&A](docs/qa-interface.md)** - Ask questions about your code
-5. **[Set up git hooks](docs/git-hook-setup.md)** - Automate your workflow  
+5. **[Set up git hooks](docs/git-hook-setup.md)** - Automate your workflow
 
 **👥 Setting up for a team?**
 1. **[Learn all CLI commands](docs/cli-reference.md)** - Complete command reference
@@ -618,7 +618,7 @@ Ready to supercharge your AI agents with intelligent codebase navigation?
 
 We welcome contributions! See our **[Contributing Guide](docs/contributing.md)** for:
 - Development setup
-- Code style guidelines  
+- Code style guidelines
 - Testing requirements
 - Pull request process
 
@@ -629,7 +629,7 @@ MIT License - see **[LICENSE](LICENSE)** for details.
 ## 🙏 Built With
 
 - **[Model Context Protocol](https://github.com/modelcontextprotocol/python-sdk)** - The foundation for tool integration
-- **[tiktoken](https://pypi.org/project/tiktoken/)** - Fast BPE tokenization  
+- **[tiktoken](https://pypi.org/project/tiktoken/)** - Fast BPE tokenization
 - **[aiosqlite](https://pypi.org/project/aiosqlite/)** - Async SQLite operations
 - **[aiohttp](https://pypi.org/project/aiohttp/)** - Async HTTP client for OpenRouter API
 - **[tenacity](https://pypi.org/project/tenacity/)** - Robust retry logic and rate limiting
@@ -637,8 +637,8 @@ MIT License - see **[LICENSE](LICENSE)** for details.
 
 ---
 
-**Transform how your AI agents understand code!** 🚀  
+**Transform how your AI agents understand code!** 🚀
 
-🎯 **New User?** [Get started in 2 minutes](#-quick-start)  
-👨‍💻 **Developer?** [Explore the complete API](docs/api-reference.md)  
+🎯 **New User?** [Get started in 2 minutes](#-quick-start)
+👨‍💻 **Developer?** [Explore the complete API](docs/api-reference.md)
 🔧 **Production?** [Deploy with confidence](docs/configuration.md)

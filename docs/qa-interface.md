@@ -1,10 +1,10 @@
 # Q&A Command Interface 🤖
 
 ---
-**Last Updated:** 2025-06-30  
-**Verified Against:** src/mcp_code_indexer/ask_handler.py, src/mcp_code_indexer/deepask_handler.py, main.py  
-**Test Sources:** Manual verification of CLI interface and handlers  
-**Implementation:** OpenRouter API integration with Claude for intelligent codebase analysis  
+**Last Updated:** 2025-06-30
+**Verified Against:** src/mcp_code_indexer/ask_handler.py, src/mcp_code_indexer/deepask_handler.py, main.py
+**Test Sources:** Manual verification of CLI interface and handlers
+**Implementation:** OpenRouter API integration with Claude for intelligent codebase analysis
 ---
 
 AI-powered question-answering interface for intelligent codebase analysis. Ask natural language questions about your projects and get detailed answers using Claude's advanced code understanding capabilities.
@@ -18,7 +18,7 @@ AI-powered question-answering interface for intelligent codebase analysis. Ask n
 | [`--ask`](#simple-qa-mode) | Simple questions | Single-stage Claude | Project overview only |
 | [`--deepask`](#enhanced-qa-mode) | Complex analysis | Two-stage Claude | File search + context |
 
-🔑 **Requires:** `OPENROUTER_API_KEY` environment variable  
+🔑 **Requires:** `OPENROUTER_API_KEY` environment variable
 🌐 **[OpenRouter Setup →](https://openrouter.ai/)**
 
 ## Table of Contents
@@ -101,8 +101,8 @@ mcp-code-indexer --ask "What does this project do?" web-app
 
 **Example Output:**
 ```
-This project is a modern web application built with React and Node.js that provides 
-user authentication, data processing, and third-party integrations. 
+This project is a modern web application built with React and Node.js that provides
+user authentication, data processing, and third-party integrations.
 
 Key components:
 - Frontend: React application with TypeScript
@@ -111,7 +111,7 @@ Key components:
 - Caching: Redis for session management
 - Deployment: Docker containerization
 
-The system follows a microservice architecture pattern with clear separation between 
+The system follows a microservice architecture pattern with clear separation between
 the authentication service, data processing pipeline, and external API integrations.
 ```
 
@@ -218,7 +218,7 @@ User authentication is implemented using a comprehensive JWT-based system with m
 - Input validation and sanitization
 
 ## Configuration
-Authentication settings are managed in `src/config/auth.js` with environment-specific 
+Authentication settings are managed in `src/config/auth.js` with environment-specific
 configurations for token secrets, expiration times, and OAuth credentials.
 ```
 
@@ -476,7 +476,7 @@ mcp-code-indexer --ask "Question" my-project --log-level DEBUG
 # Ask command logs
 tail -f ~/.mcp-code-index/cache/ask.log
 
-# DeepAsk command logs  
+# DeepAsk command logs
 tail -f ~/.mcp-code-index/cache/deepask.log
 ```
 

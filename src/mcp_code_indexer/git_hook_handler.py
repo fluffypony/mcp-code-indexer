@@ -1002,7 +1002,7 @@ GIT DIFF (chunk only):
 
 INSTRUCTIONS:
 Use the COMMIT MESSAGE to understand the intent and context of the changes.
-Update descriptions for files that have changed significantly. 
+Update descriptions for files that have changed significantly.
 Only include files that need actual description updates.
 
 Return ONLY a JSON object:

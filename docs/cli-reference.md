@@ -1,10 +1,10 @@
 # CLI Reference 📖
 
 ---
-**Last Updated:** 2025-06-30  
-**Verified Against:** main.py, src/mcp_code_indexer/main.py  
-**Test Sources:** Manual verification of argument parser implementation  
-**Implementation:** Complete argparse configuration with environment variable support  
+**Last Updated:** 2025-06-30
+**Verified Against:** main.py, src/mcp_code_indexer/main.py
+**Test Sources:** Manual verification of argument parser implementation
+**Implementation:** Complete argparse configuration with environment variable support
 ---
 
 Complete command-line interface reference for MCP Code Indexer. This guide covers all commands, options, and configuration parameters for both server operation and utility functions.
@@ -187,7 +187,7 @@ ID: 1
 Name: web-app
 Files: 45 descriptions
 --------------------------------------------------------------------------------
-ID: 2  
+ID: 2
 Name: api-service
 Files: 28 descriptions
 --------------------------------------------------------------------------------
@@ -353,7 +353,7 @@ Configure retry behavior for transient database failures.
 # Aggressive retry configuration
 mcp-code-indexer --db-retry-count 10 --retry-max-wait 5.0
 
-# Conservative retry configuration  
+# Conservative retry configuration
 mcp-code-indexer --db-retry-count 3 --retry-min-wait 0.5
 ```
 
@@ -548,7 +548,7 @@ export DB_POOL_SIZE="15"
 export DB_WAL_MODE="true"
 export DB_RETRY_COUNT="10"
 
-# HTTP configuration  
+# HTTP configuration
 export MCP_HOST="0.0.0.0"
 export MCP_PORT="443"
 export MCP_AUTH_TOKEN="$PRODUCTION_TOKEN"

@@ -1,9 +1,9 @@
 # MCP Code Indexer Examples 🚀
 
 ---
-**✨ What you'll find**: Practical examples, working configurations, and ready-to-use integrations  
-**🎯 Best for**: Developers wanting to quickly integrate MCP Code Indexer into their workflow  
-**📖 Related**: [Git Hook Setup Guide](../docs/git-hook-setup.md) • [API Reference](../docs/api-reference.md) • [Configuration Guide](../docs/configuration.md)  
+**✨ What you'll find**: Practical examples, working configurations, and ready-to-use integrations
+**🎯 Best for**: Developers wanting to quickly integrate MCP Code Indexer into their workflow
+**📖 Related**: [Git Hook Setup Guide](../docs/git-hook-setup.md) • [API Reference](../docs/api-reference.md) • [Configuration Guide](../docs/configuration.md)
 ---
 
 Welcome to the MCP Code Indexer examples! This directory contains practical, tested examples to help you integrate automated code analysis into your development workflow.
@@ -99,15 +99,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for analysis
-      
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      
+
       - name: Install MCP Code Indexer
         run: pip install mcp-code-indexer
-      
+
       - name: Update descriptions
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -200,25 +200,25 @@ log_message() {
 # Function: Run with retries
 run_with_retries() {
     local attempt=1
-    
+
     while [ $attempt -le $MAX_RETRIES ]; do
         log_message "Attempt $attempt: Running MCP Code Indexer"
-        
+
         if mcp-code-indexer --githook >> "$HOOK_LOG" 2>&1; then
             log_message "SUCCESS: Analysis completed on attempt $attempt"
             return 0
         else
             log_message "FAILED: Attempt $attempt failed (exit code: $?)"
-            
+
             if [ $attempt -lt $MAX_RETRIES ]; then
                 log_message "Retrying in ${RETRY_DELAY} seconds..."
                 sleep $RETRY_DELAY
             fi
         fi
-        
+
         ((attempt++))
     done
-    
+
     log_message "ERROR: All $MAX_RETRIES attempts failed"
     return 1
 }
@@ -249,7 +249,7 @@ export MCP_LOG_LEVEL="DEBUG"
 export MCP_DB_PATH="$HOME/.mcp-code-index/dev-tracker.db"
 export MCP_CACHE_DIR="$HOME/.mcp-code-index/dev-cache"
 
-# examples/environment-configs/staging.env  
+# examples/environment-configs/staging.env
 export OPENROUTER_API_KEY="your-staging-key"
 export MCP_LOG_LEVEL="INFO"
 export MCP_DB_PATH="/var/lib/mcp/staging-tracker.db"
@@ -298,7 +298,7 @@ git status && git log --oneline -5
 
 ### For New Users
 1. **[Install MCP Code Indexer](../README.md#-quick-start)** - Get the basic server running
-2. **[Set up git hooks](#quick-setup-2-minutes)** - Automate your workflow  
+2. **[Set up git hooks](#quick-setup-2-minutes)** - Automate your workflow
 3. **[Explore the API](../docs/api-reference.md)** - Learn about available tools
 
 ### For Teams
@@ -313,9 +313,9 @@ git status && git log --oneline -5
 
 ---
 
-**💡 Need help?** 
+**💡 Need help?**
 - **Quick questions**: Check the [API Reference](../docs/api-reference.md)
-- **Setup issues**: See the [Git Hook Setup Guide](../docs/git-hook-setup.md) 
+- **Setup issues**: See the [Git Hook Setup Guide](../docs/git-hook-setup.md)
 - **Performance problems**: Review the [Performance Tuning Guide](../docs/performance-tuning.md)
 - **Bug reports**: [Open an issue on GitHub](https://github.com/fluffypony/mcp-code-indexer/issues)
 

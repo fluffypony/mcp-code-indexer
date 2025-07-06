@@ -136,13 +136,13 @@ sqlite3 ~/.mcp-code-index/tracker.db << EOF
 .mode column
 
 -- Check table sizes
-SELECT name, COUNT(*) as rows FROM sqlite_master 
+SELECT name, COUNT(*) as rows FROM sqlite_master
 WHERE type='table' AND name NOT LIKE 'sqlite_%'
 GROUP BY name;
 
 -- Check index usage
-EXPLAIN QUERY PLAN 
-SELECT * FROM file_descriptions 
+EXPLAIN QUERY PLAN
+SELECT * FROM file_descriptions
 WHERE project_id = 'test' AND branch = 'main';
 
 -- Analyze query performance
@@ -206,7 +206,7 @@ export MCP_DB_POOL_SIZE=5
 export MCP_MAX_MEMORY_MB=1024
 python main.py --token-limit 32000
 
-# For 16GB+ RAM systems  
+# For 16GB+ RAM systems
 export MCP_DB_POOL_SIZE=10
 export MCP_MAX_MEMORY_MB=4096
 python main.py --token-limit 50000
@@ -301,10 +301,10 @@ SECURITY_CONFIG = {
     # Allowed base directories
     "allowed_paths": [
         "/home/projects",
-        "/opt/workspaces", 
+        "/opt/workspaces",
         "/data/repositories"
     ],
-    
+
     # Explicitly denied paths
     "denied_paths": [
         "/etc",
@@ -313,7 +313,7 @@ SECURITY_CONFIG = {
         "/proc",
         "/root"
     ],
-    
+
     # File type restrictions
     "allowed_extensions": [
         ".py", ".js", ".ts", ".jsx", ".tsx",
@@ -322,7 +322,7 @@ SECURITY_CONFIG = {
         ".md", ".txt", ".json", ".yaml", ".yml",
         ".toml", ".ini", ".cfg", ".conf"
     ],
-    
+
     # Size limits
     "max_file_size_mb": 10,
     "max_files_per_scan": 10000,
@@ -446,20 +446,20 @@ services:
       dockerfile: Dockerfile.production
     container_name: mcp-code-indexer
     restart: unless-stopped
-    
+
     environment:
       - MCP_LOG_LEVEL=INFO
       - MCP_DB_POOL_SIZE=10
       - MCP_CACHE_TTL_HOURS=24
-      
+
     volumes:
       - ./data:/data
       - ./logs:/var/log/mcp-indexer
       - ./cache:/var/cache/mcp-indexer
-      
+
     ports:
       - "8000:8000"  # If exposing HTTP interface
-      
+
     # Resource limits
     deploy:
       resources:
@@ -469,7 +469,7 @@ services:
         reservations:
           memory: 512M
           cpus: '0.25'
-    
+
     # Health check
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
@@ -514,12 +514,12 @@ ERRORS = Counter('mcp_errors_total', 'Total errors', ['error_type'])
 class MetricsMiddleware:
     def __init__(self, port=8080):
         start_http_server(port)
-    
+
     def track_tool_call(self, tool_name, duration, success):
         status = 'success' if success else 'error'
         TOOL_CALLS.labels(tool_name=tool_name, status=status).inc()
         TOOL_DURATION.labels(tool_name=tool_name).observe(duration)
-    
+
     def track_error(self, error_type):
         ERRORS.labels(error_type=error_type).inc()
 ```
@@ -537,24 +537,24 @@ METRICS_FILE="/var/log/mcp-indexer/metrics.txt"
 
 while true; do
     echo "$(date): Performance Check" >> "$METRICS_FILE"
-    
+
     # Database size
     DB_SIZE=$(du -h ~/.mcp-code-index/tracker.db | cut -f1)
     echo "Database Size: $DB_SIZE" >> "$METRICS_FILE"
-    
+
     # Memory usage
     MEMORY=$(ps -o pid,vsz,rss,comm -C python | grep main.py)
     echo "Memory Usage: $MEMORY" >> "$METRICS_FILE"
-    
+
     # Recent error rate
     ERROR_COUNT=$(tail -1000 "$LOG_FILE" | jq -r 'select(.level == "ERROR")' | wc -l)
     echo "Recent Errors: $ERROR_COUNT" >> "$METRICS_FILE"
-    
+
     # Average response time
     AVG_TIME=$(tail -1000 "$LOG_FILE" | jq -r 'select(.tool_usage != null) | .tool_usage.duration_seconds' | \
                awk '{sum+=$1; count++} END {if(count>0) print sum/count; else print 0}')
     echo "Average Response Time: ${AVG_TIME}s" >> "$METRICS_FILE"
-    
+
     echo "---" >> "$METRICS_FILE"
     sleep 300  # Check every 5 minutes
 done
@@ -562,7 +562,7 @@ done
 
 ---
 
-**Next Steps**: 
+**Next Steps**:
 - Check out the [Architecture Overview](architecture.md) for technical deep dive
 - Review [API Reference](api-reference.md) for tool usage patterns
 - Explore [Contributing Guide](contributing.md) for development setup

@@ -30,7 +30,7 @@ Comprehensive guide for optimizing MCP Code Indexer performance in high-concurre
 ### 📊 Performance Categories
 
 - **Single Client**: 200+ operations/sec
-- **Low Concurrency (2-5 clients)**: 500+ operations/sec  
+- **Low Concurrency (2-5 clients)**: 500+ operations/sec
 - **Medium Concurrency (6-15 clients)**: 800+ operations/sec
 - **High Concurrency (16+ clients)**: Consider distributed deployment
 
@@ -46,7 +46,7 @@ Comprehensive guide for optimizing MCP Code Indexer performance in high-concurre
 
 #### Recommended for Production
 - **CPU**: 4+ cores, 3.0+ GHz
-- **RAM**: 8GB+ available  
+- **RAM**: 8GB+ available
 - **Storage**: NVMe SSD with 500MB/s+ write speed
 - **Network**: 1 Gbps+
 
@@ -98,7 +98,7 @@ export DB_TIMEOUT=20.0
 export DB_HEALTH_CHECK_INTERVAL=30.0
 ```
 
-#### I/O-Optimized (Storage-Heavy)  
+#### I/O-Optimized (Storage-Heavy)
 ```bash
 export DB_POOL_SIZE=5
 export DB_RETRY_COUNT=3
@@ -220,7 +220,7 @@ spec:
             memory: "2Gi"
             cpu: "1000m"
           limits:
-            memory: "4Gi" 
+            memory: "4Gi"
             cpu: "2000m"
         volumeMounts:
         - name: data
@@ -244,11 +244,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 async def test_concurrent_operations(client_count: int, operations_per_client: int):
     """Test concurrent MCP operations."""
-    
+
     async def client_workload(client_id: int):
         operations = 0
         start_time = time.time()
-        
+
         for i in range(operations_per_client):
             # Simulate typical MCP operations
             await call_mcp_tool("get_file_description", {
@@ -258,16 +258,16 @@ async def test_concurrent_operations(client_count: int, operations_per_client: i
                 "filePath": f"src/file_{i}.py"
             })
             operations += 1
-            
+
         duration = time.time() - start_time
         rate = operations / duration
         print(f"Client {client_id}: {rate:.1f} ops/sec")
         return rate
-    
+
     # Run concurrent clients
     tasks = [client_workload(i) for i in range(client_count)]
     rates = await asyncio.gather(*tasks)
-    
+
     total_rate = sum(rates)
     print(f"Total throughput: {total_rate:.1f} ops/sec")
     return total_rate
@@ -348,7 +348,7 @@ scrape_configs:
 # Throughput monitoring
 rate(mcp_operations_total[5m])
 
-# Latency percentiles  
+# Latency percentiles
 histogram_quantile(0.95, rate(mcp_operation_duration_seconds_bucket[5m]))
 
 # Error rate
@@ -372,7 +372,7 @@ groups:
       severity: warning
     annotations:
       summary: "MCP Code Indexer error rate is high"
-      
+
   - alert: HighLatency
     expr: histogram_quantile(0.95, rate(mcp_operation_duration_seconds_bucket[5m])) > 0.1
     for: 5m
@@ -396,18 +396,18 @@ class MCPLoadBalancer:
     def __init__(self, servers: List[str]):
         self.servers = servers
         self.current = 0
-    
+
     def get_server(self) -> str:
         # Round-robin with health checking
         for _ in range(len(self.servers)):
             server = self.servers[self.current]
             self.current = (self.current + 1) % len(self.servers)
-            
+
             if self.is_healthy(server):
                 return server
-        
+
         raise Exception("No healthy servers available")
-    
+
     def is_healthy(self, server: str) -> bool:
         # Implement health check logic
         return True
@@ -415,7 +415,7 @@ class MCPLoadBalancer:
 # Usage
 balancer = MCPLoadBalancer([
     "mcp-server-1:8080",
-    "mcp-server-2:8080", 
+    "mcp-server-2:8080",
     "mcp-server-3:8080"
 ])
 ```

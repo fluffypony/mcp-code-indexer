@@ -1,9 +1,9 @@
 # MCP Code Indexer Documentation 📚
 
 ---
-**Last Updated:** 2025-06-30  
-**Total Guides:** 13 comprehensive documentation files  
-**Coverage:** Complete feature documentation with examples and workflows  
+**Last Updated:** 2025-06-30
+**Total Guides:** 13 comprehensive documentation files
+**Coverage:** Complete feature documentation with examples and workflows
 ---
 
 Welcome to the MCP Code Indexer documentation hub. Whether you're new to the system or looking for advanced configuration options, this guide will help you find exactly what you need.

@@ -1,10 +1,10 @@
 # MCP Tools API Reference 📖
 
 ---
-**Last Updated:** 2025-01-15  
-**Verified Against:** src/mcp_code_indexer/server/mcp_server.py  
-**Test Sources:** tests/integration/test_mcp_tools.py, tests/unit/test_query_preprocessor.py  
-**Implementation:** All 11 tools verified against actual server code  
+**Last Updated:** 2025-01-15
+**Verified Against:** src/mcp_code_indexer/server/mcp_server.py
+**Test Sources:** tests/integration/test_mcp_tools.py, tests/unit/test_query_preprocessor.py
+**Implementation:** All 11 tools verified against actual server code
 ---
 
 Complete reference for all 11 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
@@ -27,7 +27,7 @@ Complete reference for all 11 MCP tools provided by the Code Indexer server. Whe
 | [`search_codebase_overview`](#search_codebase_overview) | Search overviews | `projectName`, `folderPath`, `searchWord` |
 | [`check_database_health`](#check_database_health) | System monitoring | None |
 
-⭐ **Start here** for new projects  
+⭐ **Start here** for new projects
 📖 **[See Examples →](../examples/)**
 
 ## Table of Contents
@@ -309,7 +309,7 @@ const result = await mcp.callTool("search_descriptions", {
       "relevanceScore": 0.95
     },
     {
-      "filePath": "src/utils/authHelpers.ts", 
+      "filePath": "src/utils/authHelpers.ts",
       "description": "Helper functions for authentication token validation and user session management",
       "relevanceScore": 0.78
     },
@@ -332,7 +332,7 @@ const result = await mcp.callTool("search_descriptions", {
 // Both queries find the same results
 await mcp.callTool("search_descriptions", {
   projectName: "api-service",
-  folderPath: "/projects/api-service", 
+  folderPath: "/projects/api-service",
   query: "grpc proto"        // Finds files with both "grpc" AND "proto"
 });
 
@@ -362,7 +362,7 @@ const queries = ["HTTP client", "http CLIENT", "Http Client"];
 
 🔍 **Search Tips**:
 - **Use multiple words**: "grpc proto" finds files with both terms
-- **Try different orders**: "api client" vs "client api" yield same results  
+- **Try different orders**: "api client" vs "client api" yield same results
 - **Be descriptive**: "authentication logic" vs "auth"
 - **Don't worry about operators**: "AND", "OR" are treated as literal search terms
 - **Case doesn't matter**: "HTTP", "http", "Http" all work the same
@@ -444,7 +444,7 @@ const result = await mcp.callTool("get_all_descriptions", {
         "files": [
           {
             "name": "index.ts",
-            "path": "src/index.ts", 
+            "path": "src/index.ts",
             "description": "Main application entry point with Express server setup"
           }
         ],
@@ -754,16 +754,16 @@ if health_result["health_status"]["overall_health"] != "healthy":
 async def monitor_health():
     while True:
         health = await mcp_client.call_tool("check_database_health", {})
-        
+
         # Check critical metrics
         db_status = health["health_status"]["database"]
         if db_status["failed_connections"] > 2:
             send_alert("Database connection failures detected")
-        
+
         perf_status = health["health_status"]["performance"]
         if perf_status["error_rate"] > 0.05:
             send_alert(f"High error rate: {perf_status['error_rate']:.2%}")
-        
+
         await asyncio.sleep(30)  # Check every 30 seconds
 ```
 
@@ -790,7 +790,7 @@ await send_metrics_to_grafana(metrics)
 #### 🎯 Use Cases
 
 - **Production Monitoring**: Continuous health checks in production deployments
-- **Performance Debugging**: Identify bottlenecks and optimization opportunities  
+- **Performance Debugging**: Identify bottlenecks and optimization opportunities
 - **Capacity Planning**: Monitor resource utilization trends
 - **Incident Response**: Quick diagnostics during performance issues
 - **Load Testing**: Validate system behavior under stress

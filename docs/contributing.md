@@ -21,7 +21,7 @@ Welcome to the MCP Code Indexer project! We're thrilled you want to help make th
 
 **Required**:
 - **Python 3.8+** with asyncio support
-- **Git** for version control  
+- **Git** for version control
 - **SQLite 3.35+** (included with Python)
 
 **Recommended**:
@@ -158,21 +158,21 @@ We follow **Black** formatting with these standards:
 ```python
 # Good: Clear, descriptive names
 async def get_file_description(
-    project_id: str, 
-    branch: str, 
+    project_id: str,
+    branch: str,
     file_path: str
 ) -> Optional[FileDescription]:
     """
     Retrieve file description from database.
-    
+
     Args:
         project_id: Unique project identifier
         branch: Git branch name
         file_path: Relative path from project root
-        
+
     Returns:
         FileDescription if found, None otherwise
-        
+
     Raises:
         DatabaseError: If database operation fails
     """
@@ -182,7 +182,7 @@ async def get_file_description(
 # Good: Type hints and docstrings
 class MergeConflict:
     """Represents a merge conflict between file descriptions."""
-    
+
     def __init__(
         self,
         file_path: str,
@@ -202,29 +202,29 @@ class MergeConflict:
 async def search_file_descriptions(
     self,
     project_id: str,
-    branch: str, 
+    branch: str,
     query: str,
     max_results: int = 20
 ) -> List[SearchResult]:
     """
     Search file descriptions using full-text search.
-    
+
     Performs FTS5 search across file descriptions with relevance ranking.
     Results are ordered by relevance score (highest first).
-    
+
     Args:
         project_id: Project to search within
         branch: Branch to search
         query: Search query string (supports FTS5 syntax)
         max_results: Maximum number of results to return
-        
+
     Returns:
         List of SearchResult objects ordered by relevance
-        
+
     Raises:
         ValidationError: If query is invalid or too long
         DatabaseError: If search operation fails
-        
+
     Example:
         >>> results = await db.search_file_descriptions(
         ...     "proj_123", "main", "authentication middleware", 10
@@ -248,11 +248,11 @@ TokenCount = int
 
 class DatabaseProtocol(Protocol):
     """Protocol for database operations."""
-    
+
     async def get_file_description(
-        self, 
-        project_id: ProjectId, 
-        branch: str, 
+        self,
+        project_id: ProjectId,
+        branch: str,
         file_path: FilePath
     ) -> Optional[FileDescription]: ...
 
@@ -263,7 +263,7 @@ T = TypeVar('T')
 
 class Repository(Generic[T]):
     """Generic repository pattern."""
-    
+
     async def get_by_id(self, id: str) -> Optional[T]: ...
     async def save(self, entity: T) -> None: ...
 ```
@@ -285,34 +285,34 @@ from tests.conftest import sample_project, sample_file_descriptions
 
 class TestMergeHandler:
     """Test merge functionality with various scenarios."""
-    
+
     @pytest_asyncio.fixture
     async def merge_handler(self, db_manager):
         """Create merge handler for testing."""
         return MergeHandler(db_manager)
-    
+
     async def test_merge_no_conflicts(self, merge_handler, sample_project):
         """Test merge when no conflicts exist."""
         # Setup test data
         # Execute operation
         # Assert expected results
-        
+
     async def test_merge_with_conflicts(self, merge_handler, sample_project):
         """Test merge conflict detection and resolution."""
         # Test conflict detection
         # Test resolution validation
         # Test merge completion
-        
+
     @pytest.mark.parametrize("source_branch,target_branch,expected_conflicts", [
         ("feature/auth", "main", 1),
         ("feature/ui", "develop", 0),
         ("hotfix/security", "main", 2),
     ])
     async def test_merge_scenarios(
-        self, 
-        merge_handler, 
-        source_branch, 
-        target_branch, 
+        self,
+        merge_handler,
+        source_branch,
+        target_branch,
         expected_conflicts
     ):
         """Test various merge scenarios."""
@@ -330,29 +330,29 @@ import pytest
 @pytest.mark.performance
 class TestPerformance:
     """Performance benchmarks for critical operations."""
-    
+
     async def test_large_search_performance(self, db_manager_with_data):
         """Search should complete quickly even with large datasets."""
         start_time = time.time()
-        
+
         results = await db_manager_with_data.search_file_descriptions(
             "large_project", "main", "authentication", 50
         )
-        
+
         duration = time.time() - start_time
-        
+
         assert len(results) > 0
         assert duration < 0.5  # 500ms limit
-        
+
     async def test_token_counting_performance(self, token_counter):
         """Token counting should be efficient for large codebases."""
         # Create large dataset
         descriptions = [create_test_description() for _ in range(1000)]
-        
+
         start_time = time.time()
         total_tokens = token_counter.calculate_codebase_tokens(descriptions)
         duration = time.time() - start_time
-        
+
         assert total_tokens > 0
         assert duration < 2.0  # 2 second limit
 ```
@@ -372,9 +372,9 @@ async def temp_db():
     """Create temporary database for testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = Path(f.name)
-    
+
     yield db_path
-    
+
     # Cleanup
     if db_path.exists():
         db_path.unlink()
@@ -426,10 +426,10 @@ python -m pytest tests/ --cov=src --cov-report=html --cov-report=term
    # Make your changes
    # Write/update tests
    # Update documentation if needed
-   
+
    # Run tests locally
    python -m pytest tests/ -v
-   
+
    # Check code quality
    black src/ tests/
    isort src/ tests/
@@ -589,7 +589,7 @@ def validate_file_path(file_path: str) -> str:
     # Check for path traversal
     if ".." in file_path or file_path.startswith("/"):
         raise ValidationError("Invalid file path")
-    
+
     # Normalize path
     return Path(file_path).as_posix()
 
@@ -597,11 +597,11 @@ def validate_project_name(name: str) -> str:
     """Validate project names."""
     if not name or len(name) > 100:
         raise ValidationError("Invalid project name")
-    
+
     # Allow alphanumeric, hyphens, underscores
     if not re.match(r'^[a-zA-Z0-9_-]+$', name):
         raise ValidationError("Project name contains invalid characters")
-    
+
     return name
 ```
 
@@ -625,14 +625,14 @@ async def get_descriptions_safe(self, project_id: str, branch: str):
 def sanitize_error_for_client(error: Exception) -> str:
     """Remove sensitive information from error messages."""
     message = str(error)
-    
+
     # Remove file paths
     message = re.sub(r'/[^\s]+', '[PATH]', message)
-    
+
     # Remove stack traces in production
     if not DEBUG_MODE:
         message = message.split('\n')[0]
-    
+
     return message
 ```
 

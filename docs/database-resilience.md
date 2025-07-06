@@ -34,11 +34,11 @@ graph TB
     B --> C[Retry Handler]
     C --> D[Connection Pool]
     D --> E[SQLite WAL Mode]
-    
+
     F[Health Monitor] --> D
     F --> G[Metrics Collector]
     G --> H[Structured Logging]
-    
+
     I[Recovery Manager] --> C
     I --> D
 ```
@@ -201,7 +201,7 @@ result = await retry_handler.execute_with_retry(
 
 - **Attempt 1**: Immediate execution
 - **Attempt 2**: 100ms delay
-- **Attempt 3**: 200ms delay  
+- **Attempt 3**: 200ms delay
 - **Attempt 4**: 400ms delay
 - **Attempt 5**: 800ms delay
 - **Final**: 2000ms delay (max)
@@ -236,7 +236,7 @@ PRAGMA optimize;
 ### 🚀 Performance Benefits
 
 - **Concurrent Reads**: Multiple readers don't block writers
-- **Reduced Locking**: WAL eliminates most lock contention  
+- **Reduced Locking**: WAL eliminates most lock contention
 - **Better Throughput**: 800+ writes/sec sustained performance
 - **Improved Latency**: Sub-10ms response times for most operations
 

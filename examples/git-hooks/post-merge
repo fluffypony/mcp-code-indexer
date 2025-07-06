@@ -2,7 +2,7 @@
 set -eo pipefail
 
 # MCP Code Indexer - Post-Merge Hook
-# 
+#
 # This hook processes commits added during a merge operation.
 # It identifies new commits from the merge and processes each one
 # individually to avoid token limits.
@@ -28,7 +28,7 @@ current_head=$(git rev-parse HEAD)
 if git rev-parse HEAD~2 >/dev/null 2>&1; then
   # This is a merge commit with multiple parents
   second_parent=$(git rev-parse HEAD~2)
-  
+
   # Get commits that are in the merged branch but not in the main branch
   merged_commits=$(git rev-list --reverse "$merge_base..$second_parent" 2>/dev/null || echo "")
 else
@@ -49,7 +49,7 @@ fi
 # Process commits sequentially in the background
 if [ ${#commits[@]} -gt 0 ]; then
   echo "Post-merge hook: Starting background analysis for ${#commits[@]} merged commits..." >&2
-  
+
   # Run sequential processing in background
   {
     for commit_sha in "${commits[@]}"; do
@@ -58,9 +58,9 @@ if [ ${#commits[@]} -gt 0 ]; then
     done
     echo "Post-merge hook: Completed analysis of ${#commits[@]} commits" >&2
   } >> ~/.mcp-code-index/githook.log 2>&1 &
-  
+
   disown
-  
+
   echo "Post-merge hook: Background analysis started. Check ~/.mcp-code-index/githook.log for progress." >&2
 else
   echo "Post-merge hook: No new commits to process from merge." >&2

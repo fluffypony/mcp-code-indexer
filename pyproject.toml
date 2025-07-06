@@ -14,10 +14,10 @@ homepage = "https://github.com/fluffypony/mcp-code-indexer"
 repository = "https://github.com/fluffypony/mcp-code-indexer"
 documentation = "https://github.com/fluffypony/mcp-code-indexer/blob/main/README.md"
 keywords = [
-    "mcp", 
-    "model-context-protocol", 
-    "code-indexer", 
-    "ai-tools", 
+    "mcp",
+    "model-context-protocol",
+    "code-indexer",
+    "ai-tools",
     "codebase-navigation",
     "file-descriptions",
     "llm-tools"

@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS idx_token_cache_created ON token_cache(created DESC);
 
 -- Optimize FTS5 for prefix searches and ranking
 DROP TRIGGER IF EXISTS file_descriptions_ai;
-DROP TRIGGER IF EXISTS file_descriptions_ad; 
+DROP TRIGGER IF EXISTS file_descriptions_ad;
 DROP TRIGGER IF EXISTS file_descriptions_au;
 DROP TABLE IF EXISTS file_descriptions_fts;
 

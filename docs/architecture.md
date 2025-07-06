@@ -34,7 +34,7 @@ The MCP Code Indexer follows a **layered architecture** with clear separation of
 ### 🎯 Architecture Principles
 
 - **🚀 Async-First**: All I/O operations are asynchronous for optimal performance
-- **🏗️ Layered Design**: Clear separation between protocol, business logic, and infrastructure  
+- **🏗️ Layered Design**: Clear separation between protocol, business logic, and infrastructure
 - **🛡️ Error Isolation**: Comprehensive error handling prevents cascading failures
 - **♻️ Resource Management**: Proper cleanup and connection pooling for scalability
 - **⚡ Performance-Oriented**: Token-aware decisions and intelligent caching strategies
@@ -48,7 +48,7 @@ The main entry point that handles MCP protocol communication:
 ```python
 class MCPCodeIndexServer:
     """Primary server coordinating all operations."""
-    
+
     def __init__(self, token_limit, db_path, cache_dir):
         self.db_manager = DatabaseManager(db_path)      # Data layer
         self.token_counter = TokenCounter(token_limit)  # Token management
@@ -70,11 +70,11 @@ Handles all data persistence with performance optimizations:
 ```python
 class DatabaseManager:
     """Async SQLite operations with connection pooling."""
-    
+
     def __init__(self, db_path, pool_size=5):
         self._connection_pool = []                    # Connection pool
         self._pool_lock = asyncio.Lock()             # Thread safety
-        
+
     async def get_connection(self):
         """Connection pool management with automatic cleanup."""
         # Pool-based connection management
@@ -95,11 +95,11 @@ Intelligent token counting for performance optimization:
 ```python
 class TokenCounter:
     """Tiktoken integration with offline caching."""
-    
+
     def __init__(self, token_limit=32000):
         self._setup_offline_tiktoken()              # Configure offline operation
         self._init_encoder()                        # Initialize encoder
-        
+
     def calculate_codebase_tokens(self, descriptions):
         """Efficient token calculation with caching."""
         # Batch token counting
@@ -119,13 +119,13 @@ Advanced two-phase merge system for branch integration:
 ```python
 class MergeHandler:
     """Two-phase merge with conflict detection and resolution."""
-    
+
     async def start_merge_phase1(self, project_id, source, target):
         """Phase 1: Conflict detection with session management."""
         session = MergeSession(project_id, source, target)
         conflicts = self._detect_conflicts(source_files, target_files)
         return session
-        
+
     async def complete_merge_phase2(self, session_id, resolutions):
         """Phase 2: Apply resolutions with validation."""
         # Resolution validation
@@ -146,7 +146,7 @@ Comprehensive error management with structured logging:
 ```python
 class ErrorHandler:
     """Production-ready error handling with structured logging."""
-    
+
     def log_error(self, error, context, tool_name):
         """Structured error logging with context preservation."""
         error_data = {
@@ -177,16 +177,16 @@ graph TD
     D --> E[Business Logic]
     E --> F[Database Layer]
     F --> G[SQLite with WAL]
-    
+
     E --> H[File Scanner]
     H --> I[Git Integration]
-    
+
     E --> J[Token Counter]
     J --> K[Tiktoken Cache]
-    
+
     D --> L[Error Handler]
     L --> M[Structured Logging]
-    
+
     E --> N[Response Builder]
     N --> B
     B -->|JSON Response| A
@@ -210,7 +210,7 @@ sequenceDiagram
     participant S as MCP Server
     participant D as Database
     participant U as Upstream Project
-    
+
     C->>S: update_file_description (with upstreamOrigin)
     S->>D: Check if project exists
     D-->>S: Project not found
@@ -276,7 +276,7 @@ CREATE INDEX idx_file_descriptions_project_branch_path ON file_descriptions(proj
 
 -- Search and filtering
 CREATE INDEX idx_file_descriptions_project_modified ON file_descriptions(project_id, last_modified DESC);
-CREATE INDEX idx_file_descriptions_source_project ON file_descriptions(source_project_id) 
+CREATE INDEX idx_file_descriptions_source_project ON file_descriptions(source_project_id)
     WHERE source_project_id IS NOT NULL;
 
 -- Performance indexes
@@ -292,7 +292,7 @@ CREATE INDEX idx_projects_upstream_origin ON projects(upstream_origin);
 -- Optimized FTS5 table with prefix search
 CREATE VIRTUAL TABLE file_descriptions_fts USING fts5(
     project_id UNINDEXED,     -- Don't index for search
-    branch UNINDEXED,         -- Don't index for search  
+    branch UNINDEXED,         -- Don't index for search
     file_path,                -- Index file paths
     description,              -- Index descriptions
     content='file_descriptions',
@@ -318,12 +318,12 @@ class DatabaseManager:
     async def get_connection(self):
         """Pool-based connection with performance settings."""
         conn = None
-        
+
         # Try to get from pool
         async with self._pool_lock:
             if self._connection_pool:
                 conn = self._connection_pool.pop()
-        
+
         # Create new with optimizations
         if conn is None:
             conn = await aiosqlite.connect(self.db_path)
@@ -342,14 +342,14 @@ class TokenCounter:
     def calculate_codebase_tokens(self, descriptions):
         """Batch token calculation with caching."""
         total_tokens = 0
-        
+
         # Use cached results when available
         cache_key = self.generate_cache_key(project_id, branch, content_hash)
         cached_result = await self.get_cached_tokens(cache_key)
-        
+
         if cached_result:
             return cached_result
-            
+
         # Batch process for efficiency
         for batch in self.batch_descriptions(descriptions, batch_size=100):
             batch_tokens = self._count_batch_tokens(batch)
@@ -362,7 +362,7 @@ class TokenCounter:
 
 ```sql
 -- Optimized search query with ranking
-SELECT 
+SELECT
     fd.project_id,
     fd.branch,
     fd.file_path,
@@ -370,8 +370,8 @@ SELECT
     fts.rank
 FROM file_descriptions_fts fts
 JOIN file_descriptions fd ON fd.rowid = fts.rowid
-WHERE fts MATCH ? 
-  AND fd.project_id = ? 
+WHERE fts MATCH ?
+  AND fd.project_id = ?
   AND fd.branch = ?
 ORDER BY fts.rank
 LIMIT ?;
@@ -386,13 +386,13 @@ class FileScanner:
     def scan_directory(self, max_files=None):
         """Optimized directory scanning with filtering."""
         files = []
-        
+
         # Use git ls-files when available for speed
         if self._is_git_repository():
             files = self._git_tracked_files()
         else:
             files = self._manual_scan_with_gitignore()
-        
+
         # Apply intelligent filtering
         return [f for f in files if not self.should_ignore_file(f)]
 ```
@@ -408,8 +408,8 @@ class FileScanner:
 @validate_arguments(required=["projectName", "branch"], optional=["remoteOrigin"])
 async def handle_tool(self, arguments):
     # Validated input processing
-    
-# 2. Business Logic Layer  
+
+# 2. Business Logic Layer
 try:
     result = await self.business_operation()
 except DatabaseError as e:
@@ -418,7 +418,7 @@ except ValidationError as e:
     # Validation error handling
 except Exception as e:
     # Catch-all with structured logging
-    
+
 # 3. Infrastructure Layer
 async with self.db_manager.get_connection() as conn:
     try:
@@ -434,7 +434,7 @@ async with self.db_manager.get_connection() as conn:
 ```python
 class MCPError(Exception):
     """Base MCP error with structured information."""
-    
+
     def __init__(self, message, category, code, details=None):
         self.message = message
         self.category = category  # validation, database, file_system, etc.
@@ -461,16 +461,16 @@ class DatabaseError(MCPError):
 ```python
 class AsyncTaskManager:
     """Manages async tasks with error handling."""
-    
+
     def __init__(self, error_handler):
         self.error_handler = error_handler
         self._tasks = []
-    
+
     def create_task(self, coro, name=None):
         """Create managed async task."""
         task = asyncio.create_task(coro, name=name)
         self._tasks.append(task)
-        
+
         # Add error handling callback
         task.add_done_callback(
             lambda t: asyncio.create_task(self._handle_completion(t, name))
@@ -487,7 +487,7 @@ class MCPCodeIndexServer:
     async def run(self):
         """Server lifecycle with proper cleanup."""
         await self.initialize()
-        
+
         try:
             # Server operation
             async with stdio_server() as (read_stream, write_stream):
@@ -495,15 +495,15 @@ class MCPCodeIndexServer:
         finally:
             # Guaranteed cleanup
             await self.shutdown()
-    
+
     async def shutdown(self):
         """Clean shutdown with resource cleanup."""
         # Cancel running tasks
         self.task_manager.cancel_all()
-        
+
         # Close database connections
         await self.db_manager.close_pool()
-        
+
         # Cleanup temporary files
         self._cleanup_cache()
 ```

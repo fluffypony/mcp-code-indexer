@@ -2,7 +2,7 @@
 set -eo pipefail
 
 # MCP Code Indexer - Post-Rewrite Hook
-# 
+#
 # This hook processes rewritten commits after git rebase, amend, or other
 # commit-rewriting operations. It reads the list of old/new commit pairs
 # from stdin and processes each commit individually to avoid token limits.
@@ -24,7 +24,7 @@ commits=()
 while read -r old_sha new_sha; do
   # Skip invalid lines (e.g., comments)
   [[ "$old_sha" =~ ^# ]] && continue
-  
+
   echo "  Found rewritten commit: $old_sha -> $new_sha" >&2
   commits+=("$new_sha")
 done < "$1"
@@ -32,7 +32,7 @@ done < "$1"
 # Process commits sequentially in the background
 if [ ${#commits[@]} -gt 0 ]; then
   echo "Post-rewrite hook: Starting background analysis for ${#commits[@]} commits..." >&2
-  
+
   # Run sequential processing in background
   {
     for commit_sha in "${commits[@]}"; do
@@ -41,9 +41,9 @@ if [ ${#commits[@]} -gt 0 ]; then
     done
     echo "Post-rewrite hook: Completed analysis of ${#commits[@]} commits" >&2
   } >> ~/.mcp-code-index/githook.log 2>&1 &
-  
+
   disown
-  
+
   echo "Post-rewrite hook: Background analysis started. Check ~/.mcp-code-index/githook.log for progress." >&2
 else
   echo "Post-rewrite hook: No commits to process." >&2

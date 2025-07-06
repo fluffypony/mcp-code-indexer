@@ -1,10 +1,10 @@
 # HTTP/REST API Reference 🌐
 
 ---
-**Last Updated:** 2025-06-30  
-**Verified Against:** src/mcp_code_indexer/transport/http_transport.py  
-**Test Sources:** Manual verification of FastAPI implementation  
-**Implementation:** HTTP transport layer with Server-Sent Events  
+**Last Updated:** 2025-06-30
+**Verified Against:** src/mcp_code_indexer/transport/http_transport.py
+**Test Sources:** Manual verification of FastAPI implementation
+**Implementation:** HTTP transport layer with Server-Sent Events
 ---
 
 Complete reference for the MCP Code Indexer HTTP/REST API. This HTTP transport provides web-accessible endpoints for all MCP tools with optional authentication and real-time streaming responses.
@@ -110,7 +110,7 @@ response = requests.get('http://localhost:7557/tools', headers=headers)
 
 Check if the server is running and healthy.
 
-**Endpoint:** `GET /health`  
+**Endpoint:** `GET /health`
 **Authentication:** Not required
 
 #### Response
@@ -141,7 +141,7 @@ curl http://localhost:7557/health
 
 Get performance metrics and connection statistics.
 
-**Endpoint:** `GET /metrics`  
+**Endpoint:** `GET /metrics`
 **Authentication:** Required if auth enabled
 
 #### Response
@@ -189,7 +189,7 @@ curl -H "Authorization: Bearer your-token" \
 
 Get a list of all available MCP tools with their schemas.
 
-**Endpoint:** `GET /tools`  
+**Endpoint:** `GET /tools`
 **Authentication:** Required if auth enabled
 
 #### Response
@@ -235,7 +235,7 @@ curl -H "Authorization: Bearer your-token" \
 
 Execute MCP tools using JSON-RPC format requests.
 
-**Endpoint:** `POST /mcp`  
+**Endpoint:** `POST /mcp`
 **Authentication:** Required if auth enabled
 
 ### Request Format
@@ -405,7 +405,7 @@ curl -X POST -H "Content-Type: application/json" \
 
 The HTTP API supports Server-Sent Events (SSE) for real-time streaming of tool responses and system events.
 
-**Endpoint:** `GET /events/{connection_id}`  
+**Endpoint:** `GET /events/{connection_id}`
 **Authentication:** Required if auth enabled
 
 ### Connecting to Events
@@ -667,10 +667,10 @@ class MCPHttpClient:
         ) as response:
             response.raise_for_status()
             result = await response.json()
-            
+
             if 'error' in result:
                 raise Exception(f"Tool error: {result['error']['message']}")
-            
+
             return result['result']
 
     async def get_health(self) -> Dict[str, Any]:
@@ -697,14 +697,14 @@ async def main():
         # Check health
         health = await client.get_health()
         print(f"Server status: {health['status']}")
-        
+
         # Search for files
         result = await client.call_tool('search_descriptions', {
             'projectName': 'my-app',
             'folderPath': '/home/user/my-app',
             'query': 'authentication middleware'
         })
-        
+
         print(f"Found {result['totalResults']} files")
         for file_result in result['results']:
             print(f"  {file_result['filePath']}: {file_result['relevanceScore']:.2f}")

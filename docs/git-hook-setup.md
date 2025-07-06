@@ -1,10 +1,10 @@
 # Git Hook Integration Setup 🔗
 
 ---
-**✨ What you'll learn**: How to automate file description updates with git hooks  
-**🎯 Best for**: Development teams wanting effortless documentation maintenance  
-**⏱️ Time required**: 5-10 minutes for complete setup  
-**📖 Related**: [Examples](../examples/) • [Configuration Guide](configuration.md) • [API Reference](api-reference.md)  
+**✨ What you'll learn**: How to automate file description updates with git hooks
+**🎯 Best for**: Development teams wanting effortless documentation maintenance
+**⏱️ Time required**: 5-10 minutes for complete setup
+**📖 Related**: [Examples](../examples/) • [Configuration Guide](configuration.md) • [API Reference](api-reference.md)
 ---
 
 Transform your development workflow with automated code analysis! The MCP Code Indexer can automatically update file descriptions every time you commit, keeping your codebase documentation perfectly synchronized with your code.
@@ -13,10 +13,10 @@ Transform your development workflow with automated code analysis! The MCP Code I
 
 The git hook integration provides **zero-effort documentation**:
 
-🔍 **Smart Analysis**: Automatically analyzes git diffs to identify changed files  
-🤖 **AI-Powered**: Uses OpenRouter API with Anthropic's Claude Sonnet 4 model  
-⚡ **Efficient**: Updates descriptions only for files that actually changed  
-📋 **Overview Updates**: Refreshes project overview when structural changes occur  
+🔍 **Smart Analysis**: Automatically analyzes git diffs to identify changed files
+🤖 **AI-Powered**: Uses OpenRouter API with Anthropic's Claude Sonnet 4 model
+⚡ **Efficient**: Updates descriptions only for files that actually changed
+📋 **Overview Updates**: Refreshes project overview when structural changes occur
 🔄 **Automated**: Runs automatically on git events (post-commit, post-merge, etc.)
 
 ## Prerequisites
@@ -143,7 +143,7 @@ count=0
 while read -r old_sha new_sha; do
   # Skip invalid lines (e.g., comments)
   [[ "$old_sha" =~ ^# ]] && continue
-  
+
   # Track first and last commits
   if [ $count -eq 0 ]; then
     first_hash="$new_sha"
@@ -180,7 +180,7 @@ chmod +x .git/hooks/post-rewrite
 
 **🎯 Why Post-Rewrite?**
 - **Handles rebases**: Processes all rewritten commits after `git rebase`
-- **Non-blocking**: Runs in background, doesn't slow down git operations  
+- **Non-blocking**: Runs in background, doesn't slow down git operations
 - **Efficient**: Processes commit ranges instead of individual commits
 - **Comprehensive**: Works with `git commit --amend`, interactive rebases, etc.
 

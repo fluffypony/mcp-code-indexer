@@ -35,13 +35,13 @@ CREATE INDEX idx_file_descriptions_new_to_be_cleaned ON file_descriptions_new(to
 
 -- Clean up orphaned data before consolidation
 -- Remove file_descriptions that reference non-existent projects
-DELETE FROM file_descriptions 
+DELETE FROM file_descriptions
 WHERE project_id NOT IN (SELECT id FROM projects);
 
 -- Remove file_descriptions with invalid source_project_id
-UPDATE file_descriptions 
-SET source_project_id = NULL 
-WHERE source_project_id IS NOT NULL 
+UPDATE file_descriptions
+SET source_project_id = NULL
+WHERE source_project_id IS NOT NULL
   AND source_project_id NOT IN (SELECT id FROM projects);
 
 -- Consolidate data from old table - keep most recent description per file
@@ -49,7 +49,7 @@ WHERE source_project_id IS NOT NULL
 INSERT INTO file_descriptions_new (
     project_id, file_path, description, file_hash, last_modified, version, source_project_id
 )
-SELECT 
+SELECT
     project_id,
     file_path,
     description,
@@ -58,7 +58,7 @@ SELECT
     version,
     source_project_id
 FROM (
-    SELECT 
+    SELECT
         project_id,
         file_path,
         description,
@@ -67,7 +67,7 @@ FROM (
         version,
         source_project_id,
         ROW_NUMBER() OVER (
-            PARTITION BY project_id, file_path 
+            PARTITION BY project_id, file_path
             ORDER BY last_modified DESC
         ) as rn
     FROM file_descriptions
@@ -88,28 +88,28 @@ CREATE TABLE project_overviews_new (
 CREATE INDEX idx_project_overviews_new_last_modified ON project_overviews_new(last_modified);
 
 -- Clean up orphaned project overviews
-DELETE FROM project_overviews 
+DELETE FROM project_overviews
 WHERE project_id NOT IN (SELECT id FROM projects);
 
 -- Consolidate project overviews - keep the one with most tokens (most comprehensive)
 INSERT INTO project_overviews_new (
     project_id, overview, last_modified, total_files, total_tokens
 )
-SELECT 
+SELECT
     project_id,
     overview,
     last_modified,
     total_files,
     total_tokens
 FROM (
-    SELECT 
+    SELECT
         project_id,
         overview,
         last_modified,
         total_files,
         total_tokens,
         ROW_NUMBER() OVER (
-            PARTITION BY project_id 
+            PARTITION BY project_id
             ORDER BY total_tokens DESC, last_modified DESC
         ) as rn
     FROM project_overviews
@@ -143,8 +143,8 @@ CREATE VIRTUAL TABLE file_descriptions_fts USING fts5(
 
 -- Populate FTS5 table with existing data (only active records)
 INSERT INTO file_descriptions_fts(rowid, project_id, file_path, description)
-SELECT id, project_id, file_path, description 
-FROM file_descriptions 
+SELECT id, project_id, file_path, description
+FROM file_descriptions
 WHERE to_be_cleaned IS NULL;
 
 -- Create new FTS5 triggers for the updated schema
@@ -164,7 +164,7 @@ CREATE TRIGGER file_descriptions_au AFTER UPDATE ON file_descriptions BEGIN
   -- Remove old record from FTS
   INSERT INTO file_descriptions_fts(file_descriptions_fts, rowid, project_id, file_path, description)
   VALUES ('delete', old.id, old.project_id, old.file_path, old.description);
-  
+
   -- Add new record only if it's active (not marked for cleanup)
   INSERT INTO file_descriptions_fts(rowid, project_id, file_path, description)
   SELECT new.id, new.project_id, new.file_path, new.description

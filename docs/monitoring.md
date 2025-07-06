@@ -32,15 +32,15 @@ graph TB
     A[MCP Code Indexer] --> B[Structured Logs]
     A --> C[Health Checks]
     A --> D[Performance Metrics]
-    
+
     B --> E[Log Aggregation]
     C --> F[Health Monitoring]
     D --> G[Metrics Collection]
-    
+
     E --> H[Grafana Dashboards]
     F --> H
     G --> H
-    
+
     H --> I[Alerts & Notifications]
 ```
 
@@ -116,7 +116,7 @@ All logs follow a consistent JSON structure:
 #### Database Logs
 ```json
 {
-  "level": "INFO", 
+  "level": "INFO",
   "message": "Database health check completed",
   "structured_data": {
     "database_health": {
@@ -224,7 +224,7 @@ The system provides comprehensive health checking via the `check_database_health
 - Cache performance
 - File system access
 
-#### System Health  
+#### System Health
 - CPU and memory utilization
 - Disk I/O performance
 - Network connectivity
@@ -318,13 +318,13 @@ class MetricsCollector:
             'errors': {},
             'database': {}
         }
-    
+
     def record_operation(self, tool_name: str, duration_ms: float, success: bool):
         """Record tool operation metrics."""
         key = f"{tool_name}_{'success' if success else 'failure'}"
         self.metrics['operations'][key] = self.metrics['operations'].get(key, 0) + 1
         self.metrics['latency'][tool_name] = duration_ms
-    
+
     def get_metrics_snapshot(self) -> dict:
         """Get current metrics snapshot."""
         return {
@@ -454,7 +454,7 @@ mcp-code-indexer --runcommand '{
 ```bash
 # Get detailed system information
 mcp-code-indexer --runcommand '{
-  "method": "tools/call", 
+  "method": "tools/call",
   "params": {
     "name": "get_system_info",
     "arguments": {}
@@ -476,22 +476,22 @@ from mcp_client import MCPClient
 
 async def diagnose_performance():
     client = MCPClient()
-    
+
     # Test operation latency
     latencies = []
     for i in range(100):
         start = time.time()
-        
+
         await client.call_tool("get_file_description", {
             "projectName": "test-project",
             "folderPath": "/tmp/test",
-            "branch": "main", 
+            "branch": "main",
             "filePath": f"test_{i}.py"
         })
-        
+
         latency = (time.time() - start) * 1000
         latencies.append(latency)
-    
+
     # Calculate statistics
     print(f"Mean latency: {statistics.mean(latencies):.1f}ms")
     print(f"P95 latency: {statistics.quantiles(latencies, n=20)[18]:.1f}ms")
@@ -701,7 +701,7 @@ volumes:
             "legendFormat": "Active Connections"
           },
           {
-            "expr": "mcp_database_pool_size", 
+            "expr": "mcp_database_pool_size",
             "legendFormat": "Pool Size"
           }
         ]

@@ -1,10 +1,10 @@
 # Administrative Commands Guide 🛠️
 
 ---
-**Last Updated:** 2025-06-30  
-**Verified Against:** main.py, src/mcp_code_indexer/main.py  
-**Test Sources:** Manual verification of administrative command implementations  
-**Implementation:** Command handlers with database operations and project management workflows  
+**Last Updated:** 2025-06-30
+**Verified Against:** main.py, src/mcp_code_indexer/main.py
+**Test Sources:** Manual verification of administrative command implementations
+**Implementation:** Command handlers with database operations and project management workflows
 ---
 
 Comprehensive guide to administrative commands and maintenance workflows for MCP Code Indexer. These commands help you manage projects, troubleshoot issues, and maintain your codebase indexing system.
@@ -698,9 +698,9 @@ fi
 while IFS=':' read -r filepath description; do
     # Skip empty lines and comments
     [[ -z "$filepath" || "$filepath" =~ ^#.*$ ]] && continue
-    
+
     echo "Updating: $filepath"
-    
+
     # Update file description
     mcp-code-indexer --runcommand "{
       \"method\": \"tools/call\",
@@ -714,7 +714,7 @@ while IFS=':' read -r filepath description; do
         }
       }
     }"
-    
+
     sleep 0.1  # Rate limiting
 done < "$DESCRIPTION_FILE"
 
@@ -777,7 +777,7 @@ cp /backup/latest/tracker.db ~/.mcp-code-index/tracker.db
 # Verify recovery
 mcp-code-indexer --getprojects
 mcp-code-indexer --runcommand '{
-  "method": "tools/call", 
+  "method": "tools/call",
   "params": {"name": "check_database_health", "arguments": {}}
 }'
 ```
