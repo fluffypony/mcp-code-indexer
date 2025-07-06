@@ -8,7 +8,7 @@ token-aware overviews, and advanced merge capabilities.
 
 
 # Delay import to avoid dependency issues during testing
-def get_server():
+def get_server() -> type:
     """Get MCPCodeIndexServer (lazy import)."""
     from .server.mcp_server import MCPCodeIndexServer
 
@@ -50,7 +50,7 @@ def _get_version() -> str:
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
-        return data["project"]["version"]
+        return str(data["project"]["version"])
     except Exception:
         return "dev"
 

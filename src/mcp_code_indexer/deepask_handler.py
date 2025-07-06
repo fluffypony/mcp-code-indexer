@@ -228,7 +228,7 @@ class DeepAskHandler(ClaudeAPIHandler):
         self.logger.info(f"Search terms: {search_terms}")
 
         # Search for relevant files
-        relevant_files = []
+        relevant_files: List[Dict[str, Any]] = []
         total_files_found = 0
 
         try:

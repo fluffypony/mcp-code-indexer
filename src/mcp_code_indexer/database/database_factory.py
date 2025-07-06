@@ -85,7 +85,7 @@ class DatabaseFactory:
             return self._database_managers[db_key]
 
         # Create new database manager
-        db_manager = DatabaseManager(db_path=db_path, **self.db_config)
+        db_manager = DatabaseManager(db_path=db_path, **self.db_config)  # type: ignore[arg-type]
 
         # Initialize if not already done
         if db_key not in self._initialized_dbs:

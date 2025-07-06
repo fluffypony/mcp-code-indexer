@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from collections import defaultdict, deque
-from typing import Any, Dict
+from typing import Any, Awaitable, Callable, Dict, List
 
 try:
     from fastapi import HTTPException, Request, Response
@@ -34,12 +34,12 @@ class HTTPSecurityMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: Any,
         rate_limit_requests: int = 100,
         rate_limit_window: int = 60,
         max_request_size: int = 10 * 1024 * 1024,  # 10MB
         enable_security_headers: bool = True,
-    ):
+    ) -> None:
         """
         Initialize HTTP security middleware.
 
@@ -74,7 +74,7 @@ class HTTPSecurityMiddleware(BaseHTTPMiddleware):
             },
         )
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """
         Process HTTP request with security checks.
 
@@ -231,7 +231,7 @@ class HTTPSecurityMiddleware(BaseHTTPMiddleware):
             return real_ip
 
         # Fall back to direct client IP
-        if hasattr(request.client, "host"):
+        if request.client and hasattr(request.client, "host"):
             return request.client.host
 
         return "unknown"
@@ -359,7 +359,7 @@ class RequestValidator:
             Sanitized input string
         """
         if not isinstance(data, str):
-            data = str(data)
+            data = str(data)  # type: ignore[unreachable]
 
         # Truncate if too long
         if len(data) > max_length:
