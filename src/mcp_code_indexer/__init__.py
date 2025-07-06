@@ -29,9 +29,9 @@ def _get_version() -> str:
         for pkg_name in ["mcp-code-indexer", "mcp_code_indexer"]:
             try:
                 return version(pkg_name)
-            except Exception:
+            except Exception:  # nosec B112
                 continue
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     # Fallback to reading from pyproject.toml (for development)

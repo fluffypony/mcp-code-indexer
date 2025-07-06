@@ -830,9 +830,8 @@ class MCPCodeIndexServer:
                     f"Created new global project: {normalized_name} (ID: {project_id})"
                 )
 
-            assert (
-                project is not None
-            )  # project is always set in if/else branches above
+            if project is None:
+                raise RuntimeError("Project should always be set in if/else branches above")
             return project.id
 
     async def _find_matching_project(
