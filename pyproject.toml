@@ -171,3 +171,15 @@ exclude_lines = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod"
 ]
+
+# Ruff configuration
+[tool.ruff]
+exclude = [
+    ".vulture_whitelist.py",
+    "venv",
+    ".git",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache"
+]
