@@ -7,7 +7,8 @@ the database operations.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
@@ -184,6 +185,129 @@ class WordFrequencyResult(BaseModel):
     total_terms_analyzed: int = Field(..., description="Total terms processed")
     total_unique_terms: int = Field(..., description="Number of unique terms found")
 
+
+# Vector Mode Models
+
+class ChunkType(str, Enum):
+    """Types of code chunks for semantic analysis."""
+    FUNCTION = "function"
+    CLASS = "class"  
+    METHOD = "method"
+    IMPORT = "import"
+    DOCSTRING = "docstring"
+    COMMENT = "comment"
+    VARIABLE = "variable"
+    INTERFACE = "interface"
+    TYPE_DEFINITION = "type_definition"
+    MODULE = "module"
+    NAMESPACE = "namespace"
+    GENERIC = "generic"
+
+class NodeType(str, Enum):
+    """Types of nodes in Merkle tree."""
+    FILE = "file"
+    DIRECTORY = "directory"
+    PROJECT = "project"
+
+class SyncStatus(str, Enum):
+    """Vector index synchronization status."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PAUSED = "paused"
+
+class CodeChunk(BaseModel):
+    """
+    Represents a semantic chunk of code extracted from a file.
+    
+    Used for embedding generation and vector search operations.
+    """
+    
+    id: Optional[int] = Field(None, description="Database ID")
+    file_id: int = Field(..., description="Reference to FileDescription")
+    project_id: str = Field(..., description="Reference to project")
+    chunk_type: ChunkType = Field(..., description="Type of code chunk")
+    name: Optional[str] = Field(None, description="Name of function/class/etc")
+    start_line: int = Field(..., description="Starting line number")
+    end_line: int = Field(..., description="Ending line number")
+    content_hash: str = Field(..., description="SHA-256 hash of chunk content")
+    embedding_id: Optional[str] = Field(None, description="Vector database ID")
+    redacted: bool = Field(default=False, description="Whether content was redacted")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    created: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    last_modified: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+
+class MerkleNode(BaseModel):
+    """
+    Represents a node in the Merkle tree for change detection.
+    
+    Used to efficiently detect file system changes without scanning entire directory trees.
+    """
+    
+    id: Optional[int] = Field(None, description="Database ID")
+    project_id: str = Field(..., description="Reference to project")
+    path: str = Field(..., description="File/directory path relative to project root")
+    hash: str = Field(..., description="SHA-256 hash of content or children")
+    node_type: NodeType = Field(..., description="Type of filesystem node")
+    parent_path: Optional[str] = Field(None, description="Path to parent directory")
+    children_hash: Optional[str] = Field(None, description="Combined hash of children")
+    last_modified: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+
+class IndexMeta(BaseModel):
+    """
+    Metadata about vector indexing progress and status for a project.
+    
+    Tracks indexing state, statistics, and synchronization status.
+    """
+    
+    id: Optional[int] = Field(None, description="Database ID")
+    project_id: str = Field(..., description="Reference to project", unique=True)
+    total_chunks: int = Field(default=0, description="Total number of chunks")
+    indexed_chunks: int = Field(default=0, description="Number of chunks with embeddings")
+    total_files: int = Field(default=0, description="Total number of files")
+    indexed_files: int = Field(default=0, description="Number of files processed")
+    last_sync: Optional[datetime] = Field(None, description="Last successful sync timestamp")
+    sync_status: SyncStatus = Field(default=SyncStatus.PENDING, description="Current sync status")
+    error_message: Optional[str] = Field(None, description="Last error message")
+    queue_depth: int = Field(default=0, description="Number of pending tasks")
+    processing_rate: float = Field(default=0.0, description="Files per second processing rate")
+    estimated_completion: Optional[datetime] = Field(None, description="Estimated completion time")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    created: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    last_modified: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+
+class VectorSearchResult(BaseModel):
+    """
+    Represents a vector search result with similarity scoring.
+    """
+    
+    file_path: str = Field(..., description="Path to the matching file")
+    chunk_name: Optional[str] = Field(None, description="Name of the code chunk")
+    chunk_type: ChunkType = Field(..., description="Type of code chunk")
+    code_snippet: str = Field(..., description="Original code content")
+    start_line: int = Field(..., description="Starting line number")
+    end_line: int = Field(..., description="Ending line number")
+    similarity_score: float = Field(..., description="Cosine similarity score")
+    project_id: str = Field(..., description="Project identifier")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+
+class VectorIndexStatus(BaseModel):
+    """
+    Current status of vector indexing for a project.
+    """
+    
+    is_indexing: bool = Field(..., description="Whether indexing is currently active")
+    indexed_files: int = Field(..., description="Number of files indexed")
+    total_files: int = Field(..., description="Total number of files")
+    indexed_chunks: int = Field(..., description="Number of chunks indexed")
+    total_chunks: int = Field(..., description="Total number of chunks")
+    last_sync: Optional[datetime] = Field(None, description="Last sync timestamp")
+    sync_status: SyncStatus = Field(..., description="Current sync status")
+    queue_depth: int = Field(..., description="Number of pending tasks")
+    processing_rate: float = Field(..., description="Processing rate")
+    estimated_completion: Optional[datetime] = Field(None, description="Estimated completion time")
+    error_message: Optional[str] = Field(None, description="Last error message")
 
 # Enable forward references for recursive models
 FolderNode.model_rebuild()
