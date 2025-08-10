@@ -151,6 +151,19 @@ def parse_arguments() -> argparse.Namespace:
         help="Allowed CORS origins for HTTP transport (default: allow all)",
     )
 
+    # Vector mode options
+    parser.add_argument(
+        "--vector",
+        action="store_true",
+        help="Enable vector mode with semantic search capabilities (requires vector extras)",
+    )
+
+    parser.add_argument(
+        "--vector-config",
+        type=str,
+        help="Path to vector mode configuration file",
+    )
+
     return parser.parse_args()
 
 
@@ -996,6 +1009,52 @@ async def main() -> None:
     )
 
     try:
+        # Handle vector mode initialization
+        vector_daemon_task = None
+        if args.vector:
+            try:
+                from .vector_mode import is_vector_mode_available, check_api_keys
+                from .vector_mode.config import load_vector_config
+                from .vector_mode.daemon import start_vector_daemon
+                
+                # Check if vector mode is available
+                if not is_vector_mode_available():
+                    logger.error("Vector mode requires additional dependencies. Install with: pip install mcp-code-indexer[vector]")
+                    sys.exit(1)
+                
+                # Check API keys
+                api_keys = check_api_keys()
+                if not all(api_keys.values()):
+                    missing = [k for k, v in api_keys.items() if not v]
+                    logger.error(f"Missing API keys for vector mode: {', '.join(missing)}")
+                    sys.exit(1)
+                
+                # Load vector configuration
+                vector_config_path = Path(args.vector_config).expanduser() if args.vector_config else None
+                vector_config = load_vector_config(vector_config_path)
+                
+                logger.info(
+                    "Vector mode enabled", 
+                    extra={
+                        "structured_data": {
+                            "embedding_model": vector_config.embedding_model,
+                            "batch_size": vector_config.batch_size,
+                            "daemon_enabled": vector_config.daemon_enabled,
+                        }
+                    }
+                )
+                
+                # Start vector daemon in background
+                if vector_config.daemon_enabled:
+                    vector_daemon_task = asyncio.create_task(
+                        start_vector_daemon(vector_config_path, db_path, cache_dir)
+                    )
+                    logger.info("Vector daemon started")
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize vector mode: {e}")
+                sys.exit(1)
+
         # Import and run the MCP server
         from .server.mcp_server import MCPCodeIndexServer
 
@@ -1028,6 +1087,7 @@ async def main() -> None:
             db_path=db_path,
             cache_dir=cache_dir,
             transport=transport,
+            vector_mode=args.vector,
         )
 
         # Set server instance in transport after server creation

@@ -63,6 +63,7 @@ class MCPCodeIndexServer:
         retry_max_wait: float = 2.0,
         retry_jitter: float = 0.2,
         transport: Optional[Any] = None,
+        vector_mode: bool = False,
     ):
         """
         Initialize the MCP Code Index Server.
@@ -80,10 +81,12 @@ class MCPCodeIndexServer:
             retry_max_wait: Maximum wait time between retries in seconds
             retry_jitter: Maximum jitter to add to retry delays in seconds
             transport: Optional transport instance (if None, uses default stdio)
+            vector_mode: Enable vector search capabilities and tools
         """
         self.token_limit = token_limit
         self.db_path = db_path or Path.home() / ".mcp-code-index" / "tracker.db"
         self.cache_dir = cache_dir or Path.home() / ".mcp-code-index" / "cache"
+        self.vector_mode = vector_mode
 
         # Store database configuration
         self.db_config = {
