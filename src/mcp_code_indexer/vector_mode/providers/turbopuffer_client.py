@@ -1,11 +1,9 @@
 """
-Turbopuffer client for vector storage and search.
+Turbopuffer client for vector storage and search using official SDK.
 
-Provides integration with Turbopuffer's vector database for storing
+Provides clean integration with Turbopuffer's vector database for storing
 embeddings and performing similarity searches. Supports configurable
 regions for optimal latency and data residency compliance.
-
-Now uses the official turbopuffer Python SDK for improved reliability and type safety.
 
 Default region: gcp-europe-west3 (Frankfurt)
 Configure via TURBOPUFFER_REGION environment variable.
@@ -13,31 +11,17 @@ Configure via TURBOPUFFER_REGION environment variable.
 
 import logging
 import uuid
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
 import turbopuffer
 
-from .base_provider import ProviderError
 from ..config import VectorConfig
 
 logger = logging.getLogger(__name__)
 
 class TurbopufferClient:
-    """
-    Client for Turbopuffer vector database using official SDK.
+    """Clean Turbopuffer client using official SDK."""
     
-    Supports region-specific endpoints for optimal performance:
-    - AWS regions: aws-us-east-1, aws-us-west-2, aws-eu-central-1, etc.
-    - GCP regions: gcp-us-central1, gcp-europe-west3, gcp-us-east4, etc.
-    
-    Default region is gcp-europe-west3 (Frankfurt) for European compliance.
-    """
-    
-    def __init__(
-        self,
-        api_key: str,
-        region: str = "gcp-europe-west3",
-        **kwargs
-    ):
+    def __init__(self, api_key: str, region: str = "gcp-europe-west3"):
         self.api_key = api_key
         self.region = region
         
@@ -51,14 +35,13 @@ class TurbopufferClient:
     def health_check(self) -> bool:
         """Check if Turbopuffer service is healthy."""
         try:
-            # List namespaces to test connectivity using official SDK
             namespaces = self.client.namespaces()
             return True
         except Exception as e:
             logger.warning(f"Turbopuffer health check failed: {e}")
             return False
     
-    def _generate_vector_id(self, project_id: str, chunk_id: int) -> str:
+    def generate_vector_id(self, project_id: str, chunk_id: int) -> str:
         """Generate a unique vector ID."""
         return f"{project_id}_{chunk_id}_{uuid.uuid4().hex[:8]}"
     
@@ -68,17 +51,7 @@ class TurbopufferClient:
         namespace: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """
-        Store or update vectors in the database using official SDK.
-        
-        Args:
-            vectors: List of vector objects with id, values, and metadata
-            namespace: Turbopuffer namespace to store vectors in
-            **kwargs: Additional arguments
-            
-        Returns:
-            Response from Turbopuffer API
-        """
+        """Store or update vectors in the database."""
         if not vectors:
             return {"upserted": 0}
         
@@ -98,16 +71,15 @@ class TurbopufferClient:
             formatted_vectors.append(formatted_vector)
         
         try:
-            # Use official SDK
             ns = self.client.namespace(namespace)
-            response = ns.upsert(vectors=formatted_vectors)
+            ns.upsert(vectors=formatted_vectors)
             
             logger.info(f"Successfully upserted {len(vectors)} vectors")
             return {"upserted": len(vectors)}
             
         except Exception as e:
             logger.error(f"Failed to upsert vectors: {e}")
-            raise ProviderError(f"Vector upsert failed: {e}")
+            raise RuntimeError(f"Vector upsert failed: {e}")
     
     def search_vectors(
         self,
@@ -115,145 +87,66 @@ class TurbopufferClient:
         top_k: int = 10,
         namespace: str = "default",
         filters: Optional[Dict[str, Any]] = None,
-        include_attributes: bool = True,
         **kwargs
     ) -> List[Dict[str, Any]]:
-        """
-        Search for similar vectors using official SDK.
-        
-        Args:
-            query_vector: Query vector to search with
-            top_k: Number of results to return
-            namespace: Turbopuffer namespace to search in
-            filters: Metadata filters to apply
-            include_attributes: Whether to include vector attributes in results
-            **kwargs: Additional arguments
-            
-        Returns:
-            List of search results with id, score, and metadata
-        """
+        """Search for similar vectors."""
         logger.debug(f"Searching {top_k} vectors in namespace '{namespace}'")
         
         try:
-            # Use official SDK
             ns = self.client.namespace(namespace)
             
-            # Build query parameters
-            query_params = [("vector", "ANN", query_vector)]
-            
             results = ns.query(
-                rank_by=query_params,
+                rank_by=[("vector", "ANN", query_vector)],
                 top_k=top_k,
                 filters=filters,
-                include_attributes=include_attributes
+                include_attributes=True
             )
             
             logger.debug(f"Found {len(results)} similar vectors")
-            
             return results
             
         except Exception as e:
             logger.error(f"Vector search failed: {e}")
-            raise ProviderError(f"Vector search failed: {e}")
+            raise RuntimeError(f"Vector search failed: {e}")
     
-    async def delete_vectors(
+    def delete_vectors(
         self,
         vector_ids: List[str],
         namespace: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """
-        Delete vectors by ID.
-        
-        Args:
-            vector_ids: List of vector IDs to delete
-            namespace: Turbopuffer namespace
-            **kwargs: Additional arguments
-            
-        Returns:
-            Response from Turbopuffer API
-        """
+        """Delete vectors by ID."""
         if not vector_ids:
             return {"deleted": 0}
         
         logger.info(f"Deleting {len(vector_ids)} vectors from namespace '{namespace}'")
         
-        request_data = {
-            "ids": vector_ids,
-        }
-        
         try:
-            response = await self._make_request(
-                method="DELETE",
-                endpoint=f"/namespaces/{namespace}/vectors",
-                data=request_data,
-            )
+            ns = self.client.namespace(namespace)
+            ns.delete(ids=vector_ids)
             
             logger.info(f"Successfully deleted vectors")
-            return response
+            return {"deleted": len(vector_ids)}
             
         except Exception as e:
             logger.error(f"Failed to delete vectors: {e}")
-            raise ProviderError(f"Vector deletion failed: {e}")
-    
-    async def get_namespace_stats(
-        self,
-        namespace: str,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """
-        Get statistics about a namespace.
-        
-        Args:
-            namespace: Turbopuffer namespace
-            **kwargs: Additional arguments
-            
-        Returns:
-            Namespace statistics
-        """
-        try:
-            response = await self._make_request(
-                method="GET",
-                endpoint=f"/namespaces/{namespace}",
-            )
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Failed to get namespace stats: {e}")
-            raise ProviderError(f"Namespace stats failed: {e}")
+            raise RuntimeError(f"Vector deletion failed: {e}")
     
     def list_namespaces(self) -> List[str]:
-        """List all available namespaces using official SDK."""
+        """List all available namespaces."""
         try:
             namespaces = self.client.namespaces()
             return [ns.name for ns in namespaces]
             
         except Exception as e:
             logger.error(f"Failed to list namespaces: {e}")
-            raise ProviderError(f"Namespace listing failed: {e}")
+            raise RuntimeError(f"Namespace listing failed: {e}")
     
-    def create_namespace(
-        self,
-        namespace: str,
-        dimension: int,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """
-        Create a new namespace using official SDK.
-        
-        Args:
-            namespace: Name of the namespace to create
-            dimension: Vector dimension for the namespace
-            **kwargs: Additional arguments
-            
-        Returns:
-            Response from Turbopuffer API
-        """
+    def create_namespace(self, namespace: str, dimension: int, **kwargs) -> Dict[str, Any]:
+        """Create a new namespace."""
         logger.info(f"Creating namespace '{namespace}' with dimension {dimension}")
         
         try:
-            # Use official SDK to create namespace
             self.client.create_namespace(
                 name=namespace,
                 dimension=dimension
@@ -264,24 +157,21 @@ class TurbopufferClient:
             
         except Exception as e:
             logger.error(f"Failed to create namespace: {e}")
-            raise ProviderError(f"Namespace creation failed: {e}")
+            raise RuntimeError(f"Namespace creation failed: {e}")
     
-    async def delete_namespace(self, namespace: str) -> Dict[str, Any]:
+    def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace and all its vectors."""
         logger.warning(f"Deleting namespace '{namespace}' and all its vectors")
         
         try:
-            response = await self._make_request(
-                method="DELETE",
-                endpoint=f"/namespaces/{namespace}",
-            )
+            self.client.delete_namespace(namespace)
             
             logger.info(f"Successfully deleted namespace '{namespace}'")
-            return response
+            return {"deleted": namespace}
             
         except Exception as e:
             logger.error(f"Failed to delete namespace: {e}")
-            raise ProviderError(f"Namespace deletion failed: {e}")
+            raise RuntimeError(f"Namespace deletion failed: {e}")
     
     def get_namespace_for_project(self, project_id: str) -> str:
         """Get the namespace name for a project."""
@@ -289,7 +179,7 @@ class TurbopufferClient:
         safe_project_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in project_id)
         return f"mcp_code_{safe_project_id}".lower()
     
-    async def search_with_metadata_filter(
+    def search_with_metadata_filter(
         self,
         query_vector: List[float],
         project_id: str,
@@ -298,20 +188,7 @@ class TurbopufferClient:
         top_k: int = 10,
         **kwargs
     ) -> List[Dict[str, Any]]:
-        """
-        Search vectors with metadata filtering.
-        
-        Args:
-            query_vector: Query vector
-            project_id: Project to search within
-            chunk_type: Filter by chunk type (optional)
-            file_path: Filter by file path (optional)
-            top_k: Number of results to return
-            **kwargs: Additional arguments
-            
-        Returns:
-            Filtered search results
-        """
+        """Search vectors with metadata filtering."""
         namespace = self.get_namespace_for_project(project_id)
         
         # Build metadata filters
@@ -321,7 +198,7 @@ class TurbopufferClient:
         if file_path:
             filters["file_path"] = file_path
         
-        return await self.search_vectors(
+        return self.search_vectors(
             query_vector=query_vector,
             top_k=top_k,
             namespace=namespace,
@@ -330,13 +207,11 @@ class TurbopufferClient:
         )
 
 def create_turbopuffer_client(config: VectorConfig) -> TurbopufferClient:
-    """Create a Turbopuffer client from configuration using official SDK."""
+    """Create a Turbopuffer client from configuration."""
     if not config.turbopuffer_api_key:
         raise ValueError("TURBOPUFFER_API_KEY is required for vector storage")
     
     return TurbopufferClient(
         api_key=config.turbopuffer_api_key,
         region=config.turbopuffer_region,
-        timeout=30.0,
-        max_retries=3,
     )
