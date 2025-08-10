@@ -1099,6 +1099,15 @@ async def main() -> None:
     except Exception as e:
         error_handler.log_error(e, context={"phase": "startup"})
         raise
+    finally:
+        # Clean up vector daemon if it was started
+        if vector_daemon_task and not vector_daemon_task.done():
+            logger.info("Cancelling vector daemon")
+            vector_daemon_task.cancel()
+            try:
+                await vector_daemon_task
+            except asyncio.CancelledError:
+                pass
 
 
 def cli_main() -> None:
