@@ -18,9 +18,10 @@ def is_vector_mode_available() -> bool:
         import turbopuffer
         import tree_sitter
         import watchdog
+        # PyYAML package provides yaml module
         import yaml
         return True
-    except ImportError:
+    except ImportError as e:
         return False
 
 def get_vector_config_path() -> Path:
