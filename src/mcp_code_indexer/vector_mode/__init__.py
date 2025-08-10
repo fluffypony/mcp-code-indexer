@@ -14,10 +14,11 @@ __version__ = "1.0.0"
 def is_vector_mode_available() -> bool:
     """Check if vector mode dependencies are available."""
     try:
-        import voyage
+        import voyageai
         import turbopuffer
         import tree_sitter
         import watchdog
+        import yaml
         return True
     except ImportError:
         return False
