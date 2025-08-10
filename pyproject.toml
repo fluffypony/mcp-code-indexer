@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "mcp-code-indexer"
-version = "4.0.2"
+version = "4.1.0"
 description = "MCP server that tracks file descriptions across codebases, enabling AI agents to efficiently navigate and understand code through searchable summaries and token-aware overviews."
 authors = ["MCP Code Indexer Contributors"]
 maintainers = ["MCP Code Indexer Contributors"]
@@ -58,6 +58,15 @@ importlib-metadata = {version = ">=1.0.0", markers = "python_version < '3.8'"}
 fastapi = ">=0.104.0"
 uvicorn = ">=0.24.0"
 python-multipart = ">=0.0.6"
+
+[tool.poetry.extras]
+vector = [
+    "voyageai",
+    "turbopuffer", 
+    "tree-sitter",
+    "watchdog",
+    "pyyaml"
+]
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
