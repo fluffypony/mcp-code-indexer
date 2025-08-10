@@ -44,6 +44,7 @@ class VectorDaemon:
         self.monitored_projects: Set[str] = set()
         self.processing_queue: asyncio.Queue = asyncio.Queue(maxsize=config.max_queue_size)
         self.workers: list[asyncio.Task] = []
+        self.monitor_tasks: list[asyncio.Task] = []
         
         # Statistics
         self.stats = {
@@ -101,6 +102,7 @@ class VectorDaemon:
             # Start monitoring tasks
             monitor_task = asyncio.create_task(self._monitor_projects())
             stats_task = asyncio.create_task(self._stats_reporter())
+            self.monitor_tasks.extend([monitor_task, stats_task])
             
             # Wait for shutdown signal
             await self._run_until_shutdown()
@@ -141,6 +143,9 @@ class VectorDaemon:
                 
                 await asyncio.sleep(self.config.daemon_poll_interval)
                 
+            except asyncio.CancelledError:
+                logger.info("Project monitoring cancelled")
+                break
             except Exception as e:
                 logger.error(f"Error in project monitoring: {e}")
                 self.stats["errors_count"] += 1
@@ -180,6 +185,9 @@ class VectorDaemon:
                 await self._process_task(task, worker_id)
                 self.stats["last_activity"] = time.time()
                 
+            except asyncio.CancelledError:
+                logger.info(f"Worker {worker_id} cancelled")
+                break
             except Exception as e:
                 logger.error(f"Worker {worker_id} error: {e}")
                 self.stats["errors_count"] += 1
@@ -251,6 +259,9 @@ class VectorDaemon:
                 
                 await asyncio.sleep(60.0)  # Report every minute
                 
+            except asyncio.CancelledError:
+                logger.info("Stats reporting cancelled")
+                break
             except Exception as e:
                 logger.error(f"Error in stats reporting: {e}")
                 await asyncio.sleep(10.0)
@@ -264,9 +275,14 @@ class VectorDaemon:
         for worker in self.workers:
             worker.cancel()
         
-        # Wait for workers to finish
-        if self.workers:
-            await asyncio.gather(*self.workers, return_exceptions=True)
+        # Cancel monitor tasks
+        for task in self.monitor_tasks:
+            task.cancel()
+        
+        # Wait for all tasks to finish
+        all_tasks = self.workers + self.monitor_tasks
+        if all_tasks:
+            await asyncio.gather(*all_tasks, return_exceptions=True)
         
         logger.info("Vector daemon shutdown complete")
     
