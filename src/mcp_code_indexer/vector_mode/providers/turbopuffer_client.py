@@ -5,6 +5,8 @@ Provides integration with Turbopuffer's vector database for storing
 embeddings and performing similarity searches. Supports configurable
 regions for optimal latency and data residency compliance.
 
+Now uses the official turbopuffer Python SDK for improved reliability and type safety.
+
 Default region: gcp-europe-west3 (Frankfurt)
 Configure via TURBOPUFFER_REGION environment variable.
 """
@@ -12,16 +14,16 @@ Configure via TURBOPUFFER_REGION environment variable.
 import logging
 import uuid
 from typing import List, Dict, Any, Optional, Union
-import json
+import turbopuffer
 
-from .base_provider import BaseProvider, ProviderError
+from .base_provider import ProviderError
 from ..config import VectorConfig
 
 logger = logging.getLogger(__name__)
 
-class TurbopufferClient(BaseProvider):
+class TurbopufferClient:
     """
-    Client for Turbopuffer vector database.
+    Client for Turbopuffer vector database using official SDK.
     
     Supports region-specific endpoints for optimal performance:
     - AWS regions: aws-us-east-1, aws-us-west-2, aws-eu-central-1, etc.
@@ -36,16 +38,21 @@ class TurbopufferClient(BaseProvider):
         region: str = "gcp-europe-west3",
         **kwargs
     ):
-        # Construct region-specific base URL
-        base_url = f"https://{region}.turbopuffer.com/v1"
-        super().__init__(api_key, base_url, **kwargs)
+        self.api_key = api_key
         self.region = region
+        
+        # Initialize official TurboPuffer client
+        self.client = turbopuffer.Turbopuffer(
+            api_key=api_key,
+            region=region
+        )
+        logger.info(f"Initialized TurboPuffer client with region {region}")
     
-    async def health_check(self) -> bool:
+    def health_check(self) -> bool:
         """Check if Turbopuffer service is healthy."""
         try:
-            # List namespaces to test connectivity
-            await self.list_namespaces()
+            # List namespaces to test connectivity using official SDK
+            namespaces = self.client.namespaces()
             return True
         except Exception as e:
             logger.warning(f"Turbopuffer health check failed: {e}")
@@ -55,14 +62,14 @@ class TurbopufferClient(BaseProvider):
         """Generate a unique vector ID."""
         return f"{project_id}_{chunk_id}_{uuid.uuid4().hex[:8]}"
     
-    async def upsert_vectors(
+    def upsert_vectors(
         self,
         vectors: List[Dict[str, Any]],
         namespace: str,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Store or update vectors in the database.
+        Store or update vectors in the database using official SDK.
         
         Args:
             vectors: List of vector objects with id, values, and metadata
@@ -77,7 +84,7 @@ class TurbopufferClient(BaseProvider):
         
         logger.info(f"Upserting {len(vectors)} vectors to namespace '{namespace}'")
         
-        # Format vectors for Turbopuffer API
+        # Format vectors for Turbopuffer SDK
         formatted_vectors = []
         for vector in vectors:
             if "id" not in vector or "values" not in vector:
@@ -90,25 +97,19 @@ class TurbopufferClient(BaseProvider):
             }
             formatted_vectors.append(formatted_vector)
         
-        request_data = {
-            "vectors": formatted_vectors,
-        }
-        
         try:
-            response = await self._make_request(
-                method="POST",
-                endpoint=f"/namespaces/{namespace}/vectors",
-                data=request_data,
-            )
+            # Use official SDK
+            ns = self.client.namespace(namespace)
+            response = ns.upsert(vectors=formatted_vectors)
             
             logger.info(f"Successfully upserted {len(vectors)} vectors")
-            return response
+            return {"upserted": len(vectors)}
             
         except Exception as e:
             logger.error(f"Failed to upsert vectors: {e}")
             raise ProviderError(f"Vector upsert failed: {e}")
     
-    async def search_vectors(
+    def search_vectors(
         self,
         query_vector: List[float],
         top_k: int = 10,
@@ -118,7 +119,7 @@ class TurbopufferClient(BaseProvider):
         **kwargs
     ) -> List[Dict[str, Any]]:
         """
-        Search for similar vectors.
+        Search for similar vectors using official SDK.
         
         Args:
             query_vector: Query vector to search with
@@ -133,23 +134,20 @@ class TurbopufferClient(BaseProvider):
         """
         logger.debug(f"Searching {top_k} vectors in namespace '{namespace}'")
         
-        request_data = {
-            "vector": query_vector,
-            "top_k": top_k,
-            "include_attributes": include_attributes,
-        }
-        
-        if filters:
-            request_data["filters"] = filters
-        
         try:
-            response = await self._make_request(
-                method="POST",
-                endpoint=f"/namespaces/{namespace}/search",
-                data=request_data,
+            # Use official SDK
+            ns = self.client.namespace(namespace)
+            
+            # Build query parameters
+            query_params = [("vector", "ANN", query_vector)]
+            
+            results = ns.query(
+                rank_by=query_params,
+                top_k=top_k,
+                filters=filters,
+                include_attributes=include_attributes
             )
             
-            results = response.get("results", [])
             logger.debug(f"Found {len(results)} similar vectors")
             
             return results
@@ -225,29 +223,24 @@ class TurbopufferClient(BaseProvider):
             logger.error(f"Failed to get namespace stats: {e}")
             raise ProviderError(f"Namespace stats failed: {e}")
     
-    async def list_namespaces(self) -> List[str]:
-        """List all available namespaces."""
+    def list_namespaces(self) -> List[str]:
+        """List all available namespaces using official SDK."""
         try:
-            response = await self._make_request(
-                method="GET",
-                endpoint="/namespaces",
-            )
-            
-            namespaces = response.get("namespaces", [])
-            return [ns["name"] for ns in namespaces]
+            namespaces = self.client.namespaces()
+            return [ns.name for ns in namespaces]
             
         except Exception as e:
             logger.error(f"Failed to list namespaces: {e}")
             raise ProviderError(f"Namespace listing failed: {e}")
     
-    async def create_namespace(
+    def create_namespace(
         self,
         namespace: str,
         dimension: int,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Create a new namespace.
+        Create a new namespace using official SDK.
         
         Args:
             namespace: Name of the namespace to create
@@ -259,20 +252,15 @@ class TurbopufferClient(BaseProvider):
         """
         logger.info(f"Creating namespace '{namespace}' with dimension {dimension}")
         
-        request_data = {
-            "name": namespace,
-            "dimension": dimension,
-        }
-        
         try:
-            response = await self._make_request(
-                method="POST",
-                endpoint="/namespaces",
-                data=request_data,
+            # Use official SDK to create namespace
+            self.client.create_namespace(
+                name=namespace,
+                dimension=dimension
             )
             
             logger.info(f"Successfully created namespace '{namespace}'")
-            return response
+            return {"name": namespace, "dimension": dimension}
             
         except Exception as e:
             logger.error(f"Failed to create namespace: {e}")
@@ -342,7 +330,7 @@ class TurbopufferClient(BaseProvider):
         )
 
 def create_turbopuffer_client(config: VectorConfig) -> TurbopufferClient:
-    """Create a Turbopuffer client from configuration."""
+    """Create a Turbopuffer client from configuration using official SDK."""
     if not config.turbopuffer_api_key:
         raise ValueError("TURBOPUFFER_API_KEY is required for vector storage")
     

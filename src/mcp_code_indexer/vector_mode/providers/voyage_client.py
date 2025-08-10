@@ -3,42 +3,42 @@ Voyage AI client for embedding generation.
 
 Provides integration with Voyage AI's embedding API for generating
 high-quality code embeddings using the voyage-code-2 model.
+
+Now uses the official voyageai Python SDK for improved reliability and type safety.
 """
 
 import logging
 from typing import List, Dict, Any, Optional, Union
-import tiktoken
+import voyageai
 
-from .base_provider import BaseProvider, ProviderError
+from .base_provider import ProviderError
 from ..config import VectorConfig
 
 logger = logging.getLogger(__name__)
 
-class VoyageClient(BaseProvider):
-    """Client for Voyage AI embedding generation."""
+class VoyageClient:
+    """Client for Voyage AI embedding generation using official SDK."""
     
     def __init__(
         self,
         api_key: str,
         model: str = "voyage-code-2",
-        base_url: str = "https://api.voyageai.com/v1",
         **kwargs
     ):
-        super().__init__(api_key, base_url, **kwargs)
+        self.api_key = api_key
         self.model = model
         self._embedding_dimension: Optional[int] = None
         
-        # Note: Voyage AI uses proprietary tokenizer, not tiktoken
-        # We'll use approximate counting and let the API handle truncation
-        self.tokenizer = None
-        logger.info("Using approximate token counting - Voyage AI handles tokenization internally")
+        # Initialize official Voyage AI client
+        self.client = voyageai.Client(api_key=api_key)
+        logger.info(f"Initialized Voyage AI client with model {model}")
     
-    async def health_check(self) -> bool:
+    def health_check(self) -> bool:
         """Check if Voyage AI service is healthy."""
         try:
-            # Make a small test request
-            await self.generate_embeddings(["test"], input_type="query")
-            return True
+            # Make a small test request using official SDK
+            result = self.client.embed(["test"], model=self.model, input_type="query")
+            return len(result.embeddings) > 0
         except Exception as e:
             logger.warning(f"Voyage AI health check failed: {e}")
             return False
@@ -85,7 +85,7 @@ class VoyageClient(BaseProvider):
         
         return batches
     
-    async def generate_embeddings(
+    def generate_embeddings(
         self,
         texts: List[str],
         input_type: str = "document",
@@ -93,7 +93,7 @@ class VoyageClient(BaseProvider):
         **kwargs
     ) -> List[List[float]]:
         """
-        Generate embeddings for a list of texts.
+        Generate embeddings for a list of texts using official SDK.
         
         Args:
             texts: List of texts to embed
@@ -116,32 +116,23 @@ class VoyageClient(BaseProvider):
         for i, batch in enumerate(batches):
             logger.debug(f"Processing batch {i+1}/{len(batches)} with {len(batch)} texts")
             
-            request_data = {
-                "input": batch,
-                "model": self.model,
-                "input_type": input_type,
-                "truncation": truncation,
-            }
-            
             try:
-                response = await self._make_request(
-                    method="POST",
-                    endpoint="/embeddings",
-                    data=request_data,
+                # Use official SDK
+                result = self.client.embed(
+                    texts=batch,
+                    model=self.model,
+                    input_type=input_type,
+                    truncation=truncation
                 )
                 
-                # Extract embeddings from response
-                if "data" not in response:
-                    raise ProviderError("Invalid response format from Voyage AI")
-                
-                batch_embeddings = [item["embedding"] for item in response["data"]]
+                # Extract embeddings from SDK response
+                batch_embeddings = result.embeddings
                 all_embeddings.extend(batch_embeddings)
                 
                 # Log usage information if available
-                if "usage" in response:
-                    usage = response["usage"]
+                if hasattr(result, 'usage') and result.usage:
                     logger.debug(
-                        f"Batch {i+1} usage: {usage.get('total_tokens', 0)} tokens"
+                        f"Batch {i+1} usage: {result.usage.total_tokens} tokens"
                     )
                 
             except Exception as e:
@@ -151,14 +142,14 @@ class VoyageClient(BaseProvider):
         logger.info(f"Successfully generated {len(all_embeddings)} embeddings")
         return all_embeddings
     
-    async def get_embedding_dimension(self) -> int:
+    def get_embedding_dimension(self) -> int:
         """Get the dimension of embeddings produced by this model."""
         if self._embedding_dimension is not None:
             return self._embedding_dimension
         
         # Generate a test embedding to determine dimension
         try:
-            test_embeddings = await self.generate_embeddings(["test"], input_type="query")
+            test_embeddings = self.generate_embeddings(["test"], input_type="query")
             if test_embeddings:
                 self._embedding_dimension = len(test_embeddings[0])
                 logger.info(f"Detected embedding dimension: {self._embedding_dimension}")
@@ -200,7 +191,7 @@ class VoyageClient(BaseProvider):
         }
 
 def create_voyage_client(config: VectorConfig) -> VoyageClient:
-    """Create a Voyage client from configuration."""
+    """Create a Voyage client from configuration using official SDK."""
     if not config.voyage_api_key:
         raise ValueError("VOYAGE_API_KEY is required for embedding generation")
     
