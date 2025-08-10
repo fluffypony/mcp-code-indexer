@@ -1,7 +1,7 @@
 # MCP Code Indexer 🚀
 
-[![PyPI version](https://badge.fury.io/py/mcp-code-indexer.svg?47)](https://badge.fury.io/py/mcp-code-indexer)
-[![Python](https://img.shields.io/pypi/pyversions/mcp-code-indexer.svg?47)](https://pypi.org/project/mcp-code-indexer/)
+[![PyPI version](https://badge.fury.io/py/mcp-code-indexer.svg?48)](https://badge.fury.io/py/mcp-code-indexer)
+[![Python](https://img.shields.io/pypi/pyversions/mcp-code-indexer.svg?48)](https://pypi.org/project/mcp-code-indexer/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 A production-ready **Model Context Protocol (MCP) server** that revolutionizes how AI agents navigate and understand codebases. Built for high-concurrency environments with advanced database resilience, the server provides instant access to intelligent descriptions, semantic search, and context-aware recommendations while maintaining 800+ writes/sec throughput.
@@ -171,8 +171,8 @@ Vector Mode transforms how you search and understand codebases by using AI embed
 ### 🚀 Quick Start
 
 ```bash
-# Install vector mode dependencies
-pip install mcp-code-indexer[vector]
+# Install MCP Code Indexer (includes vector mode)
+pip install mcp-code-indexer
 
 # Set required API keys
 export VOYAGE_API_KEY="pa-your-voyage-api-key"

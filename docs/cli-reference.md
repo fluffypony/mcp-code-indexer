@@ -123,7 +123,7 @@ mcp-code-indexer --vector [VECTOR_OPTIONS] [SERVER_OPTIONS]
 **Use case:** Semantic code search, AI-powered code discovery, context-aware analysis
 
 **Prerequisites:**
-- Install with vector dependencies: `pip install mcp-code-indexer[vector]`
+- Requires API keys for Voyage AI and TurboPuffer
 - Set API keys: `VOYAGE_API_KEY` and `TURBOPUFFER_API_KEY`
 
 **Examples:**

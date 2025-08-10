@@ -38,7 +38,7 @@ Vector Mode requires additional dependencies and API keys:
 
 ```bash
 # Install with vector dependencies
-pip install mcp-code-indexer[vector]
+pip install mcp-code-indexer
 
 # Required API keys
 export VOYAGE_API_KEY="pa-your-voyage-api-key"      # For embeddings
@@ -313,7 +313,7 @@ export TURBOPUFFER_API_KEY="your-key"
 **2. Dependencies Missing**
 ```bash
 # Error: Vector mode requires additional dependencies
-pip install mcp-code-indexer[vector]
+pip install mcp-code-indexer
 ```
 
 **3. Daemon Not Starting**

@@ -1019,7 +1019,7 @@ async def main() -> None:
                 
                 # Check if vector mode is available
                 if not is_vector_mode_available():
-                    logger.error("Vector mode requires additional dependencies. Install with: pip install mcp-code-indexer[vector]")
+                    logger.error("Vector mode dependencies not found. Try reinstalling: pip install --upgrade mcp-code-indexer")
                     sys.exit(1)
                 
                 # Check API keys
