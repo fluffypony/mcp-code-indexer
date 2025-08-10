@@ -3270,7 +3270,10 @@ files = [
 aiohttp = "*"
 aiolimiter = "*"
 langchain-text-splitters = ">=0.3.8"
-numpy = {version = "*", markers = "python_version >= \"3.9\" and python_version < \"3.13\""}
+numpy = [
+    {version = "*", markers = "python_version >= \"3.9\" and python_version < \"3.13\""},
+    {version = ">=2.1.0", markers = "python_version == \"3.13\""},
+]
 pillow = "*"
 pydantic = ">=1.10.8"
 requests = "*"
@@ -3554,5 +3557,5 @@ cffi = ["cffi (>=1.11)"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.10,<3.13"
-content-hash = "8c950ed471e34d70563de4aaf022ff121f4d692e1cb12a04126f02694a9d51f4"
+python-versions = ">=3.10,<3.14"
+content-hash = "1ef1cf35fe65cdb5f8545c2f0b6be71a0eeea3e5ee27c05dc72ad19c0454fc9e"

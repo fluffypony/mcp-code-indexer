@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "mcp-code-indexer"
-version = "4.2.1"
+version = "4.2.2"
 description = "MCP server that tracks file descriptions across codebases, enabling AI agents to efficiently navigate and understand code through searchable summaries and token-aware overviews."
 authors = ["MCP Code Indexer Contributors"]
 maintainers = ["MCP Code Indexer Contributors"]
@@ -43,7 +43,7 @@ classifiers = [
 packages = [{include = "mcp_code_indexer", from = "src"}]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.14"
 tiktoken = ">=0.9.0"
 mcp = ">=1.9.0"
 gitignore-parser = "0.1.11"
