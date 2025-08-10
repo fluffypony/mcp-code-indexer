@@ -129,12 +129,15 @@ class VectorDaemon:
                 projects = await self.db_manager.get_all_projects()
                 
                 for project in projects:
-                    if project.name not in self.monitored_projects:
+                    if project.name not in self.monitored_projects and project.aliases:
                         logger.info(f"Adding project to monitoring: {project.name}")
                         self.monitored_projects.add(project.name)
                         
+                        # Use first alias as folder path
+                        folder_path = project.aliases[0]
+                        
                         # Queue initial indexing task
-                        await self._queue_project_scan(project.name, project.folder_path)
+                        await self._queue_project_scan(project.name, folder_path)
                 
                 await asyncio.sleep(self.config.daemon_poll_interval)
                 
