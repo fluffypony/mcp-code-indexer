@@ -28,12 +28,10 @@ class VoyageClient(BaseProvider):
         self.model = model
         self._embedding_dimension: Optional[int] = None
         
-        # Token counting for batching
-        try:
-            self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            self.tokenizer = None
-            logger.warning("Could not load tokenizer, token counting will be approximate")
+        # Note: Voyage AI uses proprietary tokenizer, not tiktoken
+        # We'll use approximate counting and let the API handle truncation
+        self.tokenizer = None
+        logger.info("Using approximate token counting - Voyage AI handles tokenization internally")
     
     async def health_check(self) -> bool:
         """Check if Voyage AI service is healthy."""
@@ -46,12 +44,10 @@ class VoyageClient(BaseProvider):
             return False
     
     def _count_tokens(self, text: str) -> int:
-        """Count tokens in text."""
-        if self.tokenizer:
-            return len(self.tokenizer.encode(text))
-        else:
-            # Rough approximation: 4 characters per token
-            return len(text) // 4
+        """Approximate token count - Voyage AI handles exact tokenization."""
+        # Voyage AI uses proprietary tokenizer - this is just for batching estimates
+        # Rough approximation: 4 characters per token (conservative estimate)
+        return len(text) // 4
     
     def _batch_texts_by_tokens(
         self,
@@ -66,20 +62,14 @@ class VoyageClient(BaseProvider):
         for text in texts:
             text_tokens = self._count_tokens(text)
             
-            # If single text exceeds limit, truncate it
+            # If single text exceeds limit, truncate it (let Voyage API handle exact truncation)
             if text_tokens > max_tokens_per_batch:
-                if self.tokenizer:
-                    # Truncate to fit
-                    tokens = self.tokenizer.encode(text)
-                    truncated_tokens = tokens[:max_tokens_per_batch - 100]  # Leave buffer
-                    text = self.tokenizer.decode(truncated_tokens)
-                    text_tokens = len(truncated_tokens)
-                else:
-                    # Rough truncation
-                    text = text[:max_tokens_per_batch * 4]
-                    text_tokens = max_tokens_per_batch
+                # Rough character-based truncation - Voyage API will handle exact tokenization
+                target_chars = (max_tokens_per_batch - 100) * 4  # Conservative estimate
+                text = text[:target_chars]
+                text_tokens = self._count_tokens(text)
                 
-                logger.warning(f"Truncated text from {self._count_tokens(text)} to {text_tokens} tokens")
+                logger.warning(f"Pre-truncated text to ~{text_tokens} tokens (Voyage API will handle exact tokenization)")
             
             # Check if adding this text would exceed the batch limit
             if current_tokens + text_tokens > max_tokens_per_batch and current_batch:
@@ -176,11 +166,13 @@ class VoyageClient(BaseProvider):
         except Exception as e:
             logger.warning(f"Could not determine embedding dimension: {e}")
         
-        # Default dimensions for known models
+        # Default dimensions for known Voyage models (as of 2024)
+        # Note: These may change - verify with Voyage AI documentation
         model_dimensions = {
-            "voyage-code-2": 1536,
-            "voyage-2": 1024,
-            "voyage-large-2": 1536,
+            "voyage-code-2": 1536,    # Code-optimized model
+            "voyage-2": 1024,         # General purpose
+            "voyage-large-2": 1536,   # Large general purpose
+            "voyage-3": 1024,         # Newer general purpose (if available)
         }
         
         self._embedding_dimension = model_dimensions.get(self.model, 1536)

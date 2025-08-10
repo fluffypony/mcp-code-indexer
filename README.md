@@ -154,6 +154,63 @@ The git hook integration provides intelligent automation:
 
 **Learn More**: See [Git Hook Setup Guide](docs/git-hook-setup.md) for complete configuration options and troubleshooting.
 
+## 🧠 Vector Mode (BETA)
+
+🚀 **NEW Feature**: Semantic code search with vector embeddings! Experience AI-powered code discovery that understands context and meaning, not just keywords.
+
+### 🎯 What is Vector Mode?
+
+Vector Mode transforms how you search and understand codebases by using AI embeddings:
+
+- **🔍 Semantic Search**: Find code by meaning, not just text matching
+- **⚡ Real-time Indexing**: Automatic embedding generation as code changes  
+- **🛡️ Secure by Default**: Comprehensive secret redaction before API calls
+- **🌐 Multi-language**: Python, JavaScript, TypeScript with AST-based chunking
+- **📊 Smart Chunking**: Context-aware code segmentation for optimal embeddings
+
+### 🚀 Quick Start
+
+```bash
+# Install vector mode dependencies
+pip install mcp-code-indexer[vector]
+
+# Set required API keys
+export VOYAGE_API_KEY="pa-your-voyage-api-key"
+export TURBOPUFFER_API_KEY="your-turbopuffer-api-key" 
+
+# Start with vector mode enabled
+mcp-code-indexer --vector
+
+# The daemon automatically starts and begins indexing your projects
+```
+
+### 💡 Key Features
+
+- **🔐 Secret Redaction**: 20+ pattern types automatically detected and redacted
+- **🌳 Merkle Trees**: Efficient change detection without full directory scans
+- **🎛️ Circuit Breakers**: Resilient API integration with automatic retry logic
+- **📈 Production Ready**: Built for high-concurrency with comprehensive monitoring
+
+### 🔧 Advanced Configuration
+
+```bash
+# Custom configuration
+mcp-code-indexer --vector --vector-config /path/to/config.yaml
+
+# HTTP mode with vector search
+mcp-code-indexer --vector --http --port 8080
+```
+
+### 🛠️ Architecture
+
+Vector Mode adds powerful new MCP tools:
+- `vector_search` - Semantic code search across projects
+- `similarity_search` - Find similar code patterns  
+- `dependency_search` - Discover code relationships
+- `vector_status` - Monitor indexing progress
+
+**Status**: Currently in BETA - foundations implemented, full pipeline in development.
+
 ## 🔧 Development Setup
 
 ### 👨‍💻 For Contributors

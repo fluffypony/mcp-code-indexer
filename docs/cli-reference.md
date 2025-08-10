@@ -17,6 +17,7 @@ Complete command-line interface reference for MCP Code Indexer. This guide cover
 |------|---------|---------|
 | **Server** | `mcp-code-indexer` | Start MCP server (stdio) |
 | **HTTP** | `mcp-code-indexer --http` | Start HTTP/REST API server |
+| **Vector (BETA)** | `mcp-code-indexer --vector` | Start with semantic search capabilities |
 | **Q&A** | `mcp-code-indexer --ask "question" PROJECT` | Simple AI question answering |
 | **Enhanced Q&A** | `mcp-code-indexer --deepask "question" PROJECT` | Enhanced AI analysis with file search |
 | **Admin** | `mcp-code-indexer --getprojects` | List all tracked projects |
@@ -110,6 +111,45 @@ mcp-code-indexer --http \
   --auth-token "$MCP_AUTH_TOKEN" \
   --cors-origins "https://myapp.com"
 ```
+
+### Vector Mode (BETA)
+
+Enable semantic search capabilities with AI embeddings.
+
+```bash
+mcp-code-indexer --vector [VECTOR_OPTIONS] [SERVER_OPTIONS]
+```
+
+**Use case:** Semantic code search, AI-powered code discovery, context-aware analysis
+
+**Prerequisites:**
+- Install with vector dependencies: `pip install mcp-code-indexer[vector]`
+- Set API keys: `VOYAGE_API_KEY` and `TURBOPUFFER_API_KEY`
+
+**Examples:**
+```bash
+# Basic vector mode
+mcp-code-indexer --vector
+
+# Vector mode with HTTP API
+mcp-code-indexer --vector --http --port 8080
+
+# Custom configuration
+mcp-code-indexer --vector --vector-config /path/to/config.yaml
+
+# Vector mode with enhanced logging
+mcp-code-indexer --vector --log-level DEBUG
+```
+
+**Vector Options:**
+- `--vector` - Enable vector mode with semantic search
+- `--vector-config PATH` - Path to vector mode configuration file
+
+**Required Environment Variables:**
+- `VOYAGE_API_KEY` - API key for Voyage AI embedding generation
+- `TURBOPUFFER_API_KEY` - API key for Turbopuffer vector storage
+
+**Status:** Currently in BETA. See [Vector Mode Documentation](vector-mode.md) for complete setup guide.
 
 ## Q&A Commands
 
