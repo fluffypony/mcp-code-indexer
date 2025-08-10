@@ -2,7 +2,11 @@
 Turbopuffer client for vector storage and search.
 
 Provides integration with Turbopuffer's vector database for storing
-embeddings and performing similarity searches.
+embeddings and performing similarity searches. Supports configurable
+regions for optimal latency and data residency compliance.
+
+Default region: gcp-europe-west3 (Frankfurt)
+Configure via TURBOPUFFER_REGION environment variable.
 """
 
 import logging
@@ -16,15 +20,26 @@ from ..config import VectorConfig
 logger = logging.getLogger(__name__)
 
 class TurbopufferClient(BaseProvider):
-    """Client for Turbopuffer vector database."""
+    """
+    Client for Turbopuffer vector database.
+    
+    Supports region-specific endpoints for optimal performance:
+    - AWS regions: aws-us-east-1, aws-us-west-2, aws-eu-central-1, etc.
+    - GCP regions: gcp-us-central1, gcp-europe-west3, gcp-us-east4, etc.
+    
+    Default region is gcp-europe-west3 (Frankfurt) for European compliance.
+    """
     
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.turbopuffer.com/v1",
+        region: str = "gcp-europe-west3",
         **kwargs
     ):
+        # Construct region-specific base URL
+        base_url = f"https://{region}.turbopuffer.com/v1"
         super().__init__(api_key, base_url, **kwargs)
+        self.region = region
     
     async def health_check(self) -> bool:
         """Check if Turbopuffer service is healthy."""
@@ -333,6 +348,7 @@ def create_turbopuffer_client(config: VectorConfig) -> TurbopufferClient:
     
     return TurbopufferClient(
         api_key=config.turbopuffer_api_key,
+        region=config.turbopuffer_region,
         timeout=30.0,
         max_retries=3,
     )

@@ -66,6 +66,7 @@ mcp-code-indexer --vector --vector-config config.yaml
 |----------|-------------|----------|
 | `VOYAGE_API_KEY` | Voyage AI API key for embeddings | Yes |
 | `TURBOPUFFER_API_KEY` | Turbopuffer API key for vector storage | Yes |
+| `TURBOPUFFER_REGION` | Turbopuffer region (default: gcp-europe-west3) | No |
 | `VECTOR_EMBEDDING_MODEL` | Embedding model (default: voyage-code-2) | No |
 | `VECTOR_BATCH_SIZE` | Batch size for embeddings (default: 128) | No |
 | `VECTOR_SIMILARITY_THRESHOLD` | Search similarity threshold (default: 0.5) | No |
@@ -81,6 +82,9 @@ batch_size: 128
 max_tokens_per_chunk: 1024
 similarity_threshold: 0.5
 max_search_results: 20
+
+# TurboPuffer configuration
+turbopuffer_region: "gcp-europe-west3"  # Frankfurt (default)
 
 # Chunking settings
 max_chunk_size: 1500
@@ -104,6 +108,36 @@ worker_count: 3
 # Security
 redact_secrets: true
 ```
+
+### TurboPuffer Regions
+
+Vector Mode supports configurable TurboPuffer regions for optimal latency and data residency compliance.
+
+**Available Regions:**
+
+| Region | Location | Endpoint |
+|--------|----------|----------|
+| `gcp-europe-west3` | Frankfurt, Germany (default) | `gcp-europe-west3.turbopuffer.com` |
+| `aws-us-east-1` | N. Virginia, USA | `aws-us-east-1.turbopuffer.com` |
+| `aws-us-west-2` | Oregon, USA | `aws-us-west-2.turbopuffer.com` |
+| `gcp-us-central1` | Iowa, USA | `gcp-us-central1.turbopuffer.com` |
+| `aws-ap-southeast-2` | Sydney, Australia | `aws-ap-southeast-2.turbopuffer.com` |
+
+**Configuration:**
+
+```bash
+# Environment variable
+export TURBOPUFFER_REGION="gcp-europe-west3"
+
+# Or in vector-config.yaml
+turbopuffer_region: "aws-us-east-1"
+```
+
+**Region Selection Guidelines:**
+
+- **Latency**: Choose closest region to your application servers
+- **Data Residency**: Consider regulatory requirements (GDPR, etc.)
+- **Redundancy**: Plan for multi-region deployments if needed
 
 ## Architecture
 

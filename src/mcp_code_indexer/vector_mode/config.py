@@ -18,6 +18,7 @@ class VectorConfig:
     # API Configuration
     voyage_api_key: Optional[str] = None
     turbopuffer_api_key: Optional[str] = None
+    turbopuffer_region: str = "gcp-europe-west3"
     
     # Embedding Configuration  
     embedding_model: str = "voyage-code-2"
@@ -57,9 +58,10 @@ class VectorConfig:
         return cls(
             voyage_api_key=os.getenv("VOYAGE_API_KEY"),
             turbopuffer_api_key=os.getenv("TURBOPUFFER_API_KEY"),
-            embedding_model=os.getenv("VECTOR_EMBEDDING_MODEL", "voyage-code-2"),
+            turbopuffer_region=os.getenv("TURBOPUFFER_REGION", "gcp-europe-west3"),
+            embedding_model=os.getenv("VECTOR_EMBEDDING_MODEL", "voyage-code-3"),
             batch_size=int(os.getenv("VECTOR_BATCH_SIZE", "128")),
-            max_tokens_per_chunk=int(os.getenv("VECTOR_MAX_TOKENS", "1024")),
+            max_tokens_per_chunk=int(os.getenv("VECTOR_MAX_TOKENS", "2048")),
             similarity_threshold=float(os.getenv("VECTOR_SIMILARITY_THRESHOLD", "0.5")),
             max_search_results=int(os.getenv("VECTOR_MAX_RESULTS", "20")),
             enable_recency_boost=os.getenv("VECTOR_RECENCY_BOOST", "true").lower() == "true",
@@ -121,6 +123,16 @@ class VectorConfig:
                 errors.append("VOYAGE_API_KEY environment variable required for vector mode")
             if not self.turbopuffer_api_key:
                 errors.append("TURBOPUFFER_API_KEY environment variable required for vector mode")
+        
+        # Validate TurboPuffer region
+        supported_regions = [
+            'aws-ap-southeast-2', 'aws-eu-central-1', 'aws-us-east-1', 
+            'aws-us-east-2', 'aws-us-west-2', 'gcp-us-central1',
+            'gcp-us-west1', 'gcp-us-east4', 'gcp-europe-west3'
+        ]
+        if self.turbopuffer_region not in supported_regions:
+            errors.append(f"turbopuffer_region '{self.turbopuffer_region}' is not supported. " +
+                         f"Supported regions: {', '.join(supported_regions)}")
         
         if self.batch_size <= 0:
             errors.append("batch_size must be positive")

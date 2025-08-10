@@ -176,7 +176,10 @@ pip install mcp-code-indexer[vector]
 
 # Set required API keys
 export VOYAGE_API_KEY="pa-your-voyage-api-key"
-export TURBOPUFFER_API_KEY="your-turbopuffer-api-key" 
+export TURBOPUFFER_API_KEY="your-turbopuffer-api-key"
+
+# Optional: Configure region (default: gcp-europe-west3)
+export TURBOPUFFER_REGION="gcp-europe-west3" 
 
 # Start with vector mode enabled
 mcp-code-indexer --vector
