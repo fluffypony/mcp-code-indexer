@@ -8,6 +8,7 @@ Entry point for the mcp-code-indexer package when installed via pip.
 import argparse
 import asyncio
 import json
+import signal
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -1094,7 +1095,40 @@ async def main() -> None:
         if transport:
             transport.server = server
 
-        await server.run()
+        # Setup signal handling for graceful shutdown
+        shutdown_event = asyncio.Event()
+        
+        def signal_handler(signum):
+            logger.info(f"Received shutdown signal {signum}")
+            shutdown_event.set()
+        
+        # Register signal handlers
+        loop = asyncio.get_running_loop()
+        for sig in [signal.SIGTERM, signal.SIGINT]:
+            loop.add_signal_handler(sig, signal_handler, sig)
+        
+        # Run server and wait for shutdown signal
+        server_task = asyncio.create_task(server.run())
+        shutdown_task = asyncio.create_task(shutdown_event.wait())
+        
+        try:
+            # Wait for either server completion or shutdown signal
+            done, pending = await asyncio.wait(
+                [server_task, shutdown_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Cancel remaining tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                    
+        except Exception as e:
+            error_handler.log_error(e, context={"phase": "runtime"})
+            raise
 
     except Exception as e:
         error_handler.log_error(e, context={"phase": "startup"})
