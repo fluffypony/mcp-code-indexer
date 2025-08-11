@@ -32,6 +32,7 @@ class Project(BaseModel):
     last_accessed: datetime = Field(
         default_factory=datetime.utcnow, description="Last access timestamp"
     )
+    vector_mode: bool = Field(default=False, description="Enable vector search for this project")
 
 
 class FileDescription(BaseModel):

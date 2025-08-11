@@ -744,7 +744,7 @@ class DatabaseManager:
         """Get all projects in the database."""
         async with self.get_connection() as db:
             cursor = await db.execute(
-                "SELECT id, name, aliases, created, last_accessed FROM projects"
+                "SELECT id, name, aliases, created, last_accessed, COALESCE(vector_mode, 0) FROM projects"
             )
             rows = await cursor.fetchall()
 
@@ -757,6 +757,30 @@ class DatabaseManager:
                     aliases=aliases,
                     created=row[3],
                     last_accessed=row[4],
+                    vector_mode=bool(row[5]),
+                )
+                projects.append(project)
+
+            return projects
+
+    async def get_vector_enabled_projects(self) -> List[Project]:
+        """Get projects that have vector mode enabled."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT id, name, aliases, created, last_accessed, vector_mode FROM projects WHERE vector_mode = 1"
+            )
+            rows = await cursor.fetchall()
+
+            projects = []
+            for row in rows:
+                aliases = json.loads(row[2]) if row[2] else []
+                project = Project(
+                    id=row[0],
+                    name=row[1],
+                    aliases=aliases,
+                    created=row[3],
+                    last_accessed=row[4],
+                    vector_mode=bool(row[5]),
                 )
                 projects.append(project)
 

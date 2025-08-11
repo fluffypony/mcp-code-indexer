@@ -113,11 +113,13 @@ class VectorDaemon:
         
         while self.is_running:
             try:
-                # Get all projects that need vector indexing
-                projects = await self.db_manager.get_all_projects()
+                # Get projects that have vector mode enabled
+                projects = await self.db_manager.get_vector_enabled_projects()
                 
                 for project in projects:
-                    if project.name not in self.monitored_projects and project.aliases:
+                    if (project.name not in self.monitored_projects and 
+                        project.aliases and 
+                        project.vector_mode):
                         logger.info(f"Adding project to monitoring: {project.name}")
                         self.monitored_projects.add(project.name)
                         
