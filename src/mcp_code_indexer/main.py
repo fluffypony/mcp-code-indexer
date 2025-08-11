@@ -1138,10 +1138,13 @@ async def main() -> None:
         if vector_daemon_task and not vector_daemon_task.done():
             logger.info("Cancelling vector daemon")
             vector_daemon_task.cancel()
+        
+        # Wait for vector daemon to finish
+        if vector_daemon_task:
             try:
                 await vector_daemon_task
             except asyncio.CancelledError:
-                pass
+                logger.info("Vector daemon cancelled successfully")
 
 
 def cli_main() -> None:

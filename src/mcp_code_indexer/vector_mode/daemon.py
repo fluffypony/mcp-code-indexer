@@ -38,8 +38,6 @@ class VectorDaemon:
         self.db_manager = db_manager
         self.cache_dir = cache_dir
         self.is_running = False
-        self.shutdown_requested = False
-        self.shutdown_event = asyncio.Event()
         
         # Process tracking
         self.monitored_projects: Set[str] = set()
@@ -56,24 +54,7 @@ class VectorDaemon:
             "last_activity": time.time(),
         }
         
-        # Setup signal handlers will be done in start() method to access event loop
-        
-    def _setup_signal_handlers(self) -> None:
-        """Setup signal handlers for graceful shutdown."""
-        try:
-            loop = asyncio.get_running_loop()
-            for sig in [signal.SIGTERM, signal.SIGINT]:
-                loop.add_signal_handler(sig, self._signal_handler, sig)
-            if hasattr(signal, 'SIGHUP'):
-                loop.add_signal_handler(signal.SIGHUP, self._signal_handler, signal.SIGHUP)
-        except Exception as e:
-            logger.warning(f"Could not setup signal handlers: {e}")
-    
-    def _signal_handler(self, signum: int) -> None:
-        """Handle shutdown signals."""
-        logger.info(f"Received signal {signum}, initiating graceful shutdown")
-        self.shutdown_requested = True
-        self.shutdown_event.set()
+        # Signal handling is delegated to the parent process
     
     async def start(self) -> None:
         """Start the vector daemon."""
@@ -82,9 +63,6 @@ class VectorDaemon:
             return
         
         self.is_running = True
-        
-        # Setup signal handlers now that we have an event loop
-        self._setup_signal_handlers()
         
         logger.info(
             "Starting vector daemon",
@@ -119,19 +97,21 @@ class VectorDaemon:
         finally:
             await self._cleanup()
     
-    async def _notify_shutdown(self) -> None:
-        """Notify shutdown event (called from signal handler)."""
-        self.shutdown_event.set()
-    
     async def _run_until_shutdown(self) -> None:
         """Run daemon until shutdown is requested."""
-        await self.shutdown_event.wait()
+        # Wait indefinitely until task is cancelled by parent process
+        try:
+            while True:
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            logger.info("Vector daemon shutdown requested")
+            raise
     
     async def _monitor_projects(self) -> None:
         """Monitor projects for vector indexing requirements."""
         logger.info("Starting project monitoring")
         
-        while not self.shutdown_requested:
+        while self.is_running:
             try:
                 # Get all projects that need vector indexing
                 projects = await self.db_manager.get_all_projects()
@@ -176,7 +156,7 @@ class VectorDaemon:
         """Worker task to process queued items."""
         logger.info(f"Starting worker: {worker_id}")
         
-        while not self.shutdown_requested:
+        while self.is_running:
             try:
                 # Get task from queue with timeout
                 try:
@@ -245,7 +225,7 @@ class VectorDaemon:
     
     async def _stats_reporter(self) -> None:
         """Periodically report daemon statistics."""
-        while not self.shutdown_requested:
+        while self.is_running:
             try:
                 uptime = time.time() - self.stats["start_time"]
                 
