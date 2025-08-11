@@ -1129,6 +1129,19 @@ async def main() -> None:
                 )
             except asyncio.TimeoutError:
                 logger.warning("Some tasks did not cancel within timeout")
+        
+        # Force close any remaining connections and cleanup resources
+        try:
+            # Give a moment for final cleanup
+            await asyncio.sleep(0.1)
+            
+            # Shutdown the event loop executor to stop any background threads
+            loop = asyncio.get_running_loop()
+            if hasattr(loop, '_default_executor') and loop._default_executor:
+                loop._default_executor.shutdown(wait=False)
+                
+        except Exception as e:
+            logger.warning(f"Error during final cleanup: {e}")
 
 
 def cli_main() -> None:
@@ -1146,6 +1159,19 @@ def cli_main() -> None:
         print(f"Server failed to start: {e}", file=sys.stderr)
         print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        # Force cleanup of any remaining resources to prevent hanging
+        import threading
+        import time
+        
+        # Give main threads a moment to finish
+        time.sleep(0.1)
+        
+        # Force exit if daemon threads are preventing shutdown
+        active_threads = threading.active_count()
+        if active_threads > 1:  # More than just the main thread
+            import os
+            os._exit(0)
 
 
 if __name__ == "__main__":
