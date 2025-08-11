@@ -1114,12 +1114,21 @@ async def main() -> None:
                 logger.info("Vector daemon cancelled successfully")
         
         # Clean up any remaining asyncio tasks to prevent hanging
-        tasks = [task for task in asyncio.all_tasks() if not task.done()]
+        current_task = asyncio.current_task()
+        tasks = [task for task in asyncio.all_tasks() if not task.done() and task is not current_task]
         if tasks:
             logger.info(f"Cancelling {len(tasks)} remaining tasks")
             for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+                if not task.cancelled():
+                    task.cancel()
+            # Wait for cancellation but don't wait forever
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True), 
+                    timeout=2.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Some tasks did not cancel within timeout")
 
 
 def cli_main() -> None:
