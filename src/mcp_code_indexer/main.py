@@ -1095,7 +1095,46 @@ async def main() -> None:
         if transport:
             transport.server = server
 
-        await server.run()
+        # If vector mode is enabled, we need to handle signals properly
+        # because server.run() may not respond to KeyboardInterrupt
+        if args.vector and vector_daemon_task:
+            # Setup signal handling for graceful shutdown
+            shutdown_event = asyncio.Event()
+            
+            def signal_handler():
+                logger.info("Shutdown signal received")
+                shutdown_event.set()
+            
+            # Register signal handlers
+            loop = asyncio.get_running_loop()
+            for sig in [signal.SIGTERM, signal.SIGINT]:
+                loop.add_signal_handler(sig, signal_handler)
+            
+            # Run server and wait for shutdown signal
+            server_task = asyncio.create_task(server.run())
+            shutdown_task = asyncio.create_task(shutdown_event.wait())
+            
+            try:
+                # Wait for either server completion or shutdown signal
+                done, pending = await asyncio.wait(
+                    [server_task, shutdown_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                # Cancel remaining tasks
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                        
+            except Exception as e:
+                logger.error(f"Error during server execution: {e}")
+                raise
+        else:
+            # Normal mode - let server handle KeyboardInterrupt naturally
+            await server.run()
 
     except Exception as e:
         error_handler.log_error(e, context={"phase": "startup"})
