@@ -6,6 +6,7 @@ env/
 
 # Python cache files
 __pycache__/
+tests/__pycache__/
 *.pyc
 *.pyo
 *.pyd
