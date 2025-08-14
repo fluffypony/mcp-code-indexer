@@ -16,21 +16,6 @@ from src.mcp_code_indexer.server.mcp_server import MCPCodeIndexServer
 class TestMCPServerIntegration:
     """Integration tests for the MCP server."""
 
-    @pytest_asyncio.fixture
-    async def mcp_server(self, tmp_path: Path):
-        """Create an MCP server for testing."""
-        db_path = tmp_path / "test.db"
-        cache_dir = tmp_path / "cache"
-
-        server = MCPCodeIndexServer(
-            token_limit=1000, db_path=db_path, cache_dir=cache_dir
-        )
-        await server.initialize()
-
-        yield server
-
-        await server.shutdown()
-
     async def test_server_initialization(self, mcp_server):
         """Test server initializes correctly."""
         assert mcp_server.token_limit == 1000
@@ -391,21 +376,6 @@ class TestMCPServerIntegration:
 class TestMCPToolErrors:
     """Test error handling in MCP tools."""
 
-    @pytest_asyncio.fixture
-    async def mcp_server(self, tmp_path: Path):
-        """Create an MCP server for error testing."""
-        db_path = tmp_path / "test.db"
-        cache_dir = tmp_path / "cache"
-
-        server = MCPCodeIndexServer(
-            token_limit=1000, db_path=db_path, cache_dir=cache_dir
-        )
-        await server.initialize()
-
-        yield server
-
-        await server.shutdown()
-
     async def test_missing_required_fields(self, mcp_server):
         """Test tool calls with missing required fields."""
         # This should trigger validation error
@@ -510,21 +480,6 @@ class TestMCPPerformance:
 @pytest.mark.integration
 class TestMCPWorkflow:
     """Test complete MCP workflows."""
-
-    @pytest_asyncio.fixture
-    async def mcp_server(self, tmp_path: Path):
-        """Create server for workflow testing."""
-        db_path = tmp_path / "test.db"
-        cache_dir = tmp_path / "cache"
-
-        server = MCPCodeIndexServer(
-            token_limit=1000, db_path=db_path, cache_dir=cache_dir
-        )
-        await server.initialize()
-
-        yield server
-
-        await server.shutdown()
 
     async def test_complete_project_workflow(self, mcp_server):
         """Test complete workflow from project creation to merge."""
