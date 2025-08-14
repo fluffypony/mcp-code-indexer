@@ -740,6 +740,25 @@ class DatabaseManager:
             await db.commit()
             logger.debug(f"Updated project: {project.id}")
 
+    async def set_project_vector_mode(self, project_id: str, enabled: bool) -> None:
+        """Set the vector_mode for a specific project."""
+        async with self.get_write_connection_with_retry("set_project_vector_mode") as db:
+            await db.execute(
+                "UPDATE projects SET vector_mode = ? WHERE id = ?",
+                (int(enabled), project_id),
+            )
+            
+            # Check if the project was actually updated
+            cursor = await db.execute(
+                "SELECT changes()"
+            )
+            changes = await cursor.fetchone()
+            if changes[0] == 0:
+                raise ValueError(f"Project not found: {project_id}")
+            
+            await db.commit()
+            logger.debug(f"Set vector_mode={enabled} for project: {project_id}")
+
     async def get_all_projects(self) -> List[Project]:
         """Get all projects in the database."""
         async with self.get_connection() as db:

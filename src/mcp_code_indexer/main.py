@@ -377,6 +377,7 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
             "get_word_frequency": server._handle_get_word_frequency,
             "search_codebase_overview": server._handle_search_codebase_overview,
             "check_database_health": server._handle_check_database_health,
+            "enabled_vector_mode": server._handle_enabled_vector_mode,
         }
 
         if tool_name not in tool_handlers:
