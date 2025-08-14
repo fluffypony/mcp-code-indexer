@@ -15,22 +15,6 @@ from mcp_code_indexer.database.models import Project
 from mcp_code_indexer.server.mcp_server import MCPCodeIndexServer
 
 
-@pytest_asyncio.fixture
-async def mcp_server(temp_db, mock_file_system):
-    """Create an MCP server for testing."""
-    server = MCPCodeIndexServer(
-        token_limit=1000,
-        db_path=temp_db,
-        cache_dir=mock_file_system / "cache",
-    )
-    await server.initialize()
-    yield server
-    
-    # Cleanup
-    if hasattr(server, "db_manager") and server.db_manager:
-        await server.db_manager.close_pool()
-
-
 class TestDatabaseManagerVectorMode:
     """Test DatabaseManager vector mode operations."""
 
@@ -94,11 +78,11 @@ class TestDatabaseManagerVectorMode:
 class TestMCPHandlerVectorMode:
     """Test MCP server handler for vector mode operations."""
 
-    async def test_handle_enabled_vector_mode_enable_success(self, mcp_server, mock_file_system):
+    async def test_handle_enabled_vector_mode_enable_success(self, mcp_server, tmp_path):
         """Test successful vector mode enable via MCP handler."""
         arguments = {
             "projectName": "Test Project",
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": True,
         }
         
@@ -109,12 +93,12 @@ class TestMCPHandlerVectorMode:
         assert "enabled" in result["message"]
         assert "project_id" in result
 
-    async def test_handle_enabled_vector_mode_disable_success(self, mcp_server, mock_file_system):
+    async def test_handle_enabled_vector_mode_disable_success(self, mcp_server, tmp_path):
         """Test successful vector mode disable via MCP handler."""
         # First enable it
         enable_arguments = {
             "projectName": "Test Project",
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": True,
         }
         await mcp_server._handle_enabled_vector_mode(enable_arguments)
@@ -122,7 +106,7 @@ class TestMCPHandlerVectorMode:
         # Then disable it
         disable_arguments = {
             "projectName": "Test Project",
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": False,
         }
         
@@ -133,11 +117,11 @@ class TestMCPHandlerVectorMode:
         assert "disabled" in result["message"]
         assert "project_id" in result
 
-    async def test_handle_enabled_vector_mode_new_project(self, mcp_server, mock_file_system):
+    async def test_handle_enabled_vector_mode_new_project(self, mcp_server, tmp_path):
         """Test that handler creates new project if it doesn't exist."""
         arguments = {
             "projectName": "New Project",
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": True,
         }
         
@@ -147,12 +131,12 @@ class TestMCPHandlerVectorMode:
         assert result["vector_mode"] is True
         assert result["project_id"] is not None
 
-    async def test_handle_enabled_vector_mode_integration(self, mcp_server, mock_file_system):
+    async def test_handle_enabled_vector_mode_integration(self, mcp_server, tmp_path):
         """Test integration between handler and database operations."""
         project_name = "Integration Test Project"
         arguments = {
             "projectName": project_name,
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": True,
         }
         
@@ -161,7 +145,7 @@ class TestMCPHandlerVectorMode:
         project_id = result["project_id"]
         
         # Verify in database directly
-        db_manager = await mcp_server.db_factory.get_database_manager(str(mock_file_system))
+        db_manager = await mcp_server.db_factory.get_database_manager(str(tmp_path))
         projects = await db_manager.get_all_projects()
         project = next((p for p in projects if p.id == project_id), None)
         
@@ -170,12 +154,12 @@ class TestMCPHandlerVectorMode:
         # Project names are normalized to lowercase in the database
         assert project.name == project_name.lower()
 
-    async def test_handle_enabled_vector_mode_boolean_validation(self, mcp_server, mock_file_system):
+    async def test_handle_enabled_vector_mode_boolean_validation(self, mcp_server, tmp_path):
         """Test that handler properly handles boolean values."""
         # Test with explicit True
         result = await mcp_server._handle_enabled_vector_mode({
             "projectName": "Bool Test",
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": True,
         })
         assert result["success"] is True
@@ -184,7 +168,7 @@ class TestMCPHandlerVectorMode:
         # Test with explicit False
         result = await mcp_server._handle_enabled_vector_mode({
             "projectName": "Bool Test",
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": False,
         })
         assert result["success"] is True
@@ -194,7 +178,7 @@ class TestMCPHandlerVectorMode:
 class TestVectorModeErrorHandling:
     """Test error handling scenarios for vector mode operations."""
 
-    async def test_database_error_handling(self, mcp_server, mock_file_system):
+    async def test_database_error_handling(self, mcp_server, tmp_path):
         """Test that database errors are handled gracefully."""
         # Close the database to simulate an error
         if hasattr(mcp_server, "db_manager") and mcp_server.db_manager:
@@ -202,7 +186,7 @@ class TestVectorModeErrorHandling:
         
         arguments = {
             "projectName": "Error Test",
-            "folderPath": str(mock_file_system),
+            "folderPath": str(tmp_path),
             "enabled": True,
         }
         

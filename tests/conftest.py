@@ -286,6 +286,29 @@ class AsyncTestContext:
 
 
 @pytest_asyncio.fixture
+async def mcp_server(tmp_path: Path):
+    """Create an MCP server for testing."""
+    db_path = tmp_path / "test.db"
+    cache_dir = tmp_path / "cache"
+
+    # Import here to avoid circular imports
+    from mcp_code_indexer.server.mcp_server import MCPCodeIndexServer
+    
+    server = MCPCodeIndexServer(
+        token_limit=1000, db_path=db_path, cache_dir=cache_dir
+    )
+    await server.initialize()
+
+    yield server
+
+    # Cleanup
+    if hasattr(server, "shutdown"):
+        await server.shutdown()
+    elif hasattr(server, "db_manager") and server.db_manager:
+        await server.db_manager.close_pool()
+
+
+@pytest_asyncio.fixture
 async def async_test_context():
     """Provide an async test context for resource management."""
     async with AsyncTestContext() as context:
