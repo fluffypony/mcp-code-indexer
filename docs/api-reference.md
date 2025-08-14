@@ -4,10 +4,10 @@
 **Last Updated:** 2025-01-15
 **Verified Against:** src/mcp_code_indexer/server/mcp_server.py
 **Test Sources:** tests/integration/test_mcp_tools.py, tests/unit/test_query_preprocessor.py
-**Implementation:** All 11 tools verified against actual server code
+**Implementation:** All 12 tools verified against actual server code
 ---
 
-Complete reference for all 11 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
+Complete reference for all 12 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
 
 **🎯 New to MCP Code Indexer?** Start with the [Quick Start Guide](../README.md#-quick-start) to set up your server first.
 
@@ -26,6 +26,7 @@ Complete reference for all 11 MCP tools provided by the Code Indexer server. Whe
 | [`update_codebase_overview`](#update_codebase_overview) | Create project docs | `projectName`, `folderPath`, `overview` |
 | [`search_codebase_overview`](#search_codebase_overview) | Search overviews | `projectName`, `folderPath`, `searchWord` |
 | [`check_database_health`](#check_database_health) | System monitoring | None |
+| [`enabled_vector_mode`](#enabled_vector_mode) | Configure vector search | `projectName`, `folderPath`, `enabled` |
 
 ⭐ **Start here** for new projects
 📖 **[See Examples →](../examples/)**
@@ -49,6 +50,8 @@ Complete reference for all 11 MCP tools provided by the Code Indexer server. Whe
   - [update_codebase_overview](#update_codebase_overview)
 - [System Monitoring](#system-monitoring)
   - [check_database_health](#check_database_health)
+- [Configuration Management](#configuration-management)
+  - [enabled_vector_mode](#enabled_vector_mode)
 - [Common Parameters](#common-parameters)
 - [Error Handling](#error-handling)
 
@@ -812,6 +815,131 @@ The tool provides intelligent recommendations based on current system state:
 - **"Consider scaling resources"** - When system resources >85%
 - **"Check for database corruption"** - When integrity issues found
 - **"Review recent configuration changes"** - When performance regression detected
+
+## Configuration Management
+
+### enabled_vector_mode
+
+Enables or disables vector mode for a project. Vector mode provides semantic search capabilities with embeddings for enhanced code navigation and discovery.
+
+#### Parameters
+
+```typescript
+interface EnabledVectorModeParams {
+  projectName: string;        // The name of the project
+  folderPath: string;         // Absolute path to the project folder on disk
+  enabled: boolean;           // Whether to enable (true) or disable (false) vector mode
+}
+```
+
+#### Response
+
+```typescript
+interface EnabledVectorModeResponse {
+  success: boolean;           // Whether the operation succeeded
+  message: string;            // Success or error message
+  project_id: string;         // Project identifier
+  vector_mode: boolean | null; // Current vector mode status (null on error)
+  error?: string;             // Error details if operation failed
+}
+```
+
+#### Example
+
+```javascript
+// Enable vector mode for a project
+const result = await mcp.callTool("enabled_vector_mode", {
+  projectName: "my-web-app",
+  folderPath: "/home/user/projects/my-web-app",
+  enabled: true
+});
+
+// Response:
+{
+  "success": true,
+  "message": "Vector mode enabled for project",
+  "project_id": "my_web_app_abc123",
+  "vector_mode": true
+}
+
+// Disable vector mode
+const disableResult = await mcp.callTool("enabled_vector_mode", {
+  projectName: "my-web-app", 
+  folderPath: "/home/user/projects/my-web-app",
+  enabled: false
+});
+
+// Response:
+{
+  "success": true,
+  "message": "Vector mode disabled for project", 
+  "project_id": "my_web_app_abc123",
+  "vector_mode": false
+}
+```
+
+#### Command Line Usage
+
+```bash
+# Enable vector mode
+mcp-code-indexer --runcommand '{
+  "method": "tools/call",
+  "params": {
+    "name": "enabled_vector_mode",
+    "arguments": {
+      "projectName": "my-web-app",
+      "folderPath": "/home/user/projects/my-web-app",
+      "enabled": true
+    }
+  }
+}'
+
+# Disable vector mode  
+mcp-code-indexer --runcommand '{
+  "method": "tools/call",
+  "params": {
+    "name": "enabled_vector_mode", 
+    "arguments": {
+      "projectName": "my-web-app",
+      "folderPath": "/home/user/projects/my-web-app",
+      "enabled": false
+    }
+  }
+}'
+```
+
+#### 🎯 Use Cases
+
+- **Enable Semantic Search**: Turn on vector-based code search for large codebases
+- **Performance Optimization**: Disable vector mode for smaller projects to reduce overhead
+- **Feature Configuration**: Dynamically configure search capabilities per project
+- **Testing & Development**: Toggle vector features during development and testing
+
+#### ⚠️ Important Notes
+
+- Vector mode requires additional setup and API keys for embedding providers
+- Enabling vector mode may increase processing time and storage requirements
+- The tool creates projects automatically if they don't exist
+- Changes take effect immediately but indexing may take time for large codebases
+
+#### 🔧 Error Handling
+
+```javascript
+// Handle errors gracefully
+try {
+  const result = await mcp.callTool("enabled_vector_mode", {
+    projectName: "my-web-app",
+    folderPath: "/invalid/path",
+    enabled: true
+  });
+  
+  if (!result.success) {
+    console.error("Failed to enable vector mode:", result.error);
+  }
+} catch (error) {
+  console.error("Tool execution failed:", error.message);
+}
+```
 
 ## Common Parameters
 

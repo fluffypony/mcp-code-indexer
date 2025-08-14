@@ -363,7 +363,7 @@ Comprehensive documentation organized by user journey and expertise level.
 | Guide | Purpose | Time Investment |
 |-------|---------|-----------------|
 | **[Quick Start](#-quick-start)** | Install and run your first server | 2 minutes |
-| **[API Reference](docs/api-reference.md)** | Master all 11 MCP tools | 15 minutes |
+| **[API Reference](docs/api-reference.md)** | Master all 12 MCP tools | 15 minutes |
 | **[HTTP API Reference](docs/http-api.md)** | REST API for web applications | 10 minutes |
 | **[Q&A Interface](docs/qa-interface.md)** | AI-powered codebase analysis | 8 minutes |
 | **[Git Hook Setup](docs/git-hook-setup.md)** | Automate your workflow | 5 minutes |

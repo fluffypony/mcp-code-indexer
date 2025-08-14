@@ -684,6 +684,37 @@ class MCPCodeIndexServer:
                         "additionalProperties": False,
                     },
                 ),
+                types.Tool(
+                    name="enabled_vector_mode",
+                    description=(
+                        "Enables or disables vector mode for a project. Vector mode "
+                        "provides semantic search capabilities with embeddings for "
+                        "enhanced code navigation and discovery."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {
+                                "type": "string",
+                                "description": "The name of the project",
+                            },
+                            "folderPath": {
+                                "type": "string",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
+                            },
+                            "enabled": {
+                                "type": "boolean",
+                                "description": (
+                                    "Whether to enable (true) or disable (false) vector mode"
+                                ),
+                            },
+                        },
+                        "required": ["projectName", "folderPath", "enabled"],
+                        "additionalProperties": False,
+                    },
+                ),
             ]
 
         @self.server.call_tool()  # type: ignore[misc]
@@ -711,6 +742,7 @@ class MCPCodeIndexServer:
                 "get_word_frequency": self._handle_get_word_frequency,
                 "check_database_health": self._handle_check_database_health,
                 "search_codebase_overview": self._handle_search_codebase_overview,
+                "enabled_vector_mode": self._handle_enabled_vector_mode,
             }
 
             if name not in tool_handlers:
@@ -1480,6 +1512,32 @@ class MCPCodeIndexServer:
             "timestamp": datetime.utcnow().isoformat(),
             "status_summary": self._generate_health_summary(comprehensive_diagnostics),
         }
+
+    async def _handle_enabled_vector_mode(
+        self, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle enabled_vector_mode tool calls."""
+        folder_path = arguments["folderPath"]
+        db_manager = await self.db_factory.get_database_manager(folder_path)
+        project_id = await self._get_or_create_project_id(arguments)
+        enabled = arguments["enabled"]
+        
+        try:
+            await db_manager.set_project_vector_mode(project_id, enabled)
+            
+            return {
+                "success": True,
+                "message": f"Vector mode {'enabled' if enabled else 'disabled'} for project",
+                "project_id": project_id,
+                "vector_mode": enabled,
+            }
+        except ValueError as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "project_id": project_id,
+                "vector_mode": None,
+            }
 
     def _generate_health_summary(self, diagnostics: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a concise health summary from comprehensive diagnostics."""
