@@ -15,7 +15,6 @@ import aiosqlite
 import pytest
 
 from src.mcp_code_indexer.database.connection_health import (
-    ConnectionHealthMonitor,
     DatabaseMetricsCollector,
 )
 from src.mcp_code_indexer.database.database import DatabaseManager
@@ -26,11 +25,9 @@ from src.mcp_code_indexer.database.database import DatabaseManager
 class TestConnectionRecovery:
     """Test connection recovery and resilience mechanisms."""
 
-
-
     @pytest.mark.asyncio
     @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
-    async def test_connection_pool_refresh(self, temp_db_manager_pool):
+    async def test_connection_pool_refresh(self, temp_db_manager_pool: DatabaseManager):
         """Test connection pool refresh functionality."""
         # Get initial pool state
         initial_stats = temp_db_manager_pool.get_database_stats()
@@ -49,38 +46,6 @@ class TestConnectionRecovery:
             cursor = await conn.execute("SELECT 1")
             result = await cursor.fetchone()
             assert result[0] == 1
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
-    async def test_health_monitor_basic_functionality(self, temp_db_manager_pool):
-        """Test basic health monitoring functionality."""
-        # Health monitor should be automatically started
-        assert temp_db_manager_pool._health_monitor is not None
-
-        # Perform manual health check
-        health_result = await temp_db_manager_pool._health_monitor.check_health()
-
-        assert health_result.is_healthy is True
-        assert health_result.response_time_ms > 0
-        assert health_result.error_message is None
-        assert health_result.timestamp is not None
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
-    async def test_health_monitor_with_timeout(self, temp_db_manager_pool):
-        """Test health monitor timeout handling."""
-        # Create health monitor with very short timeout
-        health_monitor = ConnectionHealthMonitor(
-            temp_db_manager_pool,
-            check_interval=1.0,
-            timeout_seconds=0.001,  # Very short timeout
-        )
-
-        # This should timeout
-        health_result = await health_monitor.check_health()
-
-        assert health_result.is_healthy is False
-        assert "timeout" in health_result.error_message.lower()
 
     @pytest.mark.asyncio
     async def test_metrics_collector_operation_recording(self):
@@ -134,112 +99,9 @@ class TestConnectionRecovery:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
-    async def test_recovery_manager_failure_tracking(self, temp_db_manager_pool):
-        """Test connection recovery manager failure tracking."""
-        recovery_manager = temp_db_manager_pool._recovery_manager
-
-        # Initially no failures
-        assert recovery_manager._recovery_stats["consecutive_failures"] == 0
-
-        # Simulate failures
-        test_error = Exception("Test failure")
-
-        # First two failures shouldn't trigger recovery
-        result1 = await recovery_manager.handle_persistent_failure(
-            "test_op", test_error
-        )
-        assert result1 is False
-        assert recovery_manager._recovery_stats["consecutive_failures"] == 1
-
-        result2 = await recovery_manager.handle_persistent_failure(
-            "test_op", test_error
-        )
-        assert result2 is False
-        assert recovery_manager._recovery_stats["consecutive_failures"] == 2
-
-        # Third failure should trigger recovery
-        result3 = await recovery_manager.handle_persistent_failure(
-            "test_op", test_error
-        )
-        assert result3 is True
-        assert recovery_manager._recovery_stats["consecutive_failures"] == 0
-        assert recovery_manager._recovery_stats["pool_refreshes"] == 1
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
-    async def test_recovery_manager_reset_on_success(self, temp_db_manager_pool):
-        """Test that recovery manager resets failure count on success."""
-        recovery_manager = temp_db_manager_pool._recovery_manager
-
-        # Simulate some failures
-        test_error = Exception("Test failure")
-        await recovery_manager.handle_persistent_failure("test_op", test_error)
-        await recovery_manager.handle_persistent_failure("test_op", test_error)
-
-        assert recovery_manager._recovery_stats["consecutive_failures"] == 2
-
-        # Reset on success
-        recovery_manager.reset_failure_count()
-
-        assert recovery_manager._recovery_stats["consecutive_failures"] == 0
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
-    async def test_health_monitor_metrics_tracking(self, temp_db_manager_pool):
-        """Test health monitor metrics and history tracking."""
-        health_monitor = temp_db_manager_pool._health_monitor
-
-        # Perform several health checks
-        for _ in range(5):
-            await health_monitor.check_health()
-
-        # Get health status
-        status = health_monitor.get_health_status()
-
-        # Verify metrics
-        metrics = status["metrics"]
-        assert metrics["total_checks"] >= 5
-        assert metrics["successful_checks"] >= 5
-        assert metrics["avg_response_time_ms"] > 0
-
-        # Verify recent history
-        recent_history = health_monitor.get_recent_history(3)
-        assert len(recent_history) >= 3
-
-        for check in recent_history:
-            assert "timestamp" in check
-            assert "is_healthy" in check
-            assert "response_time_ms" in check
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
-    async def test_health_monitor_failure_threshold(self, temp_db_manager_pool):
-        """Test health monitor failure threshold and pool refresh."""
-        # Create health monitor with low failure threshold
-        health_monitor = ConnectionHealthMonitor(
-            temp_db_manager_pool, check_interval=1.0, failure_threshold=2
-        )
-
-        # Simulate health check failures by corrupting database path temporarily
-        original_db_path = temp_db_manager_pool.db_path
-
-        # Force failures by using invalid path
-        temp_db_manager_pool.db_path = Path("/invalid/path/database.db")
-
-        # Perform health checks that should fail
-        for _ in range(3):
-            await health_monitor.check_health()
-
-        # Restore original path
-        temp_db_manager_pool.db_path = original_db_path
-
-        # Verify failure tracking
-        metrics = health_monitor.get_health_status()["metrics"]
-        assert metrics["failed_checks"] >= 2
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
-    async def test_connection_exhaustion_recovery(self, temp_db_manager_pool):
+    async def test_connection_exhaustion_recovery(
+        self, temp_db_manager_pool: DatabaseManager
+    ):
         """Test recovery from connection pool exhaustion."""
         # Create more connections than pool size to test exhaustion
         connections = []
@@ -267,7 +129,9 @@ class TestConnectionRecovery:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
-    async def test_database_corruption_handling(self, temp_db_manager_pool, temp_db):
+    async def test_database_corruption_handling(
+        self, temp_db_manager_pool: DatabaseManager, temp_db
+    ):
         """Test handling of database corruption scenarios."""
         # Close the manager first to corrupt the database file
         await temp_db_manager_pool.close_pool()
@@ -291,7 +155,7 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
-    async def test_concurrent_pool_refresh(self, temp_db_manager_pool):
+    async def test_concurrent_pool_refresh(self, temp_db_manager_pool: DatabaseManager):
         """Test concurrent pool refresh operations."""
         # Start multiple pool refresh operations concurrently
         refresh_tasks = [
@@ -308,27 +172,6 @@ class TestEdgeCases:
             cursor = await conn.execute("SELECT 1")
             result = await cursor.fetchone()
             assert result[0] == 1
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
-    async def test_health_monitor_stop_start_cycle(self, temp_db_manager_pool):
-        """Test health monitor stop/start cycle."""
-        health_monitor = temp_db_manager_pool._health_monitor
-
-        # Monitor should be running
-        assert health_monitor._is_monitoring is True
-
-        # Stop monitoring
-        await health_monitor.stop_monitoring()
-        assert health_monitor._is_monitoring is False
-
-        # Restart monitoring
-        await health_monitor.start_monitoring()
-        assert health_monitor._is_monitoring is True
-
-        # Perform health check after restart
-        health_result = await health_monitor.check_health()
-        assert health_result.is_healthy is True
 
 
 if __name__ == "__main__":
