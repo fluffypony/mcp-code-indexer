@@ -266,103 +266,69 @@ class TestConnectionRecovery:
                 await conn_ctx.__aexit__(None, None, None)
 
     @pytest.mark.asyncio
-    async def test_database_corruption_handling(self):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_database_corruption_handling(self, temp_db_manager_pool, temp_db):
         """Test handling of database corruption scenarios."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = Path(f.name)
+        # Close the manager first to corrupt the database file
+        await temp_db_manager_pool.close_pool()
 
-        try:
-            # Create and initialize database
-            db_manager = DatabaseManager(db_path, pool_size=2)
-            await db_manager.initialize()
+        # Corrupt the database file
+        with open(temp_db, "wb") as f:
+            f.write(b"corrupted data")
 
-            # Close properly
-            await db_manager.close_pool()
+        # Try to reinitialize
+        new_db_manager = DatabaseManager(temp_db, pool_size=2)
 
-            # Corrupt the database file
-            with open(db_path, "wb") as f:
-                f.write(b"corrupted data")
+        # This should handle corruption gracefully
+        with pytest.raises((aiosqlite.DatabaseError, sqlite3.DatabaseError)):
+            await new_db_manager.initialize()
 
-            # Try to reinitialize
-            new_db_manager = DatabaseManager(db_path, pool_size=2)
-
-            # This should handle corruption gracefully
-            with pytest.raises((aiosqlite.DatabaseError, sqlite3.DatabaseError)):
-                await new_db_manager.initialize()
-
-            await new_db_manager.close_pool()
-
-        finally:
-            if db_path.exists():
-                os.unlink(db_path)
+        await new_db_manager.close_pool()
 
 
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
     @pytest.mark.asyncio
-    async def test_concurrent_pool_refresh(self):
+    @pytest.mark.parametrize("temp_db_manager_pool", [3], indirect=True)
+    async def test_concurrent_pool_refresh(self, temp_db_manager_pool):
         """Test concurrent pool refresh operations."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = Path(f.name)
+        # Start multiple pool refresh operations concurrently
+        refresh_tasks = [
+            temp_db_manager_pool.close_pool(),
+            temp_db_manager_pool.close_pool(),
+            temp_db_manager_pool.close_pool(),
+        ]
 
-        try:
-            db_manager = DatabaseManager(db_path, pool_size=3)
-            await db_manager.initialize()
+        # This should not cause errors
+        await asyncio.gather(*refresh_tasks, return_exceptions=True)
 
-            # Start multiple pool refresh operations concurrently
-            refresh_tasks = [
-                db_manager.close_pool(),
-                db_manager.close_pool(),
-                db_manager.close_pool(),
-            ]
-
-            # This should not cause errors
-            await asyncio.gather(*refresh_tasks, return_exceptions=True)
-
-            # Database should still be functional
-            async with db_manager.get_connection() as conn:
-                cursor = await conn.execute("SELECT 1")
-                result = await cursor.fetchone()
-                assert result[0] == 1
-
-        finally:
-            await db_manager.close_pool()
-            if db_path.exists():
-                os.unlink(db_path)
+        # Database should still be functional
+        async with temp_db_manager_pool.get_connection() as conn:
+            cursor = await conn.execute("SELECT 1")
+            result = await cursor.fetchone()
+            assert result[0] == 1
 
     @pytest.mark.asyncio
-    async def test_health_monitor_stop_start_cycle(self):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_health_monitor_stop_start_cycle(self, temp_db_manager_pool):
         """Test health monitor stop/start cycle."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = Path(f.name)
+        health_monitor = temp_db_manager_pool._health_monitor
 
-        try:
-            db_manager = DatabaseManager(db_path, pool_size=2)
-            await db_manager.initialize()
+        # Monitor should be running
+        assert health_monitor._is_monitoring is True
 
-            health_monitor = db_manager._health_monitor
+        # Stop monitoring
+        await health_monitor.stop_monitoring()
+        assert health_monitor._is_monitoring is False
 
-            # Monitor should be running
-            assert health_monitor._is_monitoring is True
+        # Restart monitoring
+        await health_monitor.start_monitoring()
+        assert health_monitor._is_monitoring is True
 
-            # Stop monitoring
-            await health_monitor.stop_monitoring()
-            assert health_monitor._is_monitoring is False
-
-            # Restart monitoring
-            await health_monitor.start_monitoring()
-            assert health_monitor._is_monitoring is True
-
-            # Perform health check after restart
-            health_result = await health_monitor.check_health()
-            assert health_result.is_healthy is True
-
-            await db_manager.close_pool()
-
-        finally:
-            if db_path.exists():
-                os.unlink(db_path)
+        # Perform health check after restart
+        health_result = await health_monitor.check_health()
+        assert health_result.is_healthy is True
 
 
 if __name__ == "__main__":
