@@ -12,6 +12,7 @@ from typing import AsyncGenerator, Generator
 
 import pytest
 import pytest_asyncio
+from _pytest.fixtures import FixtureRequest
 
 from mcp_code_indexer.database.database import DatabaseManager
 from mcp_code_indexer.database.models import FileDescription, Project
@@ -42,9 +43,47 @@ async def temp_db() -> AsyncGenerator[Path, None]:
 
 
 @pytest_asyncio.fixture
+async def temp_db_with_test_table(temp_db: Path) -> AsyncGenerator[Path, None]:
+    """Create a temporary database with a test table for retry testing."""
+    import aiosqlite
+
+    # Create database with tables
+    async with aiosqlite.connect(temp_db) as db:
+        await db.execute(
+            """
+            CREATE TABLE test_table (
+                id INTEGER PRIMARY KEY,
+                data TEXT NOT NULL
+            )
+        """
+        )
+        await db.commit()
+
+    yield temp_db
+
+
+@pytest_asyncio.fixture
 async def db_manager(temp_db: Path) -> AsyncGenerator[DatabaseManager, None]:
     """Create and initialize a database manager for testing."""
     manager = DatabaseManager(temp_db)
+    await manager.initialize()
+
+    yield manager
+
+    # Cleanup
+    await manager.close_pool()
+
+
+@pytest_asyncio.fixture
+async def temp_db_manager_pool(
+    temp_db: Path, request: FixtureRequest
+) -> AsyncGenerator[DatabaseManager, None]:
+    """Create and initialize a database manager with specified pool size for testing.
+
+    Use with @pytest.mark.parametrize("temp_db_manager_pool", [pool_size], indirect=True)
+    """
+    pool_size = request.param
+    manager = DatabaseManager(temp_db, pool_size=pool_size)
     await manager.initialize()
 
     yield manager
@@ -293,10 +332,8 @@ async def mcp_server(tmp_path: Path):
 
     # Import here to avoid circular imports
     from mcp_code_indexer.server.mcp_server import MCPCodeIndexServer
-    
-    server = MCPCodeIndexServer(
-        token_limit=1000, db_path=db_path, cache_dir=cache_dir
-    )
+
+    server = MCPCodeIndexServer(token_limit=1000, db_path=db_path, cache_dir=cache_dir)
     await server.initialize()
 
     yield server
