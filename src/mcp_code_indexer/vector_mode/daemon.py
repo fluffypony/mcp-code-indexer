@@ -17,6 +17,8 @@ import time
 from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
+from .monitoring.file_watcher import create_file_watcher, FileWatcher
+from .monitoring.change_detector import FileChange
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,10 @@ class VectorDaemon:
         self.workers: list[asyncio.Task] = []
         self.monitor_tasks: list[asyncio.Task] = []
 
+        # File watcher management
+        self.file_watchers: Dict[str, FileWatcher] = {}
+        self.watcher_locks: Dict[str, asyncio.Lock] = {}
+
         # Statistics
         self.stats = {
             "start_time": time.time(),
@@ -59,6 +65,26 @@ class VectorDaemon:
         }
 
         # Signal handling is delegated to the parent process
+
+    def _on_file_change(self, project_name: str) -> callable:
+        """Create a change callback for a specific project."""
+        def callback(change: FileChange) -> None:
+            try:
+                logger.info(
+                    f"File change detected in project {project_name}",
+                    extra={
+                        "structured_data": {
+                            "project_name": project_name,
+                            "file_path": str(change.path),
+                            "change_type": change.change_type.value,
+                            "timestamp": change.timestamp.isoformat(),
+                            "size": change.size,
+                        }
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Error in file change callback for {project_name}: {e}")
+        return callback
 
     async def start(self) -> None:
         """Start the vector daemon."""
@@ -244,23 +270,73 @@ class VectorDaemon:
         logger.debug(f"Worker {worker_id} processing project: {project_name}")
 
         try:
-            # Check if vector mode components are available
-            # For now, just log that we would process this project
-            logger.info(
-                f"Vector processing for project {project_name}",
-                extra={
-                    "structured_data": {
-                        "project_name": project_name,
-                        "folder_path": folder_path,
-                        "worker_id": worker_id,
-                    }
-                },
-            )
+            # Ensure we have a lock for this project
+            if project_name not in self.watcher_locks:
+                self.watcher_locks[project_name] = asyncio.Lock()
+
+            # Use project-specific lock to prevent race conditions
+            async with self.watcher_locks[project_name]:
+                # Check if file watcher already exists for this project
+                if project_name not in self.file_watchers:
+                    logger.info(
+                        f"Initializing file watcher for project {project_name}",
+                        extra={
+                            "structured_data": {
+                                "project_name": project_name,
+                                "folder_path": folder_path,
+                                "worker_id": worker_id,
+                            }
+                        },
+                    )
+
+                    # Validate folder path exists
+                    project_path = Path(folder_path)
+                    if not project_path.exists():
+                        logger.warning(f"Project folder does not exist: {folder_path}")
+                        return
+
+                    # Create file watcher with appropriate configuration
+                    ignore_patterns = [
+                        "*.git*", "*.pyc", "__pycache__", "*.log",
+                        "node_modules", ".env", "*.tmp", "*.temp"
+                    ]
+                    
+                    watcher = create_file_watcher(
+                        project_root=project_path,
+                        project_id=project_name,
+                        ignore_patterns=ignore_patterns,
+                        debounce_interval=self.config.debounce_interval if hasattr(self.config, 'debounce_interval') else 0.1,
+                    )
+
+                    # Initialize the watcher
+                    await watcher.initialize()
+
+                    # Add change callback
+                    watcher.add_change_callback(self._on_file_change(project_name))
+
+                    # Start watching
+                    watcher.start_watching()
+
+                    # Store watcher for later cleanup
+                    self.file_watchers[project_name] = watcher
+
+                    logger.info(
+                        f"File watcher started for project {project_name}",
+                        extra={
+                            "structured_data": {
+                                "project_name": project_name,
+                                "folder_path": folder_path,
+                                "watcher_stats": watcher.get_stats(),
+                            }
+                        },
+                    )
+                else:
+                    logger.debug(f"File watcher already exists for project {project_name}")
 
             self.stats["files_processed"] += 1
 
-            # TODO: Implement actual vector processing:
-            # 1. Scan for file changes using Merkle tree
+            # TODO: Implement remaining vector processing:
+            # 1. Use watcher to get changed files since last scan
             # 2. Chunk modified files using AST
             # 3. Apply secret redaction
             # 4. Generate embeddings via Voyage
@@ -268,7 +344,7 @@ class VectorDaemon:
             # 6. Update database metadata
 
         except Exception as e:
-            logger.error(f"Error processing project {project_name}: {e}")
+            logger.error(f"Error processing project {project_name}: {e}", exc_info=True)
             self.stats["errors_count"] += 1
 
     async def _stats_reporter(self) -> None:
@@ -305,6 +381,18 @@ class VectorDaemon:
         logger.info("Starting daemon cleanup")
         self.is_running = False
 
+        # Stop and cleanup all file watchers first
+        if self.file_watchers:
+            logger.info(f"Cleaning up {len(self.file_watchers)} file watchers")
+            for project_name, watcher in self.file_watchers.items():
+                try:
+                    logger.debug(f"Stopping file watcher for project: {project_name}")
+                    watcher.cleanup()
+                except Exception as e:
+                    logger.error(f"Error cleaning up watcher for {project_name}: {e}")
+            self.file_watchers.clear()
+            self.watcher_locks.clear()
+
         # Cancel all workers
         for worker in self.workers:
             worker.cancel()
@@ -322,12 +410,21 @@ class VectorDaemon:
 
     def get_status(self) -> dict:
         """Get current daemon status."""
+        watcher_stats = {}
+        for project_name, watcher in self.file_watchers.items():
+            try:
+                watcher_stats[project_name] = watcher.get_stats()
+            except Exception as e:
+                watcher_stats[project_name] = {"error": str(e)}
+
         return {
             "is_running": self.is_running,
             "uptime": time.time() - self.stats["start_time"] if self.is_running else 0,
             "monitored_projects": len(self.monitored_projects),
+            "active_file_watchers": len(self.file_watchers),
             "queue_size": self.processing_queue.qsize(),
             "stats": self.stats.copy(),
+            "file_watcher_stats": watcher_stats,
         }
 
 
