@@ -7,6 +7,7 @@ for the vector mode indexing pipeline.
 
 import asyncio
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Optional, List, Dict, Any
 import time
@@ -119,12 +120,11 @@ class VectorModeEventHandler(FileSystemEventHandler):
         # Clean up task reference
         self.debounce_tasks.pop(file_path, None)
 
-class FileWatcher:
+class BaseFileWatcher(ABC):
     """
-    Real-time file system watcher for vector mode.
+    Abstract base class for file watchers.
     
-    Monitors file changes and integrates with change detection and Merkle tree
-    systems for efficient vector index updates.
+    Defines the common interface for both real-time and polling file watchers.
     """
     
     def __init__(
@@ -132,48 +132,35 @@ class FileWatcher:
         project_root: Path,
         project_id: str,
         ignore_patterns: Optional[List[str]] = None,
-        debounce_interval: float = 0.1,
-        enable_merkle_tree: bool = True,
+        **kwargs
     ):
         """
-        Initialize file watcher.
+        Initialize base file watcher.
         
         Args:
             project_root: Root directory to watch
-            project_id: Project identifier
+            project_id: Project identifier  
             ignore_patterns: Patterns to ignore
-            debounce_interval: Debounce interval in seconds
-            enable_merkle_tree: Whether to use Merkle tree for change tracking
+            **kwargs: Additional watcher-specific arguments
         """
-        if not WATCHDOG_AVAILABLE:
-            raise ImportError("watchdog library is required for file monitoring")
-        
         self.project_root = Path(project_root).resolve()
         self.project_id = project_id
         self.ignore_patterns = ignore_patterns
-        self.debounce_interval = debounce_interval
+        
+        # Common state
+        self.is_watching = False
+        self.change_callbacks: List[Callable[[FileChange], None]] = []
         
         # Initialize components
         self.change_detector = ChangeDetector(
             project_root=self.project_root,
             ignore_patterns=ignore_patterns,
-            debounce_interval=debounce_interval,
+            **kwargs
         )
         
         self.merkle_tree: Optional[MerkleTree] = None
-        if enable_merkle_tree:
+        if kwargs.get('enable_merkle_tree', True):
             self.merkle_tree = MerkleTree(self.project_root, project_id)
-        
-        # Watchdog components
-        self.observer: Optional[Observer] = None
-        self.event_handler: Optional[VectorModeEventHandler] = None
-        
-        # State
-        self.is_watching = False
-        self.change_callbacks: List[Callable[[FileChange], None]] = []
-        
-        # Thread pool for intensive operations
-        self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="file_watcher")
     
     def add_change_callback(self, callback: Callable[[FileChange], None]) -> None:
         """Add a callback to be called when files change."""
@@ -192,68 +179,25 @@ class FileWatcher:
             except Exception as e:
                 logger.error(f"Change callback failed: {e}")
     
+    @abstractmethod
     async def initialize(self) -> None:
         """Initialize the file watcher (build Merkle tree, etc.)."""
-        logger.info(f"Initializing file watcher for {self.project_root}")
-        
-        # Build Merkle tree in thread pool to avoid blocking
-        if self.merkle_tree:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                self.executor,
-                self.merkle_tree.build_tree,
-                self.ignore_patterns
-            )
-            
-            logger.info("Merkle tree built successfully")
+        pass
     
+    @abstractmethod
     def start_watching(self) -> None:
         """Start watching for file changes."""
-        if self.is_watching:
-            logger.warning("File watcher is already running")
-            return
-        
-        if not WATCHDOG_AVAILABLE:
-            logger.error("Cannot start file watching: watchdog not available")
-            return
-        
-        logger.info(f"Starting file watcher for {self.project_root}")
-        
-        # Create event handler
-        self.event_handler = VectorModeEventHandler(
-            change_detector=self.change_detector,
-            merkle_tree=self.merkle_tree,
-            callback=self._on_change,
-        )
-        
-        # Create and start observer
-        self.observer = Observer()
-        self.observer.schedule(
-            self.event_handler,
-            str(self.project_root),
-            recursive=True
-        )
-        self.observer.start()
-        
-        self.is_watching = True
-        logger.info("File watcher started successfully")
+        pass
     
+    @abstractmethod
     def stop_watching(self) -> None:
         """Stop watching for file changes."""
-        if not self.is_watching:
-            return
-        
-        logger.info("Stopping file watcher")
-        
-        if self.observer:
-            self.observer.stop()
-            self.observer.join()
-            self.observer = None
-        
-        self.event_handler = None
-        self.is_watching = False
-        
-        logger.info("File watcher stopped")
+        pass
+    
+    @abstractmethod
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        pass
     
     def get_recent_changes(
         self,
@@ -325,13 +269,6 @@ class FileWatcher:
         
         return stats
     
-    def cleanup(self) -> None:
-        """Clean up resources."""
-        self.stop_watching()
-        
-        if self.executor:
-            self.executor.shutdown(wait=True)
-    
     async def __aenter__(self):
         await self.initialize()
         return self
@@ -339,8 +276,125 @@ class FileWatcher:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
 
+class FileWatcher(BaseFileWatcher):
+    """
+    Real-time file system watcher for vector mode.
+    
+    Monitors file changes and integrates with change detection and Merkle tree
+    systems for efficient vector index updates.
+    """
+    
+    def __init__(
+        self,
+        project_root: Path,
+        project_id: str,
+        ignore_patterns: Optional[List[str]] = None,
+        debounce_interval: float = 0.1,
+        enable_merkle_tree: bool = True,
+    ):
+        """
+        Initialize file watcher.
+        
+        Args:
+            project_root: Root directory to watch
+            project_id: Project identifier
+            ignore_patterns: Patterns to ignore
+            debounce_interval: Debounce interval in seconds
+            enable_merkle_tree: Whether to use Merkle tree for change tracking
+        """
+        if not WATCHDOG_AVAILABLE:
+            raise ImportError("watchdog library is required for file monitoring")
+        
+        # Initialize base class
+        super().__init__(
+            project_root=project_root,
+            project_id=project_id,
+            ignore_patterns=ignore_patterns,
+            debounce_interval=debounce_interval,
+            enable_merkle_tree=enable_merkle_tree,
+        )
+        
+        self.debounce_interval = debounce_interval
+        
+        # Watchdog components
+        self.observer: Optional[Observer] = None
+        self.event_handler: Optional[VectorModeEventHandler] = None
+        
+        # Thread pool for intensive operations
+        self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="file_watcher")
+    
+    async def initialize(self) -> None:
+        """Initialize the file watcher (build Merkle tree, etc.)."""
+        logger.info(f"Initializing file watcher for {self.project_root}")
+        
+        # Build Merkle tree in thread pool to avoid blocking
+        if self.merkle_tree:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                self.executor,
+                self.merkle_tree.build_tree,
+                self.ignore_patterns
+            )
+            
+            logger.info("Merkle tree built successfully")
+    
+    def start_watching(self) -> None:
+        """Start watching for file changes."""
+        if self.is_watching:
+            logger.warning("File watcher is already running")
+            return
+        
+        if not WATCHDOG_AVAILABLE:
+            logger.error("Cannot start file watching: watchdog not available")
+            return
+        
+        logger.info(f"Starting file watcher for {self.project_root}")
+        
+        # Create event handler
+        self.event_handler = VectorModeEventHandler(
+            change_detector=self.change_detector,
+            merkle_tree=self.merkle_tree,
+            callback=self._on_change,
+        )
+        
+        # Create and start observer
+        self.observer = Observer()
+        self.observer.schedule(
+            self.event_handler,
+            str(self.project_root),
+            recursive=True
+        )
+        self.observer.start()
+        
+        self.is_watching = True
+        logger.info("File watcher started successfully")
+    
+    def stop_watching(self) -> None:
+        """Stop watching for file changes."""
+        if not self.is_watching:
+            return
+        
+        logger.info("Stopping file watcher")
+        
+        if self.observer:
+            self.observer.stop()
+            self.observer.join()
+            self.observer = None
+        
+        self.event_handler = None
+        self.is_watching = False
+        
+        logger.info("File watcher stopped")
+    
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        self.stop_watching()
+        
+        if self.executor:
+            self.executor.shutdown(wait=True)
+
 # Fallback implementation for when watchdog is not available
-class PollingFileWatcher:
+class PollingFileWatcher(BaseFileWatcher):
     """
     Fallback file watcher using polling instead of OS events.
     
@@ -356,24 +410,20 @@ class PollingFileWatcher:
         **kwargs
     ):
         """Initialize polling file watcher."""
-        self.project_root = Path(project_root).resolve()
-        self.project_id = project_id
+        # Initialize base class
+        super().__init__(
+            project_root=project_root,
+            project_id=project_id,
+            **kwargs
+        )
+        
         self.poll_interval = poll_interval
-        
-        self.change_detector = ChangeDetector(project_root=self.project_root, **kwargs)
-        self.merkle_tree = MerkleTree(self.project_root, project_id)
-        
-        self.is_watching = False
         self.poll_task: Optional[asyncio.Task] = None
-        self.change_callbacks: List[Callable[[FileChange], None]] = []
-    
-    def add_change_callback(self, callback: Callable[[FileChange], None]) -> None:
-        """Add a callback to be called when files change."""
-        self.change_callbacks.append(callback)
     
     async def initialize(self) -> None:
         """Initialize the polling watcher."""
-        self.merkle_tree.build_tree()
+        if self.merkle_tree:
+            self.merkle_tree.build_tree()
     
     def start_watching(self) -> None:
         """Start polling for changes."""
@@ -394,18 +444,18 @@ class PollingFileWatcher:
         while self.is_watching:
             try:
                 # Force scan for changes
-                changed_files = self.merkle_tree.get_changed_files()
-                
-                for file_path in changed_files:
-                    full_path = self.project_root / file_path
-                    change = self.change_detector.process_fs_event(
-                        event_type="modified",
-                        path=full_path
-                    )
+                if self.merkle_tree:
+                    changed_files = self.merkle_tree.get_changed_files()
                     
-                    if change:
-                        for callback in self.change_callbacks:
-                            callback(change)
+                    for file_path in changed_files:
+                        full_path = self.project_root / file_path
+                        change = self.change_detector.process_fs_event(
+                            event_type="modified",
+                            path=full_path
+                        )
+                        
+                        if change:
+                            self._on_change(change)
                 
                 await asyncio.sleep(self.poll_interval)
                 
@@ -424,7 +474,7 @@ def create_file_watcher(
     project_id: str,
     use_polling: bool = False,
     **kwargs
-) -> Any:
+) -> BaseFileWatcher:
     """
     Create appropriate file watcher based on availability.
     
@@ -435,7 +485,7 @@ def create_file_watcher(
         **kwargs: Additional arguments for watcher
         
     Returns:
-        FileWatcher or PollingFileWatcher instance
+        BaseFileWatcher instance (either FileWatcher or PollingFileWatcher)
     """
     if use_polling or not WATCHDOG_AVAILABLE:
         logger.info("Using polling file watcher")
