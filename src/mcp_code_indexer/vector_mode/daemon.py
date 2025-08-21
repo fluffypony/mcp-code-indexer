@@ -301,26 +301,11 @@ class VectorDaemon:
                         return
 
                     # Create file watcher with appropriate configuration
-                    ignore_patterns = [
-                        "*.git*",
-                        "*.pyc",
-                        "__pycache__",
-                        "*.log",
-                        "node_modules",
-                        ".env",
-                        "*.tmp",
-                        "*.temp",
-                    ]
-
                     watcher = create_file_watcher(
                         project_root=project_path,
                         project_id=project_name,
-                        ignore_patterns=ignore_patterns,
-                        debounce_interval=(
-                            self.config.debounce_interval
-                            if hasattr(self.config, "debounce_interval")
-                            else 0.1
-                        ),
+                        ignore_patterns=self.config.ignore_patterns,
+                        debounce_interval=self.config.watch_debounce_ms / 1000.0,
                     )
                     _write_debug_log(
                         f"VectorDaemon: Created watcher for {project_name}"

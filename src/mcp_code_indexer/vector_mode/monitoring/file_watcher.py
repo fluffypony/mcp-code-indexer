@@ -29,16 +29,6 @@ from .merkle_tree import MerkleTree
 
 logger = logging.getLogger(__name__)
 
-# Debug logging helper
-def _write_debug_log(message: str) -> None:
-    """Write debug message to temporary file."""
-    try:
-        with open("/tmp/filewatcher_debug.log", "a") as f:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-            f.write(f"[{timestamp}] {message}\n")
-    except Exception:
-        pass  # Silently ignore debug logging errors
-
 
 def _write_debug_log(message: str) -> None:
     """Write debug message to temporary file."""
@@ -206,9 +196,13 @@ class FileWatcher:
 
     def add_change_callback(self, callback: Callable[[FileChange], None]) -> None:
         """Add a callback to be called when files change."""
-        _write_debug_log(f"add_change_callback: Adding callback to {len(self.change_callbacks)} existing callbacks")
+        _write_debug_log(
+            f"add_change_callback: Adding callback to {len(self.change_callbacks)} existing callbacks"
+        )
         self.change_callbacks.append(callback)
-        _write_debug_log(f"add_change_callback: Now have {len(self.change_callbacks)} callbacks total")
+        _write_debug_log(
+            f"add_change_callback: Now have {len(self.change_callbacks)} callbacks total"
+        )
 
     def remove_change_callback(self, callback: Callable[[FileChange], None]) -> None:
         """Remove a change callback."""
@@ -225,7 +219,9 @@ class FileWatcher:
 
     async def initialize(self) -> None:
         """Initialize the file watcher (build Merkle tree, etc.)."""
-        _write_debug_log(f"initialize: BEGIN - Initializing file watcher for {self.project_root}")
+        _write_debug_log(
+            f"initialize: BEGIN - Initializing file watcher for {self.project_root}"
+        )
         logger.info(f"Initializing file watcher for {self.project_root}")
 
         # Build Merkle tree in thread pool to avoid blocking
@@ -237,13 +233,15 @@ class FileWatcher:
             )
             _write_debug_log("initialize: Merkle tree built successfully")
             logger.info("Merkle tree built successfully")
-        
+
         _write_debug_log("initialize: END - Initialization completed")
 
     def start_watching(self) -> None:
         """Start watching for file changes."""
-        _write_debug_log(f"start_watching: BEGIN - Starting file watcher for {self.project_root}")
-        
+        _write_debug_log(
+            f"start_watching: BEGIN - Starting file watcher for {self.project_root}"
+        )
+
         if self.is_watching:
             _write_debug_log("start_watching: File watcher is already running")
             logger.warning("File watcher is already running")
@@ -362,7 +360,9 @@ class FileWatcher:
             _write_debug_log("get_stats: Adding Merkle tree summary")
             stats["merkle_tree"] = self.merkle_tree.get_tree_summary()
 
-        _write_debug_log(f"get_stats: Returning stats with is_watching={stats['is_watching']}")
+        _write_debug_log(
+            f"get_stats: Returning stats with is_watching={stats['is_watching']}"
+        )
         return stats
 
     def cleanup(self) -> None:
@@ -471,8 +471,10 @@ def create_file_watcher(
     Returns:
         FileWatcher or PollingFileWatcher instance
     """
-    _write_debug_log(f"create_file_watcher: Creating watcher for {project_root}, project_id={project_id}, use_polling={use_polling}")
-    
+    _write_debug_log(
+        f"create_file_watcher: Creating watcher for {project_root}, project_id={project_id}, use_polling={use_polling}"
+    )
+
     if use_polling or not WATCHDOG_AVAILABLE:
         _write_debug_log("create_file_watcher: Using polling file watcher")
         logger.info("Using polling file watcher")
@@ -481,6 +483,6 @@ def create_file_watcher(
         _write_debug_log("create_file_watcher: Using real-time file watcher")
         logger.info("Using real-time file watcher")
         watcher = FileWatcher(project_root, project_id, **kwargs)
-        
+
     _write_debug_log(f"create_file_watcher: Created {type(watcher).__name__} instance")
     return watcher
