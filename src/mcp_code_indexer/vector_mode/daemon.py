@@ -17,7 +17,7 @@ import time
 from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
-from .monitoring.file_watcher import create_file_watcher, FileWatcher
+from .monitoring.file_watcher import _write_debug_log, create_file_watcher, FileWatcher
 from .monitoring.change_detector import FileChange
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,7 @@ class VectorDaemon:
 
     def _on_file_change(self, project_name: str) -> callable:
         """Create a change callback for a specific project."""
+
         def callback(change: FileChange) -> None:
             try:
                 logger.info(
@@ -84,6 +85,7 @@ class VectorDaemon:
                 )
             except Exception as e:
                 logger.error(f"Error in file change callback for {project_name}: {e}")
+
         return callback
 
     async def start(self) -> None:
@@ -140,36 +142,40 @@ class VectorDaemon:
     async def _get_project_monitoring_status(self) -> Dict[str, List[Project]]:
         """
         Get projects categorized by monitoring status.
-        
+
         Returns:
             Dict with 'monitored' and 'unmonitored' keys containing project lists
         """
         # Get all projects with vector mode enabled
         vector_enabled_projects = await self.db_manager.get_vector_enabled_projects()
-        
+
         # Filter projects that should be monitored (have valid aliases)
         monitorable_projects = [
-            project for project in vector_enabled_projects 
+            project
+            for project in vector_enabled_projects
             if project.aliases and project.vector_mode
         ]
-        
+
         # Determine which projects to monitor (not currently monitored)
         projects_to_monitor = [
-            project for project in monitorable_projects
+            project
+            for project in monitorable_projects
             if project.name not in self.monitored_projects
         ]
-        
+
         # Determine which projects to unmonitor (currently monitored but no longer should be)
         monitorable_names = {project.name for project in monitorable_projects}
         projects_to_unmonitor = []
-        
+
         # Get full project data for unmonitoring
         all_projects = await self.db_manager.get_all_projects()
         for project in all_projects:
-            if (project.name in self.monitored_projects and 
-                project.name not in monitorable_names):
+            if (
+                project.name in self.monitored_projects
+                and project.name not in monitorable_names
+            ):
                 projects_to_unmonitor.append(project)
-        
+
         return {
             "monitored": projects_to_monitor,
             "unmonitored": projects_to_unmonitor,
@@ -183,18 +189,17 @@ class VectorDaemon:
             try:
                 # Get project monitoring status
                 monitoring_status = await self._get_project_monitoring_status()
-                
                 # Add new projects to monitoring
                 for project in monitoring_status["monitored"]:
                     logger.info(f"Adding project to monitoring: {project.name}")
                     self.monitored_projects.add(project.name)
-                    
+
                     # Use first alias as folder path
                     folder_path = project.aliases[0]
-                    
+
                     # Queue initial indexing task
                     await self._queue_project_scan(project.name, folder_path)
-                
+
                 # Remove projects from monitoring
                 for project in monitoring_status["unmonitored"]:
                     logger.info(f"Removing project from monitoring: {project.name}")
@@ -297,28 +302,49 @@ class VectorDaemon:
 
                     # Create file watcher with appropriate configuration
                     ignore_patterns = [
-                        "*.git*", "*.pyc", "__pycache__", "*.log",
-                        "node_modules", ".env", "*.tmp", "*.temp"
+                        "*.git*",
+                        "*.pyc",
+                        "__pycache__",
+                        "*.log",
+                        "node_modules",
+                        ".env",
+                        "*.tmp",
+                        "*.temp",
                     ]
-                    
+
                     watcher = create_file_watcher(
                         project_root=project_path,
                         project_id=project_name,
                         ignore_patterns=ignore_patterns,
-                        debounce_interval=self.config.debounce_interval if hasattr(self.config, 'debounce_interval') else 0.1,
+                        debounce_interval=(
+                            self.config.debounce_interval
+                            if hasattr(self.config, "debounce_interval")
+                            else 0.1
+                        ),
                     )
-
+                    _write_debug_log(
+                        f"VectorDaemon: Created watcher for {project_name}"
+                    )
                     # Initialize the watcher
                     await watcher.initialize()
-
+                    _write_debug_log(
+                        f"VectorDaemon: Initialized watcher for {project_name}"
+                    )
                     # Add change callback
                     watcher.add_change_callback(self._on_file_change(project_name))
+                    _write_debug_log(
+                        f"VectorDaemon: Added change callback for {project_name}"
+                    )
 
                     # Start watching
                     watcher.start_watching()
+                    _write_debug_log(
+                        f"VectorDaemon: Started watching for {project_name}"
+                    )
 
                     # Store watcher for later cleanup
                     self.file_watchers[project_name] = watcher
+                    _write_debug_log(f"VectorDaemon: Stored watcher for {project_name}")
 
                     logger.info(
                         f"File watcher started for project {project_name}",
@@ -331,7 +357,9 @@ class VectorDaemon:
                         },
                     )
                 else:
-                    logger.debug(f"File watcher already exists for project {project_name}")
+                    logger.debug(
+                        f"File watcher already exists for project {project_name}"
+                    )
 
             self.stats["files_processed"] += 1
 
