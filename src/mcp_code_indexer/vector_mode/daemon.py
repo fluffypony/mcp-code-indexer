@@ -18,7 +18,8 @@ from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
 from .monitoring.file_watcher import _write_debug_log, create_file_watcher, FileWatcher
-from .monitoring.change_detector import FileChange
+from .monitoring.change_detector import FileChange, ChangeType
+from .chunking.ast_chunker import ASTChunker
 
 logger = logging.getLogger(__name__)
 
@@ -275,8 +276,8 @@ class VectorDaemon:
 
     async def _process_file_change_task(self, task: dict, worker_id: str) -> None:
         """Process a file change task."""
-        project_name = task["project_name"]
-        change = task["change"]
+        project_name: str = task["project_name"]
+        change: FileChange = task["change"]
         _write_debug_log(
             f"Worker {worker_id}: Processing file change for {change.path}"
         )
@@ -295,13 +296,79 @@ class VectorDaemon:
         )
 
         try:
-            # Here we would do actual file change processing
-            # For now, just log that we received it
-            logger.debug(
-                f"Worker {worker_id}: Processing file change for {change.path}"
+            # Skip deleted files - only process created/modified files
+            if change.change_type == ChangeType.DELETED:
+                logger.debug(f"Worker {worker_id}: Skipping deleted file {change.path}")
+                return
+
+            # Initialize ASTChunker with default settings
+            chunker = ASTChunker(
+                max_chunk_size=1500,
+                min_chunk_size=50,
+                enable_redaction=True,
+                enable_optimization=True
             )
-            self.stats["files_processed"] += 1
-            self.stats["last_activity"] = time.time()
+
+            # Read and chunk the file
+            try:
+                chunks = chunker.chunk_file(str(change.path))
+                chunk_count = len(chunks)
+                
+                # Only process files that actually produced chunks
+                if chunk_count == 0:
+                    logger.debug(f"Worker {worker_id}: No chunks produced for {change.path}")
+                    return
+                
+                # Log chunking results
+                chunk_types = {}
+                redacted_count = 0
+                
+                for chunk in chunks:
+                    chunk_type = chunk.chunk_type.value
+                    chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+                    if chunk.redacted:
+                        redacted_count += 1
+
+                logger.info(
+                    f"Worker {worker_id}: Chunked {change.path} into {chunk_count} chunks",
+                    extra={
+                        "structured_data": {
+                            "worker_id": worker_id,
+                            "project_name": project_name,
+                            "file_path": str(change.path),
+                            "chunk_count": chunk_count,
+                            "chunk_types": chunk_types,
+                            "redacted_chunks": redacted_count,
+                            "file_size": change.size,
+                        }
+                    },
+                )
+
+                # Write detailed debug information
+                _write_debug_log(
+                    f"Worker {worker_id}: File {change.path} chunking details:\n"
+                    f"  Total chunks: {chunk_count}\n"
+                    f"  Chunk types: {chunk_types}\n"
+                    f"  Redacted chunks: {redacted_count}\n"
+                    f"  Sample chunks:\n"
+                    + "\n".join([
+                        f"    [{i}] {chunk.chunk_type.value} - {chunk.name or 'unnamed'} "
+                        f"(lines {chunk.start_line}-{chunk.end_line}, "
+                        f"{len(chunk.content)} chars, redacted: {chunk.redacted})"
+                        for i, chunk in enumerate(chunks[:3])  # Show first 3 chunks
+                    ])
+                )
+
+                # Only increment stats for successfully chunked files
+                self.stats["files_processed"] += 1
+                self.stats["last_activity"] = time.time()
+
+            except Exception as read_error:
+                logger.error(
+                    f"Worker {worker_id}: Failed to read/chunk file {change.path}: {read_error}"
+                )
+                self.stats["errors_count"] += 1
+                return
 
         except Exception as e:
             logger.error(
