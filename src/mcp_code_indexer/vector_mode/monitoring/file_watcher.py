@@ -14,7 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 try:
-    from watchdog.observers import Observer
+    from watchdog.observers import Observer, ObserverType
     from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
     WATCHDOG_AVAILABLE = True
@@ -69,14 +69,22 @@ class VectorModeEventHandler(FileSystemEventHandler):
 
     def on_any_event(self, event: FileSystemEvent) -> None:
         """Handle any file system event."""
-        if event.is_directory:
-            return  # Skip directory events for now
-
         try:
-            asyncio.create_task(self._handle_event_async(event))
-        except RuntimeError:
-            # No event loop running, handle synchronously
-            self._handle_event_sync(event)
+            if event.is_directory:
+                return  # Skip directory events for now
+
+            try:
+                asyncio.create_task(self._handle_event_async(event))
+            except RuntimeError:
+                # No event loop running, handle synchronously
+                self._handle_event_sync(event)
+
+        except Exception as e:
+            # Critical: Catch ALL exceptions to prevent observer thread crash
+            logger.error(
+                f"Unhandled exception in event handler for {event.src_path}: {e}",
+                exc_info=True,
+            )
 
     def _handle_event_sync(self, event: FileSystemEvent) -> None:
         """Handle event synchronously."""
@@ -88,7 +96,6 @@ class VectorModeEventHandler(FileSystemEventHandler):
             path=path,
             old_path=Path(event.dest_path) if hasattr(event, "dest_path") else None,
         )
-
         if change:
             # Update Merkle tree if available
             if self.merkle_tree:
@@ -98,7 +105,6 @@ class VectorModeEventHandler(FileSystemEventHandler):
                     logger.warning(
                         f"Failed to update Merkle tree for {change.path}: {e}"
                     )
-
             # Call callback if provided
             if self.callback:
                 try:
@@ -196,13 +202,7 @@ class FileWatcher:
 
     def add_change_callback(self, callback: Callable[[FileChange], None]) -> None:
         """Add a callback to be called when files change."""
-        _write_debug_log(
-            f"add_change_callback: Adding callback to {len(self.change_callbacks)} existing callbacks"
-        )
         self.change_callbacks.append(callback)
-        _write_debug_log(
-            f"add_change_callback: Now have {len(self.change_callbacks)} callbacks total"
-        )
 
     def remove_change_callback(self, callback: Callable[[FileChange], None]) -> None:
         """Remove a change callback."""
@@ -213,49 +213,38 @@ class FileWatcher:
         """Handle a file change by notifying all callbacks."""
         for callback in self.change_callbacks:
             try:
+                _write_debug_log(
+                    f"File change detected: {change.path} ({change.change_type.value})"
+                )
                 callback(change)
             except Exception as e:
                 logger.error(f"Change callback failed: {e}")
 
     async def initialize(self) -> None:
         """Initialize the file watcher (build Merkle tree, etc.)."""
-        _write_debug_log(
-            f"initialize: BEGIN - Initializing file watcher for {self.project_root}"
-        )
         logger.info(f"Initializing file watcher for {self.project_root}")
 
         # Build Merkle tree in thread pool to avoid blocking
         if self.merkle_tree:
-            _write_debug_log("initialize: Building Merkle tree")
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 self.executor, self.merkle_tree.build_tree, self.ignore_patterns
             )
-            _write_debug_log("initialize: Merkle tree built successfully")
             logger.info("Merkle tree built successfully")
-
-        _write_debug_log("initialize: END - Initialization completed")
 
     def start_watching(self) -> None:
         """Start watching for file changes."""
-        _write_debug_log(
-            f"start_watching: BEGIN - Starting file watcher for {self.project_root}"
-        )
-
         if self.is_watching:
-            _write_debug_log("start_watching: File watcher is already running")
             logger.warning("File watcher is already running")
             return
 
         if not WATCHDOG_AVAILABLE:
-            _write_debug_log("start_watching: Cannot start - watchdog not available")
             logger.error("Cannot start file watching: watchdog not available")
             return
 
         logger.info(f"Starting file watcher for {self.project_root}")
 
         # Create event handler
-        _write_debug_log("start_watching: Creating event handler")
         self.event_handler = VectorModeEventHandler(
             change_detector=self.change_detector,
             merkle_tree=self.merkle_tree,
@@ -263,15 +252,26 @@ class FileWatcher:
         )
 
         # Create and start observer
-        _write_debug_log("start_watching: Creating and starting observer")
-        self.observer = Observer()
-        self.observer.schedule(
-            self.event_handler, str(self.project_root), recursive=True
-        )
-        self.observer.start()
+        try:
+            self.observer = Observer()
+            self.observer.schedule(
+                self.event_handler, str(self.project_root), recursive=True
+            )
+            self.observer.start()
+        except Exception as e:
+            logger.error(f"Failed to start file observer: {e}", exc_info=True)
+            # Clean up on failure
+            if self.observer:
+                try:
+                    self.observer.stop()
+                    self.observer = None
+                except Exception:
+                    pass
+            self.event_handler = None
+            self.is_watching = False
+            raise
 
         self.is_watching = True
-        _write_debug_log("start_watching: END - File watcher started successfully")
         logger.info("File watcher started successfully")
 
     def stop_watching(self) -> None:
@@ -282,9 +282,13 @@ class FileWatcher:
         logger.info("Stopping file watcher")
 
         if self.observer:
-            self.observer.stop()
-            self.observer.join()
-            self.observer = None
+            try:
+                self.observer.stop()
+                self.observer.join()
+            except Exception as e:
+                logger.error(f"Error stopping file observer: {e}", exc_info=True)
+            finally:
+                self.observer = None
 
         self.event_handler = None
         self.is_watching = False
@@ -347,7 +351,6 @@ class FileWatcher:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get watcher statistics."""
-        _write_debug_log(f"get_stats: Getting stats for {self.project_id}")
         stats = {
             "is_watching": self.is_watching,
             "project_root": str(self.project_root),
@@ -357,12 +360,8 @@ class FileWatcher:
         }
 
         if self.merkle_tree:
-            _write_debug_log("get_stats: Adding Merkle tree summary")
             stats["merkle_tree"] = self.merkle_tree.get_tree_summary()
 
-        _write_debug_log(
-            f"get_stats: Returning stats with is_watching={stats['is_watching']}"
-        )
         return stats
 
     def cleanup(self) -> None:
@@ -471,18 +470,11 @@ def create_file_watcher(
     Returns:
         FileWatcher or PollingFileWatcher instance
     """
-    _write_debug_log(
-        f"create_file_watcher: Creating watcher for {project_root}, project_id={project_id}, use_polling={use_polling}"
-    )
-
     if use_polling or not WATCHDOG_AVAILABLE:
-        _write_debug_log("create_file_watcher: Using polling file watcher")
         logger.info("Using polling file watcher")
         watcher = PollingFileWatcher(project_root, project_id, **kwargs)
     else:
-        _write_debug_log("create_file_watcher: Using real-time file watcher")
         logger.info("Using real-time file watcher")
         watcher = FileWatcher(project_root, project_id, **kwargs)
 
-    _write_debug_log(f"create_file_watcher: Created {type(watcher).__name__} instance")
     return watcher

@@ -67,24 +67,28 @@ class VectorDaemon:
         # Signal handling is delegated to the parent process
 
     def _on_file_change(self, project_name: str) -> callable:
-        """Create a change callback for a specific project."""
+        """Create a non-blocking change callback for a specific project."""
 
         def callback(change: FileChange) -> None:
+            """Non-blocking callback that queues file change processing."""
             try:
-                logger.info(
-                    f"File change detected in project {project_name}",
-                    extra={
-                        "structured_data": {
-                            "project_name": project_name,
-                            "file_path": str(change.path),
-                            "change_type": change.change_type.value,
-                            "timestamp": change.timestamp.isoformat(),
-                            "size": change.size,
-                        }
-                    },
-                )
+                # Create file change processing task
+                task_item = {
+                    "type": "process_file_change",
+                    "project_name": project_name,
+                    "change": change,
+                    "timestamp": time.time(),
+                }
+
+                # Put task in processing queue (non-blocking)
+                try:
+                    self.processing_queue.put_nowait(task_item)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"Processing queue full, dropping file change event for {change.path}"
+                    )
             except Exception as e:
-                logger.error(f"Error in file change callback for {project_name}: {e}")
+                logger.error(f"Error queueing file change task: {e}")
 
         return callback
 
@@ -264,8 +268,46 @@ class VectorDaemon:
 
         if task_type == "scan_project":
             await self._process_project_scan(task, worker_id)
+        elif task_type == "process_file_change":
+            await self._process_file_change_task(task, worker_id)
         else:
             logger.warning(f"Unknown task type: {task_type}")
+
+    async def _process_file_change_task(self, task: dict, worker_id: str) -> None:
+        """Process a file change task."""
+        project_name = task["project_name"]
+        change = task["change"]
+        _write_debug_log(
+            f"Worker {worker_id}: Processing file change for {change.path}"
+        )
+        logger.info(
+            f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})",
+            extra={
+                "structured_data": {
+                    "worker_id": worker_id,
+                    "project_name": project_name,
+                    "file_path": str(change.path),
+                    "change_type": change.change_type.value,
+                    "timestamp": change.timestamp.isoformat(),
+                    "size": change.size,
+                }
+            },
+        )
+
+        try:
+            # Here we would do actual file change processing
+            # For now, just log that we received it
+            logger.debug(
+                f"Worker {worker_id}: Processing file change for {change.path}"
+            )
+            self.stats["files_processed"] += 1
+            self.stats["last_activity"] = time.time()
+
+        except Exception as e:
+            logger.error(
+                f"Worker {worker_id}: Error processing file change {change.path}: {e}"
+            )
+            self.stats["errors_count"] += 1
 
     async def _process_project_scan(self, task: dict, worker_id: str) -> None:
         """Process a project scan task."""
