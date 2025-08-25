@@ -22,22 +22,7 @@ from src.mcp_code_indexer.database.models import FileDescription, Project
 class TestDatabaseLocking:
     """Test database locking resilience and concurrent access."""
 
-    @pytest.fixture
-    async def temp_db_manager(self):
-        """Create a temporary database manager for testing."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = Path(f.name)
 
-        # Initialize database manager with test configuration
-        db_manager = DatabaseManager(db_path, pool_size=2)
-        await db_manager.initialize()
-
-        yield db_manager
-
-        # Cleanup
-        await db_manager.close_pool()
-        if db_path.exists():
-            os.unlink(db_path)
 
     @pytest.fixture
     def sample_project(self):
@@ -63,15 +48,17 @@ class TestDatabaseLocking:
         )
 
     @pytest.mark.asyncio
-    async def test_wal_mode_enabled(self, temp_db_manager):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_wal_mode_enabled(self, temp_db_manager_pool):
         """Test that WAL mode is enabled correctly."""
-        async with temp_db_manager.get_connection() as conn:
+        async with temp_db_manager_pool.get_connection() as conn:
             cursor = await conn.execute("PRAGMA journal_mode")
             result = await cursor.fetchone()
             assert result[0].upper() == "WAL"
 
     @pytest.mark.asyncio
-    async def test_write_serialization(self, temp_db_manager, sample_project):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_write_serialization(self, temp_db_manager_pool, sample_project):
         """Test that write operations are properly serialized."""
         write_operations = []
 
@@ -89,7 +76,7 @@ class TestDatabaseLocking:
             )
 
             await asyncio.sleep(0.1)  # Simulate work
-            await temp_db_manager.create_project(project)
+            await temp_db_manager_pool.create_project(project)
             write_operations.append(f"end_{project_suffix}")
 
         # Run multiple write operations concurrently
@@ -116,11 +103,12 @@ class TestDatabaseLocking:
         )
 
     @pytest.mark.asyncio
-    async def test_immediate_transaction_timeout(self, temp_db_manager):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_immediate_transaction_timeout(self, temp_db_manager_pool):
         """Test transaction timeout handling."""
         # This test simulates a long-running transaction that should timeout
         with pytest.raises(asyncio.TimeoutError):
-            async with temp_db_manager.get_immediate_transaction(
+            async with temp_db_manager_pool.get_immediate_transaction(
                 "test_timeout", timeout_seconds=0.1
             ):
                 await asyncio.sleep(0.2)  # Sleep longer than timeout
@@ -128,10 +116,11 @@ class TestDatabaseLocking:
     # Retry handler tests removed - comprehensive retry testing is now in
     # test_retry_executor.py
     @pytest.mark.asyncio
-    async def test_concurrent_reads_during_write(self, temp_db_manager, sample_project):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_concurrent_reads_during_write(self, temp_db_manager_pool, sample_project):
         """Test that reads can proceed during writes (WAL mode benefit)."""
         # First, create a project to read
-        await temp_db_manager.create_project(sample_project)
+        await temp_db_manager_pool.create_project(sample_project)
 
         read_results = []
         write_started = asyncio.Event()
@@ -150,14 +139,14 @@ class TestDatabaseLocking:
                 created=datetime.utcnow(),
                 last_accessed=datetime.utcnow(),
             )
-            await temp_db_manager.create_project(new_project)
+            await temp_db_manager_pool.create_project(new_project)
 
         async def read_operation():
             """Read operation that should not be blocked by write."""
             await write_started.wait()  # Wait for write to start
 
             # This read should not be blocked by the ongoing write
-            project = await temp_db_manager.get_project(sample_project.id)
+            project = await temp_db_manager_pool.get_project(sample_project.id)
             read_results.append(project.name if project else None)
 
         # Start write operation
@@ -180,9 +169,10 @@ class TestDatabaseLocking:
         assert read_results[0] == sample_project.name
 
     @pytest.mark.asyncio
-    async def test_batch_operations_performance(self, temp_db_manager, sample_project):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_batch_operations_performance(self, temp_db_manager_pool, sample_project):
         """Test that batch operations are more efficient than individual operations."""
-        await temp_db_manager.create_project(sample_project)
+        await temp_db_manager_pool.create_project(sample_project)
 
         # Create file descriptions for batch testing
         file_descriptions = [
@@ -200,11 +190,11 @@ class TestDatabaseLocking:
 
         # Test batch creation
         start_time = asyncio.get_event_loop().time()
-        await temp_db_manager.batch_create_file_descriptions(file_descriptions)
+        await temp_db_manager_pool.batch_create_file_descriptions(file_descriptions)
         batch_time = asyncio.get_event_loop().time() - start_time
 
         # Verify all files were created
-        all_descriptions = await temp_db_manager.get_all_file_descriptions(
+        all_descriptions = await temp_db_manager_pool.get_all_file_descriptions(
             sample_project.id, "main"
         )
         assert len(all_descriptions) == 100
@@ -215,10 +205,11 @@ class TestDatabaseLocking:
         )
 
     @pytest.mark.asyncio
-    async def test_connection_health_monitoring(self, temp_db_manager):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_connection_health_monitoring(self, temp_db_manager_pool):
         """Test connection health monitoring functionality."""
         # Get health status
-        health_status = await temp_db_manager.check_health()
+        health_status = await temp_db_manager_pool.check_health()
 
         # Verify health check structure
         assert "health_check" in health_status
@@ -236,9 +227,10 @@ class TestDatabaseLocking:
         assert health_check["response_time_ms"] > 0
 
     @pytest.mark.asyncio
-    async def test_database_stats_collection(self, temp_db_manager):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_database_stats_collection(self, temp_db_manager_pool):
         """Test database statistics collection."""
-        stats = temp_db_manager.get_database_stats()
+        stats = temp_db_manager_pool.get_database_stats()
 
         # Verify stats structure
         assert "connection_pool" in stats
@@ -253,10 +245,11 @@ class TestDatabaseLocking:
         assert pool_info["configured_size"] == 2  # Test pool size
 
     @pytest.mark.asyncio
-    async def test_connection_recovery_on_failure(self, temp_db_manager):
+    @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
+    async def test_connection_recovery_on_failure(self, temp_db_manager_pool):
         """Test connection recovery mechanism."""
         # Simulate multiple failures to trigger recovery
-        recovery_manager = temp_db_manager._recovery_manager
+        recovery_manager = temp_db_manager_pool._recovery_manager
 
         # Record consecutive failures
         test_error = Exception("Simulated persistent failure")
@@ -287,23 +280,11 @@ class TestDatabaseLocking:
 class TestConcurrentAccess:
     """Test concurrent access scenarios."""
 
-    @pytest.fixture
-    async def shared_db_manager(self):
-        """Create a shared database manager for concurrent testing."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = Path(f.name)
 
-        db_manager = DatabaseManager(db_path, pool_size=5)
-        await db_manager.initialize()
-
-        yield db_manager
-
-        await db_manager.close_pool()
-        if db_path.exists():
-            os.unlink(db_path)
 
     @pytest.mark.asyncio
-    async def test_high_concurrency_writes(self, shared_db_manager):
+    @pytest.mark.parametrize("temp_db_manager_pool", [5], indirect=True)
+    async def test_high_concurrency_writes(self, temp_db_manager_pool):
         """Test database resilience under high concurrent write load."""
 
         async def create_project_batch(batch_id: int, batch_size: int = 10):
@@ -321,7 +302,7 @@ class TestConcurrentAccess:
 
             # Create projects with retry mechanism
             for project in projects:
-                await shared_db_manager.create_project(project)
+                await temp_db_manager_pool.create_project(project)
 
             return len(projects)
 
@@ -334,11 +315,12 @@ class TestConcurrentAccess:
         assert all(isinstance(result, int) and result == 5 for result in results)
 
         # Verify total project count
-        all_projects = await shared_db_manager.get_all_projects()
+        all_projects = await temp_db_manager_pool.get_all_projects()
         assert len(all_projects) == 50  # 10 batches * 5 projects each
 
     @pytest.mark.asyncio
-    async def test_mixed_read_write_operations(self, shared_db_manager):
+    @pytest.mark.parametrize("temp_db_manager_pool", [5], indirect=True)
+    async def test_mixed_read_write_operations(self, temp_db_manager_pool):
         """Test mixed read and write operations under concurrent load."""
         # Create initial projects
         initial_projects = [
@@ -353,7 +335,7 @@ class TestConcurrentAccess:
         ]
 
         for project in initial_projects:
-            await shared_db_manager.create_project(project)
+            await temp_db_manager_pool.create_project(project)
 
         read_results = []
         write_results = []
@@ -361,7 +343,7 @@ class TestConcurrentAccess:
         async def read_operation(op_id: int):
             """Perform read operations."""
             for _ in range(10):
-                projects = await shared_db_manager.get_all_projects()
+                projects = await temp_db_manager_pool.get_all_projects()
                 read_results.append(len(projects))
                 await asyncio.sleep(0.01)  # Small delay
 
@@ -375,7 +357,7 @@ class TestConcurrentAccess:
                     created=datetime.utcnow(),
                     last_accessed=datetime.utcnow(),
                 )
-                await shared_db_manager.create_project(project)
+                await temp_db_manager_pool.create_project(project)
                 write_results.append(f"written_{op_id}_{i}")
                 await asyncio.sleep(0.02)  # Small delay
 
@@ -395,7 +377,7 @@ class TestConcurrentAccess:
         assert len(write_results) == 10  # 2 write operations * 5 writes each
 
         # Verify final state
-        final_projects = await shared_db_manager.get_all_projects()
+        final_projects = await temp_db_manager_pool.get_all_projects()
         assert len(final_projects) == 15  # 5 initial + 10 concurrent
 
 
