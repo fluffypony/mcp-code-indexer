@@ -17,7 +17,8 @@ import time
 from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
-from .monitoring.file_watcher import _write_debug_log, create_file_watcher, FileWatcher
+from .monitoring.file_watcher import create_file_watcher, FileWatcher
+from .monitoring.utils import _write_debug_log
 from .monitoring.change_detector import FileChange, ChangeType
 from .chunking.ast_chunker import ASTChunker
 
@@ -306,23 +307,25 @@ class VectorDaemon:
                 max_chunk_size=1500,
                 min_chunk_size=50,
                 enable_redaction=True,
-                enable_optimization=True
+                enable_optimization=True,
             )
 
             # Read and chunk the file
             try:
                 chunks = chunker.chunk_file(str(change.path))
                 chunk_count = len(chunks)
-                
+
                 # Only process files that actually produced chunks
                 if chunk_count == 0:
-                    logger.debug(f"Worker {worker_id}: No chunks produced for {change.path}")
+                    logger.debug(
+                        f"Worker {worker_id}: No chunks produced for {change.path}"
+                    )
                     return
-                
-                # Log chunking results
+
+                # Log chunking results (to be replaced with embedding generation later)
                 chunk_types = {}
                 redacted_count = 0
-                
+
                 for chunk in chunks:
                     chunk_type = chunk.chunk_type.value
                     chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
@@ -351,12 +354,14 @@ class VectorDaemon:
                     f"  Chunk types: {chunk_types}\n"
                     f"  Redacted chunks: {redacted_count}\n"
                     f"  Sample chunks:\n"
-                    + "\n".join([
-                        f"    [{i}] {chunk.chunk_type.value} - {chunk.name or 'unnamed'} "
-                        f"(lines {chunk.start_line}-{chunk.end_line}, "
-                        f"{len(chunk.content)} chars, redacted: {chunk.redacted})"
-                        for i, chunk in enumerate(chunks[:3])  # Show first 3 chunks
-                    ])
+                    + "\n".join(
+                        [
+                            f"    [{i}] {chunk.chunk_type.value} - {chunk.name or 'unnamed'} "
+                            f"(lines {chunk.start_line}-{chunk.end_line}, "
+                            f"{len(chunk.content)} chars, redacted: {chunk.redacted})"
+                            for i, chunk in enumerate(chunks[:3])  # Show first 3 chunks
+                        ]
+                    )
                 )
 
                 # Only increment stats for successfully chunked files

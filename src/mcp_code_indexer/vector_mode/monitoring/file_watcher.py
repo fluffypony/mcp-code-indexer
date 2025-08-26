@@ -6,8 +6,8 @@ for the vector mode indexing pipeline.
 """
 
 import asyncio
-from datetime import datetime
 import logging
+from .utils import _write_debug_log
 from pathlib import Path
 from typing import Callable, Optional, List, Dict, Any
 import time
@@ -30,15 +30,7 @@ from .merkle_tree import MerkleTree
 logger = logging.getLogger(__name__)
 
 
-def _write_debug_log(message: str) -> None:
-    """Write debug message to temporary file."""
-    try:
-        with open("/tmp/filewatcher_debug.log", "a") as f:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-            f.write(f"[{timestamp}] {message}\n")
-    except Exception:
-        logger.error("Failed to write debug log. ")
-        pass
+
 
 
 class VectorModeEventHandler(FileSystemEventHandler):

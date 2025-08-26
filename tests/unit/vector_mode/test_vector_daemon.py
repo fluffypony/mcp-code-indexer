@@ -177,7 +177,7 @@ if __name__ == "__main__":
         
         # Mock the logger and debug writer
         with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.daemon._write_debug_log") as mock_debug_log:
+             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
             
             await vector_daemon._process_file_change_task(task, worker_id)
             
@@ -222,7 +222,7 @@ if __name__ == "__main__":
         worker_id = "worker_2"
         
         with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.daemon._write_debug_log") as mock_debug_log:
+             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
             
             await vector_daemon._process_file_change_task(task, worker_id)
             
@@ -253,7 +253,7 @@ if __name__ == "__main__":
         worker_id = "worker_3"
         
         with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.daemon._write_debug_log") as mock_debug_log:
+             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
             
             await vector_daemon._process_file_change_task(task, worker_id)
             
@@ -283,7 +283,7 @@ if __name__ == "__main__":
         worker_id = "worker_4"
         
         with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.daemon._write_debug_log") as mock_debug_log:
+             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
             
             await vector_daemon._process_file_change_task(task, worker_id)
             
@@ -317,7 +317,7 @@ if __name__ == "__main__":
         worker_id = "worker_5"
         
         with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.daemon._write_debug_log") as mock_debug_log:
+             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
             
             await vector_daemon._process_file_change_task(task, worker_id)
             
@@ -348,7 +348,7 @@ if __name__ == "__main__":
         worker_id = "worker_6"
         
         with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.daemon._write_debug_log") as mock_debug_log:
+             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
             
             await vector_daemon._process_file_change_task(task, worker_id)
             
@@ -417,7 +417,7 @@ if __name__ == "__main__":
         worker_id = "worker_8"
         
         with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.daemon._write_debug_log") as mock_debug_log:
+             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
             
             await vector_daemon._process_file_change_task(task, worker_id)
             
