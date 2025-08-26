@@ -23,83 +23,100 @@ import pytest_asyncio
 from mcp_code_indexer.database.database import DatabaseManager
 from mcp_code_indexer.database.models import Project
 from mcp_code_indexer.vector_mode.daemon import VectorDaemon
-from mcp_code_indexer.vector_mode.monitoring.change_detector import ChangeType, FileChange
+from mcp_code_indexer.vector_mode.monitoring.change_detector import (
+    ChangeType,
+    FileChange,
+)
 
 
 class TestVectorDaemonMonitoringStatus:
     """Test VectorDaemon monitored_projects management."""
-    
+
     @pytest.fixture
     async def vector_daemon(self, db_manager: DatabaseManager) -> VectorDaemon:
         """Create a VectorDaemon for testing."""
         from mcp_code_indexer.vector_mode.config import VectorConfig
         from pathlib import Path
-        
+
         config = VectorConfig()
         cache_dir = Path("/tmp/test_cache")
         daemon = VectorDaemon(config, db_manager, cache_dir)
         return daemon
 
-    async def test_get_project_monitoring_status_empty(self, db_manager: DatabaseManager, vector_daemon: VectorDaemon) -> None:
+    async def test_get_project_monitoring_status_empty(
+        self, db_manager: DatabaseManager, vector_daemon: VectorDaemon
+    ) -> None:
         """Test monitoring status when no projects exist."""
         status = await vector_daemon._get_project_monitoring_status()
-        
+
         assert status["monitored"] == []
         assert status["unmonitored"] == []
         assert len(vector_daemon.monitored_projects) == 0
 
-    async def test_get_project_monitoring_status_new_project(self, db_manager: DatabaseManager, sample_project: Project, vector_daemon: VectorDaemon) -> None:
+    async def test_get_project_monitoring_status_new_project(
+        self,
+        db_manager: DatabaseManager,
+        sample_project: Project,
+        vector_daemon: VectorDaemon,
+    ) -> None:
         """Test monitoring status with a new vector-enabled project."""
         # Enable vector mode for the project
         await db_manager.set_project_vector_mode(sample_project.id, True)
-        
+
         # Project already has aliases from fixture, so it should be monitorable
         status = await vector_daemon._get_project_monitoring_status()
-        
+
         # Should be marked for monitoring
         assert len(status["monitored"]) == 1
         assert status["monitored"][0].name == sample_project.name
         assert len(status["unmonitored"]) == 0
 
-    async def test_get_project_monitoring_status_unmonitor_project(self, db_manager: DatabaseManager, sample_project: Project, vector_daemon: VectorDaemon) -> None:
+    async def test_get_project_monitoring_status_unmonitor_project(
+        self,
+        db_manager: DatabaseManager,
+        sample_project: Project,
+        vector_daemon: VectorDaemon,
+    ) -> None:
         """Test monitoring status when project should be unmonitored."""
         # Setup: enable vector mode (project already has aliases from fixture)
         await db_manager.set_project_vector_mode(sample_project.id, True)
-        
+
         # Simulate project being monitored
         vector_daemon.monitored_projects.add(sample_project.name)
-        
+
         # Now disable vector mode
         await db_manager.set_project_vector_mode(sample_project.id, False)
-        
+
         status = await vector_daemon._get_project_monitoring_status()
-        
+
         # Should be marked for unmonitoring
         assert len(status["monitored"]) == 0
         assert len(status["unmonitored"]) == 1
         assert status["unmonitored"][0].name == sample_project.name
 
-    async def test_get_project_monitoring_status_no_aliases(self, db_manager: DatabaseManager, vector_daemon: VectorDaemon) -> None:
+    async def test_get_project_monitoring_status_no_aliases(
+        self, db_manager: DatabaseManager, vector_daemon: VectorDaemon
+    ) -> None:
         """Test that projects without aliases are not monitored."""
         # Create a project without aliases
         from mcp_code_indexer.database.models import Project
         from datetime import datetime
-        
+
         project_no_aliases = Project(
             id="no_aliases_project",
-            name="no aliases project", 
+            name="no aliases project",
             aliases=[],  # No aliases
             created=datetime.utcnow(),
             last_accessed=datetime.utcnow(),
-            vector_mode=False
+            vector_mode=False,
         )
         await db_manager.create_project(project_no_aliases)
-        
+
         # Enable vector mode
         await db_manager.set_project_vector_mode(project_no_aliases.id, True)
-        
+
         status = await vector_daemon._get_project_monitoring_status()
-        
+
         # Should not be monitored due to missing aliases
         assert len(status["monitored"]) == 0
         assert len(status["unmonitored"]) == 0
@@ -109,7 +126,9 @@ class TestVectorDaemonFileChangeProcessing:
     """Test VectorDaemon file change processing functionality."""
 
     @pytest.fixture
-    async def vector_daemon(self, db_manager: DatabaseManager, tmp_path: Path) -> VectorDaemon:
+    async def vector_daemon(
+        self, db_manager: DatabaseManager, tmp_path: Path
+    ) -> VectorDaemon:
         """Create a VectorDaemon for testing."""
         from mcp_code_indexer.vector_mode.config import VectorConfig
 
@@ -117,11 +136,7 @@ class TestVectorDaemonFileChangeProcessing:
         cache_dir = tmp_path / "test_cache"
         daemon = VectorDaemon(config, db_manager, cache_dir)
         # Initialize stats
-        daemon.stats = {
-            "files_processed": 0,
-            "errors_count": 0,
-            "last_activity": 0.0
-        }
+        daemon.stats = {"files_processed": 0, "errors_count": 0, "last_activity": 0.0}
         return daemon
 
     @pytest.fixture
@@ -150,7 +165,7 @@ if __name__ == "__main__":
         file_path.write_text(content)
         return file_path
 
-    @pytest.fixture 
+    @pytest.fixture
     def sample_binary_file(self, tmp_path: Path) -> Path:
         """Create a sample binary file for testing."""
         file_path = tmp_path / "test_file.bin"
@@ -165,41 +180,42 @@ if __name__ == "__main__":
             path=str(sample_python_file),
             change_type=ChangeType.CREATED,
             timestamp=datetime.utcnow(),
-            size=len(sample_python_file.read_text())
+            size=len(sample_python_file.read_text()),
         )
-        
-        task = {
-            "project_name": "test_project",
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         worker_id = "worker_1"
-        
+
         # Mock the logger and debug writer
-        with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
-            
+        with (
+            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
+            patch(
+                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
+            ) as mock_debug_log,
+        ):
+
             await vector_daemon._process_file_change_task(task, worker_id)
-            
+
             # Verify stats were updated
             assert vector_daemon.stats["files_processed"] == 1
             assert vector_daemon.stats["errors_count"] == 0
-            
+
             # Verify logging was called
             mock_logger.info.assert_called()
             mock_debug_log.assert_called()
-            
+
             # Check the info log call for chunking results
             info_calls = mock_logger.info.call_args_list
             assert len(info_calls) >= 2  # Initial file change + chunking results
-            
+
             # Find the chunking results log call
             chunking_call = None
             for call in info_calls:
                 if "Chunked" in str(call[0][0]):
                     chunking_call = call
                     break
-            
+
             assert chunking_call is not None
             assert "chunks" in str(chunking_call[0][0])
 
@@ -211,25 +227,26 @@ if __name__ == "__main__":
             path=str(sample_python_file),
             change_type=ChangeType.MODIFIED,
             timestamp=datetime.utcnow(),
-            size=len(sample_python_file.read_text())
+            size=len(sample_python_file.read_text()),
         )
-        
-        task = {
-            "project_name": "test_project",
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         worker_id = "worker_2"
-        
-        with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
-            
+
+        with (
+            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
+            patch(
+                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
+            ) as mock_debug_log,
+        ):
+
             await vector_daemon._process_file_change_task(task, worker_id)
-            
+
             # Verify stats were updated
             assert vector_daemon.stats["files_processed"] == 1
             assert vector_daemon.stats["errors_count"] == 0
-            
+
             # Verify chunking occurred
             mock_logger.info.assert_called()
             mock_debug_log.assert_called()
@@ -242,27 +259,30 @@ if __name__ == "__main__":
             path=str(sample_python_file),
             change_type=ChangeType.DELETED,
             timestamp=datetime.utcnow(),
-            size=0
+            size=0,
         )
-        
-        task = {
-            "project_name": "test_project",
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         worker_id = "worker_3"
-        
-        with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
-            
+
+        with (
+            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
+            patch(
+                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
+            ) as mock_debug_log,
+        ):
+
             await vector_daemon._process_file_change_task(task, worker_id)
-            
+
             # Verify no processing occurred
             assert vector_daemon.stats["files_processed"] == 0
             assert vector_daemon.stats["errors_count"] == 0
-            
+
             # Verify debug log about skipping was called
-            mock_logger.debug.assert_called_with(f"Worker {worker_id}: Skipping deleted file {sample_python_file}")
+            mock_logger.debug.assert_called_with(
+                f"Worker {worker_id}: Skipping deleted file {sample_python_file}"
+            )
 
     async def test_process_file_change_task_binary_file(
         self, vector_daemon: VectorDaemon, sample_binary_file: Path
@@ -272,26 +292,27 @@ if __name__ == "__main__":
             path=str(sample_binary_file),
             change_type=ChangeType.CREATED,
             timestamp=datetime.utcnow(),
-            size=6
+            size=6,
         )
-        
-        task = {
-            "project_name": "test_project",
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         worker_id = "worker_4"
-        
-        with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
-            
+
+        with (
+            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
+            patch(
+                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
+            ) as mock_debug_log,
+        ):
+
             await vector_daemon._process_file_change_task(task, worker_id)
-            
+
             # ASTChunker processes binary files using errors='ignore'
             # This may produce chunks, so files_processed gets incremented
             assert vector_daemon.stats["files_processed"] == 1
             assert vector_daemon.stats["errors_count"] == 0
-            
+
             # Verify logging occurred
             mock_logger.info.assert_called()
             mock_debug_log.assert_called()
@@ -301,33 +322,36 @@ if __name__ == "__main__":
     ) -> None:
         """Test processing a non-existent file (should handle gracefully)."""
         nonexistent_file = tmp_path / "nonexistent.py"
-        
+
         change = FileChange(
             path=str(nonexistent_file),
             change_type=ChangeType.CREATED,
             timestamp=datetime.utcnow(),
-            size=100
+            size=100,
         )
-        
-        task = {
-            "project_name": "test_project",
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         worker_id = "worker_5"
-        
-        with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
-            
+
+        with (
+            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
+            patch(
+                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
+            ) as mock_debug_log,
+        ):
+
             await vector_daemon._process_file_change_task(task, worker_id)
-            
+
             # ASTChunker handles nonexistent files gracefully by returning empty list
             # No chunks produced, so no files_processed increment
             assert vector_daemon.stats["files_processed"] == 0
             assert vector_daemon.stats["errors_count"] == 0
-            
+
             # Verify debug log about no chunks was called
-            mock_logger.debug.assert_called_with(f"Worker {worker_id}: No chunks produced for {nonexistent_file}")
+            mock_logger.debug.assert_called_with(
+                f"Worker {worker_id}: No chunks produced for {nonexistent_file}"
+            )
 
     async def test_process_file_change_task_chunking_details(
         self, vector_daemon: VectorDaemon, sample_python_file: Path
@@ -337,32 +361,33 @@ if __name__ == "__main__":
             path=str(sample_python_file),
             change_type=ChangeType.CREATED,
             timestamp=datetime.utcnow(),
-            size=len(sample_python_file.read_text())
+            size=len(sample_python_file.read_text()),
         )
-        
-        task = {
-            "project_name": "test_project",
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         worker_id = "worker_6"
-        
-        with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
-            
+
+        with (
+            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
+            patch(
+                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
+            ) as mock_debug_log,
+        ):
+
             await vector_daemon._process_file_change_task(task, worker_id)
-            
+
             # Verify debug log was called with chunk details
             debug_calls = mock_debug_log.call_args_list
             assert len(debug_calls) >= 2  # Initial processing + chunk details
-            
+
             # Check that chunk details are in the debug log
             chunk_details_call = None
             for call in debug_calls:
                 if "chunking details:" in str(call[0][0]):
                     chunk_details_call = call
                     break
-            
+
             assert chunk_details_call is not None
             chunk_details_text = str(chunk_details_call[0][0])
             assert "Total chunks:" in chunk_details_text
@@ -376,21 +401,18 @@ if __name__ == "__main__":
         """Test that daemon stats are updated correctly."""
         initial_files_processed = vector_daemon.stats["files_processed"]
         initial_last_activity = vector_daemon.stats["last_activity"]
-        
+
         change = FileChange(
             path=str(sample_python_file),
             change_type=ChangeType.MODIFIED,
             timestamp=datetime.utcnow(),
-            size=len(sample_python_file.read_text())
+            size=len(sample_python_file.read_text()),
         )
-        
-        task = {
-            "project_name": "test_project",
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         await vector_daemon._process_file_change_task(task, "worker_7")
-        
+
         # Verify stats were updated
         assert vector_daemon.stats["files_processed"] == initial_files_processed + 1
         assert vector_daemon.stats["last_activity"] > initial_last_activity
@@ -401,26 +423,27 @@ if __name__ == "__main__":
         """Test processing an empty file."""
         empty_file = tmp_path / "empty.py"
         empty_file.write_text("")
-        
+
         change = FileChange(
             path=str(empty_file),
             change_type=ChangeType.CREATED,
             timestamp=datetime.utcnow(),
-            size=0
+            size=0,
         )
-        
-        task = {
-            "project_name": "test_project", 
-            "change": change
-        }
-        
+
+        task = {"project_name": "test_project", "change": change}
+
         worker_id = "worker_8"
-        
-        with patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger, \
-             patch("mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log") as mock_debug_log:
-            
+
+        with (
+            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
+            patch(
+                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
+            ) as mock_debug_log,
+        ):
+
             await vector_daemon._process_file_change_task(task, worker_id)
-            
+
             # Empty files should be processed but result in 0 chunks
             # This depends on ASTChunker behavior - it should skip empty files
             # So no processing should occur
