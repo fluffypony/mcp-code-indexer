@@ -265,36 +265,14 @@ class TestRetryExecutor:
 class TestRetryExecutorWithRealDatabase:
     """Test retry executor with real database operations."""
 
-    @pytest.fixture
-    async def temp_database(self):
-        """Create a temporary database for testing."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = Path(f.name)
 
-        # Create database with tables
-        async with aiosqlite.connect(db_path) as db:
-            await db.execute(
-                """
-                CREATE TABLE test_table (
-                    id INTEGER PRIMARY KEY,
-                    data TEXT NOT NULL
-                )
-            """
-            )
-            await db.commit()
 
-        yield db_path
-
-        # Cleanup
-        if db_path.exists():
-            db_path.unlink()
-
-    async def test_database_operations_with_retries(self, temp_database):
+    async def test_database_operations_with_retries(self, temp_db_with_test_table):
         """Test actual database operations with retry logic."""
         retry_executor = create_retry_executor(max_attempts=5)
 
         async def insert_data(data_value):
-            async with aiosqlite.connect(temp_database) as db:
+            async with aiosqlite.connect(temp_db_with_test_table) as db:
                 await db.execute(
                     "INSERT INTO test_table (data) VALUES (?)", (data_value,)
                 )
@@ -309,7 +287,7 @@ class TestRetryExecutorWithRealDatabase:
         assert result == "inserted_test_data"
 
         # Verify data was inserted
-        async with aiosqlite.connect(temp_database) as db:
+        async with aiosqlite.connect(temp_db_with_test_table) as db:
             cursor = await db.execute(
                 "SELECT data FROM test_table WHERE data = ?", ("test_data",)
             )
@@ -317,12 +295,12 @@ class TestRetryExecutorWithRealDatabase:
             assert row is not None
             assert row[0] == "test_data"
 
-    async def test_simulated_lock_contention(self, temp_database):
+    async def test_simulated_lock_contention(self, temp_db_with_test_table):
         """Test retry logic under simulated lock contention."""
         retry_executor = create_retry_executor(max_attempts=3, min_wait_seconds=0.001)
 
         # Create a long-running transaction to cause lock contention
-        blocking_conn = await aiosqlite.connect(temp_database)
+        blocking_conn = await aiosqlite.connect(temp_db_with_test_table)
         await blocking_conn.execute("BEGIN EXCLUSIVE")
 
         attempt_count = 0
@@ -332,7 +310,7 @@ class TestRetryExecutorWithRealDatabase:
             attempt_count += 1
 
             # This should fail while the exclusive transaction is active
-            async with aiosqlite.connect(temp_database) as db:
+            async with aiosqlite.connect(temp_db_with_test_table) as db:
                 await db.execute(
                     "INSERT INTO test_table (data) VALUES (?)", ("contended",)
                 )
