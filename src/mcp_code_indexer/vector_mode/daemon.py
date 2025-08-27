@@ -7,20 +7,23 @@ Handles embedding generation, change detection, and vector database synchronizat
 
 import asyncio
 import logging
-import signal
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-import json
+from typing import Any, Dict, List, Optional, Set
 import time
 
 from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
 from .monitoring.file_watcher import create_file_watcher, FileWatcher
-from .monitoring.utils import _write_debug_log
+
 from .monitoring.change_detector import FileChange, ChangeType
 from .chunking.ast_chunker import ASTChunker
+from .types import (
+    ScanProjectTask,
+    VectorDaemonTaskType,
+    ProcessFileChangeTask,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +78,8 @@ class VectorDaemon:
             """Non-blocking callback that queues file change processing."""
             try:
                 # Create file change processing task
-                task_item = {
-                    "type": "process_file_change",
+                task_item: ProcessFileChangeTask = {
+                    "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
                     "project_name": project_name,
                     "change": change,
                     "timestamp": time.time(),
@@ -223,8 +226,8 @@ class VectorDaemon:
 
     async def _queue_project_scan(self, project_name: str, folder_path: str) -> None:
         """Queue a project for scanning and indexing."""
-        task = {
-            "type": "scan_project",
+        task: ScanProjectTask = {
+            "type": VectorDaemonTaskType.SCAN_PROJECT,
             "project_name": project_name,
             "folder_path": folder_path,
             "timestamp": time.time(),
@@ -268,20 +271,19 @@ class VectorDaemon:
         """Process a queued task."""
         task_type = task.get("type")
 
-        if task_type == "scan_project":
+        if task_type == VectorDaemonTaskType.SCAN_PROJECT:
             await self._process_project_scan(task, worker_id)
-        elif task_type == "process_file_change":
+        elif task_type == VectorDaemonTaskType.PROCESS_FILE_CHANGE:
             await self._process_file_change_task(task, worker_id)
         else:
             logger.warning(f"Unknown task type: {task_type}")
 
-    async def _process_file_change_task(self, task: dict, worker_id: str) -> None:
+    async def _process_file_change_task(
+        self, task: ProcessFileChangeTask, worker_id: str
+    ) -> None:
         """Process a file change task."""
         project_name: str = task["project_name"]
         change: FileChange = task["change"]
-        _write_debug_log(
-            f"Worker {worker_id}: Processing file change for {change.path}"
-        )
         logger.info(
             f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})",
             extra={
@@ -347,22 +349,26 @@ class VectorDaemon:
                     },
                 )
 
-                # Write detailed debug information
-                _write_debug_log(
-                    f"Worker {worker_id}: File {change.path} chunking details:\n"
-                    f"  Total chunks: {chunk_count}\n"
-                    f"  Chunk types: {chunk_types}\n"
-                    f"  Redacted chunks: {redacted_count}\n"
-                    f"  Sample chunks:\n"
-                    + "\n".join(
-                        [
-                            f"    [{i}] {chunk.chunk_type.value} - {chunk.name or 'unnamed'} "
-                            f"(lines {chunk.start_line}-{chunk.end_line}, "
-                            f"{len(chunk.content)} chars, redacted: {chunk.redacted})"
-                            for i, chunk in enumerate(chunks[:3])  # Show first 3 chunks
-                        ]
-                    )
+                # Log detailed debug information
+                sample_chunks = [
+                    f"    [{i}] {chunk.chunk_type.value} - {chunk.name or 'unnamed'} "
+                    f"(lines {chunk.start_line}-{chunk.end_line}, "
+                    f"{len(chunk.content)} chars, redacted: {chunk.redacted})"
+                    for i, chunk in enumerate(chunks[:3])  # Show first 3 chunks
+                ]
+                logger.debug(
+                    f"Worker {worker_id}: File {change.path} chunking details: "
+                    f"Total chunks: {chunk_count}, "
+                    f"Chunk types: {chunk_types}, "
+                    f"Redacted chunks: {redacted_count}, "
+                    f"Sample chunks: {', '.join(sample_chunks)}"
                 )
+
+                # Generate and store embeddings for chunks
+                embeddings = await self._generate_embeddings(
+                    chunks, project_name, change.path
+                )
+                await self._store_embeddings(embeddings, project_name, change.path)
 
                 # Only increment stats for successfully chunked files
                 self.stats["files_processed"] += 1
@@ -421,29 +427,25 @@ class VectorDaemon:
                         ignore_patterns=self.config.ignore_patterns,
                         debounce_interval=self.config.watch_debounce_ms / 1000.0,
                     )
-                    _write_debug_log(
-                        f"VectorDaemon: Created watcher for {project_name}"
-                    )
+                    logger.debug(f"VectorDaemon: Created watcher for {project_name}")
                     # Initialize the watcher
                     await watcher.initialize()
-                    _write_debug_log(
+                    logger.debug(
                         f"VectorDaemon: Initialized watcher for {project_name}"
                     )
                     # Add change callback
                     watcher.add_change_callback(self._on_file_change(project_name))
-                    _write_debug_log(
+                    logger.debug(
                         f"VectorDaemon: Added change callback for {project_name}"
                     )
 
                     # Start watching
                     watcher.start_watching()
-                    _write_debug_log(
-                        f"VectorDaemon: Started watching for {project_name}"
-                    )
+                    logger.debug(f"VectorDaemon: Started watching for {project_name}")
 
                     # Store watcher for later cleanup
                     self.file_watchers[project_name] = watcher
-                    _write_debug_log(f"VectorDaemon: Stored watcher for {project_name}")
+                    logger.debug(f"VectorDaemon: Stored watcher for {project_name}")
 
                     logger.info(
                         f"File watcher started for project {project_name}",
@@ -553,6 +555,20 @@ class VectorDaemon:
             "stats": self.stats.copy(),
             "file_watcher_stats": watcher_stats,
         }
+
+    async def _generate_embeddings(
+        self, chunks: list, project_name: str, file_path
+    ) -> list[list[float]]:
+        """Generate embeddings for file chunks."""
+        # TODO: implement
+        return []
+
+    async def _store_embeddings(
+        self, embeddings: list[list[float]], project_name: str, file_path
+    ) -> None:
+        """Store embeddings in vector database."""
+        # TODO: implement
+        pass
 
 
 async def start_vector_daemon(

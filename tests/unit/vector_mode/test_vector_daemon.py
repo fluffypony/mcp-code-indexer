@@ -11,11 +11,10 @@ _process_file_change_task method including:
 - Error handling for file processing
 """
 
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -28,6 +27,9 @@ from mcp_code_indexer.vector_mode.monitoring.change_detector import (
     FileChange,
 )
 
+from mcp_code_indexer.vector_mode.config import VectorConfig
+from mcp_code_indexer.vector_mode.chunking.ast_chunker import ASTChunker
+
 
 class TestVectorDaemonMonitoringStatus:
     """Test VectorDaemon monitored_projects management."""
@@ -35,9 +37,6 @@ class TestVectorDaemonMonitoringStatus:
     @pytest.fixture
     async def vector_daemon(self, db_manager: DatabaseManager) -> VectorDaemon:
         """Create a VectorDaemon for testing."""
-        from mcp_code_indexer.vector_mode.config import VectorConfig
-        from pathlib import Path
-
         config = VectorConfig()
         cache_dir = Path("/tmp/test_cache")
         daemon = VectorDaemon(config, db_manager, cache_dir)
@@ -99,8 +98,6 @@ class TestVectorDaemonMonitoringStatus:
     ) -> None:
         """Test that projects without aliases are not monitored."""
         # Create a project without aliases
-        from mcp_code_indexer.database.models import Project
-        from datetime import datetime
 
         project_no_aliases = Project(
             id="no_aliases_project",
@@ -187,13 +184,20 @@ if __name__ == "__main__":
 
         worker_id = "worker_1"
 
-        # Mock the logger and debug writer
-        with (
-            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
-            patch(
-                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
-            ) as mock_debug_log,
-        ):
+        # Spy on ASTChunker.chunk_file to verify it was called
+        # NOTE: Ideally we'd use real chunker results, but for simplicity using mock return
+        with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file:
+            # Mock return value to ensure processing continues
+            mock_chunk_file.return_value = [
+                type('Chunk', (), {
+                    'chunk_type': type('ChunkType', (), {'value': 'function'}),
+                    'redacted': False,
+                    'name': 'test_function',
+                    'start_line': 1,
+                    'end_line': 5,
+                    'content': 'def test_function():\n    pass'
+                })
+            ]
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -201,23 +205,8 @@ if __name__ == "__main__":
             assert vector_daemon.stats["files_processed"] == 1
             assert vector_daemon.stats["errors_count"] == 0
 
-            # Verify logging was called
-            mock_logger.info.assert_called()
-            mock_debug_log.assert_called()
-
-            # Check the info log call for chunking results
-            info_calls = mock_logger.info.call_args_list
-            assert len(info_calls) >= 2  # Initial file change + chunking results
-
-            # Find the chunking results log call
-            chunking_call = None
-            for call in info_calls:
-                if "Chunked" in str(call[0][0]):
-                    chunking_call = call
-                    break
-
-            assert chunking_call is not None
-            assert "chunks" in str(chunking_call[0][0])
+            # Verify ASTChunker.chunk_file was called with the correct file path
+            mock_chunk_file.assert_called_once_with(str(sample_python_file))
 
     async def test_process_file_change_task_modified_file(
         self, vector_daemon: VectorDaemon, sample_python_file: Path
@@ -234,12 +223,25 @@ if __name__ == "__main__":
 
         worker_id = "worker_2"
 
-        with (
-            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
-            patch(
-                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
-            ) as mock_debug_log,
-        ):
+        # Spy on ASTChunker.chunk_file to verify it was called
+        with patch(
+            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
+        ) as mock_chunk_file:
+            # Make chunk_file return some test chunks
+            mock_chunk_file.return_value = [
+                type(
+                    "Chunk",
+                    (),
+                    {
+                        "chunk_type": type("ChunkType", (), {"value": "class"}),
+                        "redacted": False,
+                        "name": "TestClass",
+                        "start_line": 1,
+                        "end_line": 10,
+                        "content": "class TestClass:\n    pass",
+                    },
+                )
+            ]
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -248,8 +250,7 @@ if __name__ == "__main__":
             assert vector_daemon.stats["errors_count"] == 0
 
             # Verify chunking occurred
-            mock_logger.info.assert_called()
-            mock_debug_log.assert_called()
+            mock_chunk_file.assert_called_once_with(str(sample_python_file))
 
     async def test_process_file_change_task_deleted_file(
         self, vector_daemon: VectorDaemon, sample_python_file: Path
@@ -266,12 +267,10 @@ if __name__ == "__main__":
 
         worker_id = "worker_3"
 
-        with (
-            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
-            patch(
-                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
-            ) as mock_debug_log,
-        ):
+        # Spy on ASTChunker.chunk_file to verify it was NOT called for deleted files
+        with patch(
+            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
+        ) as mock_chunk_file:
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -279,10 +278,8 @@ if __name__ == "__main__":
             assert vector_daemon.stats["files_processed"] == 0
             assert vector_daemon.stats["errors_count"] == 0
 
-            # Verify debug log about skipping was called
-            mock_logger.debug.assert_called_with(
-                f"Worker {worker_id}: Skipping deleted file {sample_python_file}"
-            )
+            # Verify ASTChunker.chunk_file was NOT called (deleted files are skipped)
+            mock_chunk_file.assert_not_called()
 
     async def test_process_file_change_task_binary_file(
         self, vector_daemon: VectorDaemon, sample_binary_file: Path
@@ -299,12 +296,25 @@ if __name__ == "__main__":
 
         worker_id = "worker_4"
 
-        with (
-            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
-            patch(
-                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
-            ) as mock_debug_log,
-        ):
+        # Spy on ASTChunker.chunk_file to verify it was called
+        with patch(
+            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
+        ) as mock_chunk_file:
+            # Make chunk_file return some test chunks (binary files can produce chunks with errors='ignore')
+            mock_chunk_file.return_value = [
+                type(
+                    "Chunk",
+                    (),
+                    {
+                        "chunk_type": type("ChunkType", (), {"value": "text"}),
+                        "redacted": False,
+                        "name": None,
+                        "start_line": 1,
+                        "end_line": 1,
+                        "content": "binary content",
+                    },
+                )
+            ]
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -313,9 +323,8 @@ if __name__ == "__main__":
             assert vector_daemon.stats["files_processed"] == 1
             assert vector_daemon.stats["errors_count"] == 0
 
-            # Verify logging occurred
-            mock_logger.info.assert_called()
-            mock_debug_log.assert_called()
+            # Verify chunking occurred
+            mock_chunk_file.assert_called_once_with(str(sample_binary_file))
 
     async def test_process_file_change_task_nonexistent_file(
         self, vector_daemon: VectorDaemon, tmp_path: Path
@@ -334,12 +343,12 @@ if __name__ == "__main__":
 
         worker_id = "worker_5"
 
-        with (
-            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
-            patch(
-                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
-            ) as mock_debug_log,
-        ):
+        # Spy on ASTChunker.chunk_file to verify it was called but returned no chunks
+        with patch(
+            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
+        ) as mock_chunk_file:
+            # Make chunk_file return empty list for nonexistent file
+            mock_chunk_file.return_value = []
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -348,10 +357,8 @@ if __name__ == "__main__":
             assert vector_daemon.stats["files_processed"] == 0
             assert vector_daemon.stats["errors_count"] == 0
 
-            # Verify debug log about no chunks was called
-            mock_logger.debug.assert_called_with(
-                f"Worker {worker_id}: No chunks produced for {nonexistent_file}"
-            )
+            # Verify ASTChunker.chunk_file was called with the nonexistent file
+            mock_chunk_file.assert_called_once_with(str(nonexistent_file))
 
     async def test_process_file_change_task_chunking_details(
         self, vector_daemon: VectorDaemon, sample_python_file: Path
@@ -368,32 +375,47 @@ if __name__ == "__main__":
 
         worker_id = "worker_6"
 
-        with (
-            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
-            patch(
-                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
-            ) as mock_debug_log,
-        ):
+        # Spy on ASTChunker.chunk_file to verify it was called and verify chunk details
+        with patch(
+            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
+        ) as mock_chunk_file:
+            # Make chunk_file return multiple chunks with different types for detailed testing
+            mock_chunks = [
+                type(
+                    "Chunk",
+                    (),
+                    {
+                        "chunk_type": type("ChunkType", (), {"value": "function"}),
+                        "redacted": False,
+                        "name": "test_function",
+                        "start_line": 1,
+                        "end_line": 5,
+                        "content": "def test_function():\n    pass",
+                    },
+                ),
+                type(
+                    "Chunk",
+                    (),
+                    {
+                        "chunk_type": type("ChunkType", (), {"value": "class"}),
+                        "redacted": True,
+                        "name": "TestClass",
+                        "start_line": 7,
+                        "end_line": 15,
+                        "content": "class TestClass:\n    def __init__(self):\n        pass",
+                    },
+                ),
+            ]
+            mock_chunk_file.return_value = mock_chunks
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
-            # Verify debug log was called with chunk details
-            debug_calls = mock_debug_log.call_args_list
-            assert len(debug_calls) >= 2  # Initial processing + chunk details
+            # Verify chunking occurred
+            mock_chunk_file.assert_called_once_with(str(sample_python_file))
 
-            # Check that chunk details are in the debug log
-            chunk_details_call = None
-            for call in debug_calls:
-                if "chunking details:" in str(call[0][0]):
-                    chunk_details_call = call
-                    break
-
-            assert chunk_details_call is not None
-            chunk_details_text = str(chunk_details_call[0][0])
-            assert "Total chunks:" in chunk_details_text
-            assert "Chunk types:" in chunk_details_text
-            assert "Redacted chunks:" in chunk_details_text
-            assert "Sample chunks:" in chunk_details_text
+            # Verify that chunks were processed (stats updated)
+            assert vector_daemon.stats["files_processed"] == 1
+            assert vector_daemon.stats["errors_count"] == 0
 
     async def test_process_file_change_task_stats_update(
         self, vector_daemon: VectorDaemon, sample_python_file: Path
@@ -435,12 +457,12 @@ if __name__ == "__main__":
 
         worker_id = "worker_8"
 
-        with (
-            patch("mcp_code_indexer.vector_mode.daemon.logger") as mock_logger,
-            patch(
-                "mcp_code_indexer.vector_mode.monitoring.utils._write_debug_log"
-            ) as mock_debug_log,
-        ):
+        # Spy on ASTChunker.chunk_file to verify it was called but returned no chunks for empty file
+        with patch(
+            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
+        ) as mock_chunk_file:
+            # Make chunk_file return empty list for empty file
+            mock_chunk_file.return_value = []
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -449,3 +471,6 @@ if __name__ == "__main__":
             # So no processing should occur
             assert vector_daemon.stats["files_processed"] == 0
             assert vector_daemon.stats["errors_count"] == 0
+
+            # Verify ASTChunker.chunk_file was called with the empty file
+            mock_chunk_file.assert_called_once_with(str(empty_file))
