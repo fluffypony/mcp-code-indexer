@@ -37,7 +37,10 @@ class TestVectorDaemonMonitoringStatus:
     @pytest.fixture
     async def vector_daemon(self, db_manager: DatabaseManager) -> VectorDaemon:
         """Create a VectorDaemon for testing."""
-        config = VectorConfig(voyage_api_key="test-api-key")  # API key required
+        config = VectorConfig(
+            voyage_api_key="test-voyage-key",
+            turbopuffer_api_key="test-turbopuffer-key"
+        )
         cache_dir = Path("/tmp/test_cache")
         daemon = VectorDaemon(config, db_manager, cache_dir)
         return daemon
@@ -130,7 +133,8 @@ class TestVectorDaemonFileChangeProcessing:
         from mcp_code_indexer.vector_mode.config import VectorConfig
 
         config = VectorConfig(
-            voyage_api_key="test-api-key",  # Provide API key for testing
+            voyage_api_key="test-voyage-key",
+            turbopuffer_api_key="test-turbopuffer-key",
             embedding_model="voyage-code-2", 
             batch_size=32
         )
@@ -193,9 +197,10 @@ if __name__ == "__main__":
 
         worker_id = "worker_1"
 
-        # Mock EmbeddingService and ASTChunker
+        # Mock EmbeddingService, TurbopufferService, and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_embedding_service') as mock_service:
+             patch.object(vector_daemon, '_embedding_service') as mock_service, \
+             patch.object(vector_daemon, '_turbopuffer_service') as mock_turbopuffer_service:
             
             # Mock return value to ensure processing continues
             mock_chunk_file.return_value = [
@@ -211,6 +216,9 @@ if __name__ == "__main__":
             
             # Mock embeddings generation
             mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
+            
+            # Mock vector storage
+            mock_turbopuffer_service.store_embeddings = AsyncMock()
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -236,9 +244,10 @@ if __name__ == "__main__":
 
         worker_id = "worker_2"
 
-        # Mock EmbeddingService and ASTChunker
+        # Mock EmbeddingService, TurbopufferService, and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_embedding_service') as mock_service:
+             patch.object(vector_daemon, '_embedding_service') as mock_service, \
+             patch.object(vector_daemon, '_turbopuffer_service') as mock_turbopuffer_service:
             # Make chunk_file return some test chunks
             mock_chunk_file.return_value = [
                 type(
@@ -257,6 +266,9 @@ if __name__ == "__main__":
             
             # Mock embeddings generation
             mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
+            
+            # Mock vector storage
+            mock_turbopuffer_service.store_embeddings = AsyncMock()
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -311,9 +323,10 @@ if __name__ == "__main__":
 
         worker_id = "worker_4"
 
-        # Mock EmbeddingService and ASTChunker
+        # Mock EmbeddingService, TurbopufferService, and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_embedding_service') as mock_service:
+             patch.object(vector_daemon, '_embedding_service') as mock_service, \
+             patch.object(vector_daemon, '_turbopuffer_service') as mock_turbopuffer_service:
             # Make chunk_file return some test chunks (binary files can produce chunks with errors='ignore')
             mock_chunk_file.return_value = [
                 type(
@@ -332,6 +345,9 @@ if __name__ == "__main__":
             
             # Mock embeddings generation
             mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
+            
+            # Mock vector storage
+            mock_turbopuffer_service.store_embeddings = AsyncMock()
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -392,9 +408,10 @@ if __name__ == "__main__":
 
         worker_id = "worker_6"
 
-        # Mock EmbeddingService and ASTChunker
+        # Mock EmbeddingService, TurbopufferService, and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_embedding_service') as mock_service:
+             patch.object(vector_daemon, '_embedding_service') as mock_service, \
+             patch.object(vector_daemon, '_turbopuffer_service') as mock_turbopuffer_service:
             # Make chunk_file return multiple chunks with different types for detailed testing
             mock_chunks = [
                 type(
@@ -426,6 +443,9 @@ if __name__ == "__main__":
             
             # Mock embeddings generation
             mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536, [0.2] * 1536])
+            
+            # Mock vector storage
+            mock_turbopuffer_service.store_embeddings = AsyncMock()
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -452,9 +472,11 @@ if __name__ == "__main__":
 
         task = {"project_name": "test_project", "change": change}
 
-        # Mock EmbeddingService for stats test
-        with patch.object(vector_daemon, '_embedding_service') as mock_service:
+        # Mock EmbeddingService and TurbopufferService for stats test
+        with patch.object(vector_daemon, '_embedding_service') as mock_service, \
+             patch.object(vector_daemon, '_turbopuffer_service') as mock_turbopuffer_service:
             mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
+            mock_turbopuffer_service.store_embeddings = AsyncMock()
             
             await vector_daemon._process_file_change_task(task, "worker_7")
 
@@ -510,7 +532,8 @@ class TestVectorDaemonEmbeddingGeneration:
         from mcp_code_indexer.vector_mode.config import VectorConfig
 
         config = VectorConfig(
-            voyage_api_key="test-api-key",
+            voyage_api_key="test-voyage-key",
+            turbopuffer_api_key="test-turbopuffer-key",
             embedding_model="voyage-code-2",
             batch_size=32
         )
@@ -734,7 +757,8 @@ class TestVectorDaemonEmbeddingGeneration:
             mock_client = mock_create.return_value
             
             config = VectorConfig(
-                voyage_api_key="test-api-key",
+                voyage_api_key="test-voyage-key",
+                turbopuffer_api_key="test-turbopuffer-key",
                 embedding_model="voyage-code-2",
                 batch_size=32
             )
@@ -780,3 +804,211 @@ class TestVectorDaemonEmbeddingGeneration:
             mock_service.generate_embeddings_for_chunks.assert_called_once_with(
                 sample_chunks, project_name, file_path
             )
+
+
+class TestVectorDaemonTurbopufferIntegration:
+    """Test VectorDaemon integration with TurbopufferService for vector storage."""
+
+    @pytest.fixture
+    async def vector_daemon_with_turbopuffer(
+        self, db_manager: DatabaseManager, tmp_path: Path
+    ) -> VectorDaemon:
+        """Create a VectorDaemon with TurbopufferService for testing."""
+        from mcp_code_indexer.vector_mode.config import VectorConfig
+
+        config = VectorConfig(
+            voyage_api_key="test-voyage-key",
+            turbopuffer_api_key="test-turbopuffer-key",
+            embedding_model="voyage-code-2",
+            batch_size=32,
+            turbopuffer_region="gcp-europe-west3"
+        )
+        cache_dir = tmp_path / "test_cache"
+        daemon = VectorDaemon(config, db_manager, cache_dir)
+        daemon.stats = {
+            "files_processed": 0, 
+            "errors_count": 0, 
+            "last_activity": 0.0,
+            "embeddings_generated": 0
+        }
+        return daemon
+
+    @pytest.fixture
+    def sample_embeddings(self):
+        """Create sample embeddings for testing."""
+        return [
+            [0.1, 0.2, 0.3] * 512,  # 1536 dimensions
+            [0.4, 0.5, 0.6] * 512
+        ]
+
+    @pytest.fixture
+    def sample_chunks_with_metadata(self):
+        """Create sample code chunks with metadata for testing."""
+        from mcp_code_indexer.vector_mode.chunking.ast_chunker import CodeChunk
+        from mcp_code_indexer.database.models import ChunkType
+        
+        return [
+            CodeChunk(
+                content="def hello_world():\n    print('Hello, World!')",
+                chunk_type=ChunkType.FUNCTION,
+                name="hello_world",
+                file_path="/test/file.py",
+                start_line=1,
+                end_line=2,
+                content_hash="abc123",
+                language="python",
+                redacted=False,
+                imports=["print"]
+            ),
+            CodeChunk(
+                content="class TestClass:\n    def __init__(self):\n        pass",
+                chunk_type=ChunkType.CLASS,
+                name="TestClass",
+                file_path="/test/file.py", 
+                start_line=4,
+                end_line=6,
+                content_hash="def456",
+                language="python",
+                redacted=False,
+                imports=[]
+            )
+        ]
+
+    async def test_turbopuffer_client_initialization(
+        self, db_manager: DatabaseManager, tmp_path: Path
+    ):
+        """Test that TurbopufferClient is properly initialized."""
+        from mcp_code_indexer.vector_mode.config import VectorConfig
+        
+        with patch('mcp_code_indexer.vector_mode.daemon.create_turbopuffer_client') as mock_create_client:
+            mock_client = mock_create_client.return_value
+            
+            config = VectorConfig(
+                voyage_api_key="test-voyage-key",
+                turbopuffer_api_key="test-turbopuffer-key",
+                embedding_model="voyage-code-2",
+                turbopuffer_region="gcp-europe-west3"
+            )
+            cache_dir = tmp_path / "test_cache"
+            daemon = VectorDaemon(config, db_manager, cache_dir)
+            
+            # Verify client creation was called with correct config
+            mock_create_client.assert_called_once_with(config)
+            assert daemon._turbopuffer_client == mock_client
+
+    async def test_turbopuffer_service_initialization(
+        self, vector_daemon_with_turbopuffer: VectorDaemon
+    ):
+        """Test that TurbopufferService is properly initialized."""
+        # TurbopufferService should be initialized in constructor
+        assert hasattr(vector_daemon_with_turbopuffer, '_turbopuffer_service')
+        assert vector_daemon_with_turbopuffer._turbopuffer_service is not None
+
+    async def test_store_embeddings_success(
+        self, 
+        vector_daemon_with_turbopuffer: VectorDaemon, 
+        sample_embeddings,
+        sample_chunks_with_metadata
+    ):
+        """Test successful storage of embeddings using TurbopufferService."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Mock TurbopufferService
+        with patch.object(vector_daemon_with_turbopuffer, '_turbopuffer_service') as mock_service:
+            mock_service.store_embeddings = AsyncMock()
+            
+            await vector_daemon_with_turbopuffer._store_embeddings(
+                sample_embeddings, sample_chunks_with_metadata, project_name, file_path
+            )
+            
+            # Verify TurbopufferService was called correctly
+            mock_service.store_embeddings.assert_called_once_with(
+                sample_embeddings, sample_chunks_with_metadata, project_name, file_path
+            )
+
+    async def test_store_embeddings_empty_list(
+        self, vector_daemon_with_turbopuffer: VectorDaemon
+    ):
+        """Test storing empty embeddings list."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        with patch.object(vector_daemon_with_turbopuffer, '_turbopuffer_service') as mock_service:
+            mock_service.store_embeddings = AsyncMock()
+            
+            await vector_daemon_with_turbopuffer._store_embeddings(
+                [], [], project_name, file_path
+            )
+            
+            # Should still call service (let service handle empty case)
+            mock_service.store_embeddings.assert_called_once_with(
+                [], [], project_name, file_path
+            )
+
+    async def test_store_embeddings_service_error(
+        self, 
+        vector_daemon_with_turbopuffer: VectorDaemon, 
+        sample_embeddings,
+        sample_chunks_with_metadata
+    ):
+        """Test handling of TurbopufferService errors."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Get initial error count
+        initial_error_count = vector_daemon_with_turbopuffer.stats["errors_count"]
+        
+        # Mock service to raise exception
+        with patch.object(vector_daemon_with_turbopuffer, '_turbopuffer_service') as mock_service:
+            mock_service.store_embeddings = AsyncMock(side_effect=RuntimeError("Turbopuffer API Error"))
+            
+            # Should propagate the error and increment error count
+            with pytest.raises(RuntimeError, match="Turbopuffer API Error"):
+                await vector_daemon_with_turbopuffer._store_embeddings(
+                    sample_embeddings, sample_chunks_with_metadata, project_name, file_path
+                )
+            
+            # Verify error count was incremented
+            assert vector_daemon_with_turbopuffer.stats["errors_count"] == initial_error_count + 1
+
+    async def test_store_embeddings_dimension_mismatch(
+        self, vector_daemon_with_turbopuffer: VectorDaemon, sample_chunks_with_metadata
+    ):
+        """Test handling of mismatched embeddings and chunks count."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Mismatched counts - 3 embeddings vs 2 chunks
+        mismatched_embeddings = [
+            [0.1] * 1536,
+            [0.2] * 1536,
+            [0.3] * 1536
+        ]
+        
+        with patch.object(vector_daemon_with_turbopuffer, '_turbopuffer_service') as mock_service:
+            mock_service.store_embeddings = AsyncMock(
+                side_effect=ValueError("Embeddings and chunks count mismatch")
+            )
+            
+            with pytest.raises(ValueError, match="Embeddings and chunks count mismatch"):
+                await vector_daemon_with_turbopuffer._store_embeddings(
+                    mismatched_embeddings, sample_chunks_with_metadata, project_name, file_path
+                )
+
+    async def test_turbopuffer_client_no_api_key_error(
+        self, db_manager: DatabaseManager, tmp_path: Path
+    ):
+        """Test TurbopufferClient initialization without API key should raise ValueError."""
+        from mcp_code_indexer.vector_mode.config import VectorConfig
+        
+        config = VectorConfig(
+            voyage_api_key="test-voyage-key",
+            turbopuffer_api_key=None,  # No API key
+            embedding_model="voyage-code-2"
+        )
+        cache_dir = tmp_path / "test_cache"
+        
+        # Should raise ValueError when no API key provided
+        with pytest.raises(ValueError, match="TURBOPUFFER_API_KEY is required for vector storage"):
+            VectorDaemon(config, db_manager, cache_dir)

@@ -17,7 +17,9 @@ from ..database.models import Project
 from .config import VectorConfig, load_vector_config
 from .monitoring.file_watcher import create_file_watcher, FileWatcher
 from .providers.voyage_client import VoyageClient, create_voyage_client
+from .providers.turbopuffer_client import create_turbopuffer_client
 from .services.embedding_service import EmbeddingService
+from .services.turbopuffer_service import TurbopufferService
 
 from .monitoring.change_detector import FileChange, ChangeType
 from .chunking.ast_chunker import ASTChunker, CodeChunk
@@ -74,6 +76,10 @@ class VectorDaemon:
         # Initialize VoyageClient and EmbeddingService for embedding generation  
         self._voyage_client = create_voyage_client(self.config)
         self._embedding_service = EmbeddingService(self._voyage_client, self.config)
+
+        # Initialize TurbopufferClient and TurbopufferService for vector storage
+        self._turbopuffer_client = create_turbopuffer_client(self.config)
+        self._turbopuffer_service = TurbopufferService(self._turbopuffer_client, self.config)
 
         # Signal handling is delegated to the parent process
 
@@ -375,7 +381,7 @@ class VectorDaemon:
                 embeddings = await self._generate_embeddings(
                     chunks, project_name, change.path
                 )
-                await self._store_embeddings(embeddings, project_name, change.path)
+                await self._store_embeddings(embeddings, chunks, project_name, change.path)
 
                 # Only increment stats for successfully chunked files
                 self.stats["files_processed"] += 1
@@ -584,11 +590,17 @@ class VectorDaemon:
             raise
 
     async def _store_embeddings(
-        self, embeddings: list[list[float]], project_name: str, file_path
+        self, embeddings: list[list[float]], chunks: list[CodeChunk], project_name: str, file_path: str
     ) -> None:
         """Store embeddings in vector database."""
-        # TODO: implement
-        pass
+        try:
+            await self._turbopuffer_service.store_embeddings(
+                embeddings, chunks, project_name, file_path
+            )
+        except Exception as e:
+            # Update error statistics
+            self.stats["errors_count"] += 1
+            raise
 
 
 async def start_vector_daemon(
