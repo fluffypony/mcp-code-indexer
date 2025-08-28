@@ -14,7 +14,7 @@ _process_file_change_task method including:
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -193,9 +193,9 @@ if __name__ == "__main__":
 
         worker_id = "worker_1"
 
-        # Mock VoyageClient and ASTChunker
+        # Mock EmbeddingService and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_voyage_client') as mock_client:
+             patch.object(vector_daemon, '_embedding_service') as mock_service:
             
             # Mock return value to ensure processing continues
             mock_chunk_file.return_value = [
@@ -210,7 +210,7 @@ if __name__ == "__main__":
             ]
             
             # Mock embeddings generation
-            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -236,9 +236,9 @@ if __name__ == "__main__":
 
         worker_id = "worker_2"
 
-        # Mock VoyageClient and ASTChunker
+        # Mock EmbeddingService and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_voyage_client') as mock_client:
+             patch.object(vector_daemon, '_embedding_service') as mock_service:
             # Make chunk_file return some test chunks
             mock_chunk_file.return_value = [
                 type(
@@ -256,7 +256,7 @@ if __name__ == "__main__":
             ]
             
             # Mock embeddings generation
-            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -311,9 +311,9 @@ if __name__ == "__main__":
 
         worker_id = "worker_4"
 
-        # Mock VoyageClient and ASTChunker
+        # Mock EmbeddingService and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_voyage_client') as mock_client:
+             patch.object(vector_daemon, '_embedding_service') as mock_service:
             # Make chunk_file return some test chunks (binary files can produce chunks with errors='ignore')
             mock_chunk_file.return_value = [
                 type(
@@ -331,7 +331,7 @@ if __name__ == "__main__":
             ]
             
             # Mock embeddings generation
-            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -392,9 +392,9 @@ if __name__ == "__main__":
 
         worker_id = "worker_6"
 
-        # Mock VoyageClient and ASTChunker
+        # Mock EmbeddingService and ASTChunker
         with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
-             patch.object(vector_daemon, '_voyage_client') as mock_client:
+             patch.object(vector_daemon, '_embedding_service') as mock_service:
             # Make chunk_file return multiple chunks with different types for detailed testing
             mock_chunks = [
                 type(
@@ -425,7 +425,7 @@ if __name__ == "__main__":
             mock_chunk_file.return_value = mock_chunks
             
             # Mock embeddings generation
-            mock_client.generate_embeddings.return_value = [[0.1] * 1536, [0.2] * 1536]
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536, [0.2] * 1536])
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -452,9 +452,9 @@ if __name__ == "__main__":
 
         task = {"project_name": "test_project", "change": change}
 
-        # Mock VoyageClient for stats test
-        with patch.object(vector_daemon, '_voyage_client') as mock_client:
-            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
+        # Mock EmbeddingService for stats test
+        with patch.object(vector_daemon, '_embedding_service') as mock_service:
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536])
             
             await vector_daemon._process_file_change_task(task, "worker_7")
 
@@ -565,12 +565,12 @@ class TestVectorDaemonEmbeddingGeneration:
         project_name = "test_project"
         file_path = Path("/test/file.py")
         
-        # Mock VoyageClient
-        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
-            mock_client.generate_embeddings.return_value = [
+        # Mock EmbeddingService
+        with patch.object(vector_daemon_with_voyage, '_embedding_service') as mock_service:
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[
                 [0.1, 0.2, 0.3] * 512,  # 1536 dimensions for voyage-code-2
                 [0.4, 0.5, 0.6] * 512
-            ]
+            ])
             
             embeddings = await vector_daemon_with_voyage._generate_embeddings(
                 sample_chunks, project_name, file_path
@@ -581,13 +581,10 @@ class TestVectorDaemonEmbeddingGeneration:
             assert len(embeddings[0]) == 1536  # voyage-code-2 dimension
             assert len(embeddings[1]) == 1536
             
-            # Verify VoyageClient was called correctly
-            mock_client.generate_embeddings.assert_called_once()
-            call_args = mock_client.generate_embeddings.call_args
-            texts = call_args[0][0]
-            assert len(texts) == 2
-            assert "def hello_world():" in texts[0]
-            assert "class TestClass:" in texts[1]
+            # Verify EmbeddingService was called correctly
+            mock_service.generate_embeddings_for_chunks.assert_called_once_with(
+                sample_chunks, project_name, file_path
+            )
             
             # Verify stats were updated
             assert vector_daemon_with_voyage.stats["embeddings_generated"] == 2
@@ -632,17 +629,9 @@ class TestVectorDaemonEmbeddingGeneration:
         project_name = "test_project"
         file_path = Path("/test/file.py")
         
-        # Mock VoyageClient to track batch calls
-        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
-            # First batch (32 chunks)
-            first_batch_embeddings = [[0.1] * 1536] * 32
-            # Second batch (18 chunks)
-            second_batch_embeddings = [[0.2] * 1536] * 18
-            
-            mock_client.generate_embeddings.side_effect = [
-                first_batch_embeddings,
-                second_batch_embeddings
-            ]
+        # Mock EmbeddingService (batching is handled internally)
+        with patch.object(vector_daemon_with_voyage, '_embedding_service') as mock_service:
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536] * 50)
             
             embeddings = await vector_daemon_with_voyage._generate_embeddings(
                 large_chunk_list, project_name, file_path
@@ -651,14 +640,10 @@ class TestVectorDaemonEmbeddingGeneration:
             # Verify all embeddings returned
             assert len(embeddings) == 50
             
-            # Verify batching occurred (2 calls)
-            assert mock_client.generate_embeddings.call_count == 2
-            
-            # Verify batch sizes
-            first_call_args = mock_client.generate_embeddings.call_args_list[0][0]
-            second_call_args = mock_client.generate_embeddings.call_args_list[1][0]
-            assert len(first_call_args[0]) == 32  # First batch
-            assert len(second_call_args[0]) == 18  # Second batch
+            # Verify EmbeddingService was called once with all chunks
+            mock_service.generate_embeddings_for_chunks.assert_called_once_with(
+                large_chunk_list, project_name, file_path
+            )
             
             # Verify stats
             assert vector_daemon_with_voyage.stats["embeddings_generated"] == 50
@@ -666,13 +651,13 @@ class TestVectorDaemonEmbeddingGeneration:
     async def test_generate_embeddings_api_error(
         self, vector_daemon_with_voyage: VectorDaemon, sample_chunks
     ):
-        """Test handling of VoyageClient API errors."""
+        """Test handling of EmbeddingService API errors."""
         project_name = "test_project"
         file_path = Path("/test/file.py")
         
-        # Mock VoyageClient to raise exception
-        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
-            mock_client.generate_embeddings.side_effect = RuntimeError("API Error")
+        # Mock EmbeddingService to raise exception
+        with patch.object(vector_daemon_with_voyage, '_embedding_service') as mock_service:
+            mock_service.generate_embeddings_for_chunks = AsyncMock(side_effect=RuntimeError("API Error"))
             
             # Should raise the error and update error stats
             with pytest.raises(RuntimeError, match="API Error"):
@@ -720,11 +705,11 @@ class TestVectorDaemonEmbeddingGeneration:
         project_name = "test_project"
         file_path = Path("/test/file.py")
         
-        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
-            mock_client.generate_embeddings.return_value = [
+        with patch.object(vector_daemon_with_voyage, '_embedding_service') as mock_service:
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[
                 [0.1] * 1536,  # Normal chunk embedding
                 [0.2] * 1536   # Redacted chunk embedding
-            ]
+            ])
             
             embeddings = await vector_daemon_with_voyage._generate_embeddings(
                 chunks, project_name, file_path
@@ -733,12 +718,10 @@ class TestVectorDaemonEmbeddingGeneration:
             # Should generate embeddings for both chunks (redacted content included)
             assert len(embeddings) == 2
             
-            # Verify both chunks were sent for embedding
-            call_args = mock_client.generate_embeddings.call_args[0]
-            texts = call_args[0]
-            assert len(texts) == 2
-            assert "def normal_function():" in texts[0]
-            assert "[REDACTED]" in texts[1]  # Redacted content preserved
+            # Verify EmbeddingService was called with both chunks
+            mock_service.generate_embeddings_for_chunks.assert_called_once_with(
+                chunks, project_name, file_path
+            )
 
     async def test_voyage_client_initialization(
         self, db_manager: DatabaseManager, tmp_path: Path
@@ -782,17 +765,18 @@ class TestVectorDaemonEmbeddingGeneration:
     async def test_generate_embeddings_input_type_document(
         self, vector_daemon_with_voyage: VectorDaemon, sample_chunks
     ):
-        """Test that embeddings are generated with correct input_type for code."""
+        """Test that embeddings are generated via EmbeddingService."""
         project_name = "test_project"
         file_path = Path("/test/file.py")
         
-        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
-            mock_client.generate_embeddings.return_value = [[0.1] * 1536, [0.2] * 1536]
+        with patch.object(vector_daemon_with_voyage, '_embedding_service') as mock_service:
+            mock_service.generate_embeddings_for_chunks = AsyncMock(return_value=[[0.1] * 1536, [0.2] * 1536])
             
             await vector_daemon_with_voyage._generate_embeddings(
                 sample_chunks, project_name, file_path
             )
             
-            # Verify input_type is set correctly for code documents
-            call_kwargs = mock_client.generate_embeddings.call_args[1]
-            assert call_kwargs.get('input_type') == 'document'
+            # Verify EmbeddingService was called correctly (input_type handling is internal)
+            mock_service.generate_embeddings_for_chunks.assert_called_once_with(
+                sample_chunks, project_name, file_path
+            )
