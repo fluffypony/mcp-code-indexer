@@ -37,7 +37,7 @@ class TestVectorDaemonMonitoringStatus:
     @pytest.fixture
     async def vector_daemon(self, db_manager: DatabaseManager) -> VectorDaemon:
         """Create a VectorDaemon for testing."""
-        config = VectorConfig()
+        config = VectorConfig(voyage_api_key="test-api-key")  # API key required
         cache_dir = Path("/tmp/test_cache")
         daemon = VectorDaemon(config, db_manager, cache_dir)
         return daemon
@@ -126,14 +126,23 @@ class TestVectorDaemonFileChangeProcessing:
     async def vector_daemon(
         self, db_manager: DatabaseManager, tmp_path: Path
     ) -> VectorDaemon:
-        """Create a VectorDaemon for testing."""
+        """Create a VectorDaemon for testing.""" 
         from mcp_code_indexer.vector_mode.config import VectorConfig
 
-        config = VectorConfig()
+        config = VectorConfig(
+            voyage_api_key="test-api-key",  # Provide API key for testing
+            embedding_model="voyage-code-2", 
+            batch_size=32
+        )
         cache_dir = tmp_path / "test_cache"
         daemon = VectorDaemon(config, db_manager, cache_dir)
         # Initialize stats
-        daemon.stats = {"files_processed": 0, "errors_count": 0, "last_activity": 0.0}
+        daemon.stats = {
+            "files_processed": 0, 
+            "errors_count": 0, 
+            "last_activity": 0.0,
+            "embeddings_generated": 0
+        }
         return daemon
 
     @pytest.fixture
@@ -184,9 +193,10 @@ if __name__ == "__main__":
 
         worker_id = "worker_1"
 
-        # Spy on ASTChunker.chunk_file to verify it was called
-        # NOTE: Ideally we'd use real chunker results, but for simplicity using mock return
-        with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file:
+        # Mock VoyageClient and ASTChunker
+        with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
+             patch.object(vector_daemon, '_voyage_client') as mock_client:
+            
             # Mock return value to ensure processing continues
             mock_chunk_file.return_value = [
                 type('Chunk', (), {
@@ -198,6 +208,9 @@ if __name__ == "__main__":
                     'content': 'def test_function():\n    pass'
                 })
             ]
+            
+            # Mock embeddings generation
+            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -223,10 +236,9 @@ if __name__ == "__main__":
 
         worker_id = "worker_2"
 
-        # Spy on ASTChunker.chunk_file to verify it was called
-        with patch(
-            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
-        ) as mock_chunk_file:
+        # Mock VoyageClient and ASTChunker
+        with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
+             patch.object(vector_daemon, '_voyage_client') as mock_client:
             # Make chunk_file return some test chunks
             mock_chunk_file.return_value = [
                 type(
@@ -242,6 +254,9 @@ if __name__ == "__main__":
                     },
                 )
             ]
+            
+            # Mock embeddings generation
+            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -296,10 +311,9 @@ if __name__ == "__main__":
 
         worker_id = "worker_4"
 
-        # Spy on ASTChunker.chunk_file to verify it was called
-        with patch(
-            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
-        ) as mock_chunk_file:
+        # Mock VoyageClient and ASTChunker
+        with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
+             patch.object(vector_daemon, '_voyage_client') as mock_client:
             # Make chunk_file return some test chunks (binary files can produce chunks with errors='ignore')
             mock_chunk_file.return_value = [
                 type(
@@ -315,6 +329,9 @@ if __name__ == "__main__":
                     },
                 )
             ]
+            
+            # Mock embeddings generation
+            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -375,10 +392,9 @@ if __name__ == "__main__":
 
         worker_id = "worker_6"
 
-        # Spy on ASTChunker.chunk_file to verify it was called and verify chunk details
-        with patch(
-            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
-        ) as mock_chunk_file:
+        # Mock VoyageClient and ASTChunker
+        with patch("mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file") as mock_chunk_file, \
+             patch.object(vector_daemon, '_voyage_client') as mock_client:
             # Make chunk_file return multiple chunks with different types for detailed testing
             mock_chunks = [
                 type(
@@ -407,6 +423,9 @@ if __name__ == "__main__":
                 ),
             ]
             mock_chunk_file.return_value = mock_chunks
+            
+            # Mock embeddings generation
+            mock_client.generate_embeddings.return_value = [[0.1] * 1536, [0.2] * 1536]
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
@@ -433,11 +452,15 @@ if __name__ == "__main__":
 
         task = {"project_name": "test_project", "change": change}
 
-        await vector_daemon._process_file_change_task(task, "worker_7")
+        # Mock VoyageClient for stats test
+        with patch.object(vector_daemon, '_voyage_client') as mock_client:
+            mock_client.generate_embeddings.return_value = [[0.1] * 1536]
+            
+            await vector_daemon._process_file_change_task(task, "worker_7")
 
-        # Verify stats were updated
-        assert vector_daemon.stats["files_processed"] == initial_files_processed + 1
-        assert vector_daemon.stats["last_activity"] > initial_last_activity
+            # Verify stats were updated
+            assert vector_daemon.stats["files_processed"] == initial_files_processed + 1
+            assert vector_daemon.stats["last_activity"] > initial_last_activity
 
     async def test_process_file_change_task_empty_file(
         self, vector_daemon: VectorDaemon, tmp_path: Path
@@ -474,3 +497,302 @@ if __name__ == "__main__":
 
             # Verify ASTChunker.chunk_file was called with the empty file
             mock_chunk_file.assert_called_once_with(str(empty_file))
+
+
+class TestVectorDaemonEmbeddingGeneration:
+    """Test VectorDaemon embedding generation functionality."""
+
+    @pytest.fixture
+    async def vector_daemon_with_voyage(
+        self, db_manager: DatabaseManager, tmp_path: Path
+    ) -> VectorDaemon:
+        """Create a VectorDaemon with VoyageClient for testing."""
+        from mcp_code_indexer.vector_mode.config import VectorConfig
+
+        config = VectorConfig(
+            voyage_api_key="test-api-key",
+            embedding_model="voyage-code-2",
+            batch_size=32
+        )
+        cache_dir = tmp_path / "test_cache"
+        daemon = VectorDaemon(config, db_manager, cache_dir)
+        # Initialize stats
+        daemon.stats = {
+            "files_processed": 0, 
+            "errors_count": 0, 
+            "last_activity": 0.0,
+            "embeddings_generated": 0
+        }
+        return daemon
+
+    @pytest.fixture
+    def sample_chunks(self):
+        """Create sample code chunks for testing."""
+        from mcp_code_indexer.vector_mode.chunking.ast_chunker import CodeChunk
+        from mcp_code_indexer.database.models import ChunkType
+        
+        return [
+            CodeChunk(
+                content="def hello_world():\n    print('Hello, World!')",
+                chunk_type=ChunkType.FUNCTION,
+                name="hello_world",
+                file_path="/test/file.py",
+                start_line=1,
+                end_line=2,
+                content_hash="abc123",
+                language="python",
+                redacted=False,
+                imports=["print"]
+            ),
+            CodeChunk(
+                content="class TestClass:\n    def __init__(self):\n        pass",
+                chunk_type=ChunkType.CLASS,
+                name="TestClass",
+                file_path="/test/file.py", 
+                start_line=4,
+                end_line=6,
+                content_hash="def456",
+                language="python",
+                redacted=False,
+                imports=[]
+            )
+        ]
+
+    async def test_generate_embeddings_success(
+        self, vector_daemon_with_voyage: VectorDaemon, sample_chunks
+    ):
+        """Test successful embedding generation."""
+        project_name = "test_project"
+        file_path = Path("/test/file.py")
+        
+        # Mock VoyageClient
+        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
+            mock_client.generate_embeddings.return_value = [
+                [0.1, 0.2, 0.3] * 512,  # 1536 dimensions for voyage-code-2
+                [0.4, 0.5, 0.6] * 512
+            ]
+            
+            embeddings = await vector_daemon_with_voyage._generate_embeddings(
+                sample_chunks, project_name, file_path
+            )
+            
+            # Verify embeddings were returned
+            assert len(embeddings) == 2
+            assert len(embeddings[0]) == 1536  # voyage-code-2 dimension
+            assert len(embeddings[1]) == 1536
+            
+            # Verify VoyageClient was called correctly
+            mock_client.generate_embeddings.assert_called_once()
+            call_args = mock_client.generate_embeddings.call_args
+            texts = call_args[0][0]
+            assert len(texts) == 2
+            assert "def hello_world():" in texts[0]
+            assert "class TestClass:" in texts[1]
+            
+            # Verify stats were updated
+            assert vector_daemon_with_voyage.stats["embeddings_generated"] == 2
+
+    async def test_generate_embeddings_empty_chunks(
+        self, vector_daemon_with_voyage: VectorDaemon
+    ):
+        """Test embedding generation with empty chunks list."""
+        project_name = "test_project"
+        file_path = Path("/test/file.py")
+        
+        embeddings = await vector_daemon_with_voyage._generate_embeddings(
+            [], project_name, file_path
+        )
+        
+        # Should return empty list for no chunks
+        assert embeddings == []
+        assert vector_daemon_with_voyage.stats["embeddings_generated"] == 0
+
+    async def test_generate_embeddings_batch_processing(
+        self, vector_daemon_with_voyage: VectorDaemon
+    ):
+        """Test embedding generation with large batch requiring splitting."""
+        from mcp_code_indexer.vector_mode.chunking.ast_chunker import CodeChunk
+        from mcp_code_indexer.database.models import ChunkType
+        
+        # Create more chunks than batch size
+        large_chunk_list = []
+        for i in range(50):  # More than default batch size of 32
+            chunk = CodeChunk(
+                content=f"def function_{i}():\n    pass",
+                chunk_type=ChunkType.FUNCTION,
+                name=f"function_{i}",
+                file_path="/test/file.py",
+                start_line=i*2,
+                end_line=i*2+1,
+                content_hash=f"hash_{i}",
+                language="python"
+            )
+            large_chunk_list.append(chunk)
+        
+        project_name = "test_project"
+        file_path = Path("/test/file.py")
+        
+        # Mock VoyageClient to track batch calls
+        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
+            # First batch (32 chunks)
+            first_batch_embeddings = [[0.1] * 1536] * 32
+            # Second batch (18 chunks)
+            second_batch_embeddings = [[0.2] * 1536] * 18
+            
+            mock_client.generate_embeddings.side_effect = [
+                first_batch_embeddings,
+                second_batch_embeddings
+            ]
+            
+            embeddings = await vector_daemon_with_voyage._generate_embeddings(
+                large_chunk_list, project_name, file_path
+            )
+            
+            # Verify all embeddings returned
+            assert len(embeddings) == 50
+            
+            # Verify batching occurred (2 calls)
+            assert mock_client.generate_embeddings.call_count == 2
+            
+            # Verify batch sizes
+            first_call_args = mock_client.generate_embeddings.call_args_list[0][0]
+            second_call_args = mock_client.generate_embeddings.call_args_list[1][0]
+            assert len(first_call_args[0]) == 32  # First batch
+            assert len(second_call_args[0]) == 18  # Second batch
+            
+            # Verify stats
+            assert vector_daemon_with_voyage.stats["embeddings_generated"] == 50
+
+    async def test_generate_embeddings_api_error(
+        self, vector_daemon_with_voyage: VectorDaemon, sample_chunks
+    ):
+        """Test handling of VoyageClient API errors."""
+        project_name = "test_project"
+        file_path = Path("/test/file.py")
+        
+        # Mock VoyageClient to raise exception
+        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
+            mock_client.generate_embeddings.side_effect = RuntimeError("API Error")
+            
+            # Should raise the error and update error stats
+            with pytest.raises(RuntimeError, match="API Error"):
+                await vector_daemon_with_voyage._generate_embeddings(
+                    sample_chunks, project_name, file_path
+                )
+            
+            # Verify no embeddings stats were updated on error
+            assert vector_daemon_with_voyage.stats["embeddings_generated"] == 0
+            # Error stats should be incremented
+            assert vector_daemon_with_voyage.stats["errors_count"] == 1
+
+    async def test_generate_embeddings_redacted_chunks(
+        self, vector_daemon_with_voyage: VectorDaemon
+    ):
+        """Test embedding generation with redacted chunks."""
+        from mcp_code_indexer.vector_mode.chunking.ast_chunker import CodeChunk
+        from mcp_code_indexer.database.models import ChunkType
+        
+        chunks = [
+            CodeChunk(
+                content="def normal_function():\n    return 'hello'",
+                chunk_type=ChunkType.FUNCTION,
+                name="normal_function",
+                file_path="/test/file.py",
+                start_line=1,
+                end_line=2,
+                content_hash="normal123",
+                language="python",
+                redacted=False
+            ),
+            CodeChunk(
+                content="def secret_function():\n    api_key = '[REDACTED]'\n    return api_key",
+                chunk_type=ChunkType.FUNCTION,
+                name="secret_function", 
+                file_path="/test/file.py",
+                start_line=4,
+                end_line=6,
+                content_hash="redacted456",
+                language="python",
+                redacted=True
+            )
+        ]
+        
+        project_name = "test_project"
+        file_path = Path("/test/file.py")
+        
+        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
+            mock_client.generate_embeddings.return_value = [
+                [0.1] * 1536,  # Normal chunk embedding
+                [0.2] * 1536   # Redacted chunk embedding
+            ]
+            
+            embeddings = await vector_daemon_with_voyage._generate_embeddings(
+                chunks, project_name, file_path
+            )
+            
+            # Should generate embeddings for both chunks (redacted content included)
+            assert len(embeddings) == 2
+            
+            # Verify both chunks were sent for embedding
+            call_args = mock_client.generate_embeddings.call_args[0]
+            texts = call_args[0]
+            assert len(texts) == 2
+            assert "def normal_function():" in texts[0]
+            assert "[REDACTED]" in texts[1]  # Redacted content preserved
+
+    async def test_voyage_client_initialization(
+        self, db_manager: DatabaseManager, tmp_path: Path
+    ):
+        """Test that VoyageClient is properly initialized."""
+        from mcp_code_indexer.vector_mode.config import VectorConfig
+        
+        # Test client creation with mocked create_voyage_client
+        with patch('mcp_code_indexer.vector_mode.daemon.create_voyage_client') as mock_create:
+            mock_client = mock_create.return_value
+            
+            config = VectorConfig(
+                voyage_api_key="test-api-key",
+                embedding_model="voyage-code-2",
+                batch_size=32
+            )
+            cache_dir = tmp_path / "test_cache"
+            daemon = VectorDaemon(config, db_manager, cache_dir)
+            
+            # Verify client creation was called with correct config
+            mock_create.assert_called_once_with(config)
+            assert daemon._voyage_client == mock_client
+
+    async def test_voyage_client_initialization_no_api_key(
+        self, db_manager: DatabaseManager, tmp_path: Path
+    ):
+        """Test VoyageClient initialization without API key should raise ValueError."""
+        from mcp_code_indexer.vector_mode.config import VectorConfig
+        
+        config = VectorConfig(
+            voyage_api_key=None,  # No API key
+            embedding_model="voyage-code-2",
+            batch_size=32
+        )
+        cache_dir = tmp_path / "test_cache"
+        
+        # Should raise ValueError when no API key provided
+        with pytest.raises(ValueError, match="VOYAGE_API_KEY is required for embedding generation"):
+            VectorDaemon(config, db_manager, cache_dir)
+
+    async def test_generate_embeddings_input_type_document(
+        self, vector_daemon_with_voyage: VectorDaemon, sample_chunks
+    ):
+        """Test that embeddings are generated with correct input_type for code."""
+        project_name = "test_project"
+        file_path = Path("/test/file.py")
+        
+        with patch.object(vector_daemon_with_voyage, '_voyage_client') as mock_client:
+            mock_client.generate_embeddings.return_value = [[0.1] * 1536, [0.2] * 1536]
+            
+            await vector_daemon_with_voyage._generate_embeddings(
+                sample_chunks, project_name, file_path
+            )
+            
+            # Verify input_type is set correctly for code documents
+            call_kwargs = mock_client.generate_embeddings.call_args[1]
+            assert call_kwargs.get('input_type') == 'document'
