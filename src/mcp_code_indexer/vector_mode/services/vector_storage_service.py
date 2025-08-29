@@ -31,12 +31,12 @@ class VectorStorageService:
         """Initialize VectorStorageService with client and configuration."""
         self.turbopuffer_client = turbopuffer_client
         self.config = config
-        
+
         # Validate API access immediately during initialization
         logger.info("Validating Turbopuffer API access...")
         self.turbopuffer_client.validate_api_access()
         logger.info("Turbopuffer API access validated successfully")
-        
+
         self._namespace_cache: Dict[str, bool] = {}  # Cache for namespace existence
 
     async def store_embeddings(
@@ -72,16 +72,19 @@ class VectorStorageService:
         try:
             # Ensure namespace exists (using actual embedding dimension)
             embedding_dimension = len(embeddings[0]) if embeddings else 1536
-            namespace = await self._ensure_namespace_exists(project_name, embedding_dimension)
-            
+            namespace = await self._ensure_namespace_exists(
+                project_name, embedding_dimension
+            )
+            # TODO: upsert_vectors creates namespace if not exists, so this may be redundant
+
             # Format vectors for storage
             vectors = self._format_vectors_for_storage(
                 embeddings, chunks, project_name, file_path
             )
-            
+
             # Store in Turbopuffer
             result = self.turbopuffer_client.upsert_vectors(vectors, namespace)
-            
+
             logger.info(
                 f"Stored {result['upserted']} vectors for {file_path} "
                 f"in namespace {namespace}"
@@ -91,7 +94,9 @@ class VectorStorageService:
             logger.error(f"Failed to store embeddings for {file_path}: {e}")
             raise RuntimeError(f"Vector storage failed: {e}")
 
-    async def _ensure_namespace_exists(self, project_name: str, embedding_dimension: int) -> str:
+    async def _ensure_namespace_exists(
+        self, project_name: str, embedding_dimension: int
+    ) -> str:
         """
         Ensure the namespace for a project exists, creating it if necessary.
 
@@ -106,7 +111,7 @@ class VectorStorageService:
             RuntimeError: If namespace operations fail
         """
         namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
-        
+
         # Check cache first
         if namespace in self._namespace_cache:
             return namespace
@@ -114,15 +119,16 @@ class VectorStorageService:
         try:
             # List existing namespaces
             existing_namespaces = self.turbopuffer_client.list_namespaces()
-            
+
             if namespace not in existing_namespaces:
                 # Create namespace with embedding dimension
                 self.turbopuffer_client.create_namespace(
-                    namespace=namespace, 
-                    dimension=embedding_dimension
+                    namespace=namespace, dimension=embedding_dimension
                 )
-                logger.info(f"Created namespace '{namespace}' for project '{project_name}'")
-            
+                logger.info(
+                    f"Created namespace '{namespace}' for project '{project_name}'"
+                )
+
             # Cache the result
             self._namespace_cache[namespace] = True
             return namespace
@@ -134,7 +140,7 @@ class VectorStorageService:
     def _format_vectors_for_storage(
         self,
         embeddings: List[List[float]],
-        chunks: List[CodeChunk], 
+        chunks: List[CodeChunk],
         project_name: str,
         file_path: str,
     ) -> List[Dict[str, Any]]:
@@ -151,11 +157,11 @@ class VectorStorageService:
             List of formatted vector dictionaries
         """
         vectors = []
-        
+
         for i, (embedding, chunk) in enumerate(zip(embeddings, chunks)):
             # Generate unique vector ID
             vector_id = self.turbopuffer_client.generate_vector_id(project_name, i)
-            
+
             # Prepare metadata
             metadata = {
                 "project_id": project_name,
@@ -171,7 +177,7 @@ class VectorStorageService:
                 "chunk_index": i,
                 "imports": ",".join(chunk.imports) if chunk.imports else "",
             }
-            
+
             # Add custom metadata if present
             if chunk.metadata:
                 metadata.update(chunk.metadata)
@@ -186,11 +192,7 @@ class VectorStorageService:
         logger.debug(f"Formatted {len(vectors)} vectors for storage")
         return vectors
 
-
-
-    async def delete_vectors_for_file(
-        self, project_name: str, file_path: str
-    ) -> None:
+    async def delete_vectors_for_file(self, project_name: str, file_path: str) -> None:
         """
         Delete all vectors associated with a specific file.
 
@@ -203,16 +205,18 @@ class VectorStorageService:
         """
         try:
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
-            
+
             # Search for vectors with matching file_path metadata
             # This is a simplified approach - in practice, you might need
             # to track vector IDs separately for efficient deletion
-            logger.info(f"Deleting vectors for file {file_path} in namespace {namespace}")
-            
+            logger.info(
+                f"Deleting vectors for file {file_path} in namespace {namespace}"
+            )
+
             # Note: Actual implementation would require searching by metadata
             # and then deleting found vector IDs. This is left as TODO since
             # it depends on specific Turbopuffer query capabilities.
-            
+
         except Exception as e:
             logger.error(f"Failed to delete vectors for {file_path}: {e}")
             raise RuntimeError(f"Vector deletion failed: {e}")
@@ -249,7 +253,7 @@ class VectorStorageService:
                 file_path=file_path,
                 top_k=top_k,
             )
-            
+
             logger.debug(f"Found {len(results)} similar chunks in {project_name}")
             return results
 

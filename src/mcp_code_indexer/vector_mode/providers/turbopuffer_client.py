@@ -42,7 +42,7 @@ class TurbopufferClient:
     def validate_api_access(self) -> None:
         """
         Validate API key and access to Turbopuffer service.
-        
+
         Raises:
             RuntimeError: If API access validation fails with specific error details
         """
@@ -51,7 +51,7 @@ class TurbopufferClient:
             logger.debug("Turbopuffer API access validated successfully")
         except Exception as e:
             error_msg = str(e).lower()
-            
+
             if "401" in error_msg or "unauthorized" in error_msg:
                 raise RuntimeError(
                     f"Turbopuffer API authentication failed: Invalid or expired API key. "
@@ -70,9 +70,7 @@ class TurbopufferClient:
                     f"Turbopuffer service unavailable: Server error. Error: {e}"
                 )
             else:
-                raise RuntimeError(
-                    f"Turbopuffer API access validation failed: {e}"
-                )
+                raise RuntimeError(f"Turbopuffer API access validation failed: {e}")
 
     def generate_vector_id(self, project_id: str, chunk_id: int) -> str:
         """Generate a unique vector ID."""
@@ -87,25 +85,42 @@ class TurbopufferClient:
 
         logger.info(f"Upserting {len(vectors)} vectors to namespace '{namespace}'")
 
-        # Format vectors for Turbopuffer SDK
-        formatted_vectors = []
-        for vector in vectors:
-            if "id" not in vector or "values" not in vector:
-                raise ValueError("Each vector must have 'id' and 'values' fields")
+        # Convert row-based data to columnar format for v0.5+ API
+        if not all("id" in vector and "values" in vector for vector in vectors):
+            raise ValueError("Each vector must have 'id' and 'values' fields")
 
-            formatted_vector = {
-                "id": str(vector["id"]),
-                "vector": vector["values"],
-                "attributes": vector.get("metadata", {}),
-            }
-            formatted_vectors.append(formatted_vector)
+        # Build columnar data structure
+        data = {
+            "id": [str(vector["id"]) for vector in vectors],
+            "vector": [vector["values"] for vector in vectors],
+        }
+
+        # Add metadata attributes as separate columns
+        all_metadata_keys = set()
+        for vector in vectors:
+            metadata = vector.get("metadata", {})
+            all_metadata_keys.update(metadata.keys())
+
+        # Add each metadata attribute as a column
+        for key in all_metadata_keys:
+            data[key] = [vector.get("metadata", {}).get(key) for vector in vectors]
 
         try:
+            # Get namespace object and use write() with upsert_columns
             ns = self.client.namespace(namespace)
-            ns.upsert(vectors=formatted_vectors)
+            response = ns.write(
+                upsert_columns=data,
+                distance_metric="cosine_distance",  # Default metric TODO: which one to use?
+            )
 
-            logger.info(f"Successfully upserted {len(vectors)} vectors")
-            return {"upserted": len(vectors)}
+            # Log actual results from the response
+            rows_affected = getattr(response, "rows_affected", len(vectors))
+            logger.info(
+                f"Upsert operation completed: requested {len(vectors)} vectors, "
+                f"actually affected {rows_affected} rows"
+            )
+
+            return {"upserted": rows_affected}
 
         except Exception as e:
             logger.error(f"Failed to upsert vectors: {e}")
@@ -125,15 +140,46 @@ class TurbopufferClient:
         try:
             ns = self.client.namespace(namespace)
 
+            # Convert filters to proper tuple format for v0.5+
+            query_filters = None
+            if filters:
+                # Convert dict filters to turbopuffer filter format
+                filter_conditions = []
+                for key, value in filters.items():
+                    filter_conditions.append((key, "Eq", value))
+
+                if len(filter_conditions) == 1:
+                    query_filters = filter_conditions[0]
+                else:
+                    query_filters = ("And", tuple(filter_conditions))
+
             results = ns.query(
-                rank_by=[("vector", "ANN", query_vector)],
+                rank_by=("vector", "ANN", query_vector),  # Use tuple format for v0.5+
                 top_k=top_k,
-                filters=filters,
+                filters=query_filters,
                 include_attributes=True,
             )
 
-            logger.debug(f"Found {len(results)} similar vectors")
-            return results
+            # Convert results to expected format
+            if hasattr(results, "rows") and results.rows:
+                formatted_results = []
+                for row in results.rows:
+                    formatted_results.append(
+                        {
+                            "id": row.id,
+                            "score": getattr(row, "$dist", 0.0),  # Distance as score
+                            "metadata": {
+                                k: v
+                                for k, v in row.__dict__.items()
+                                if k not in ["id", "vector", "$dist"]
+                            },
+                        }
+                    )
+                logger.debug(f"Found {len(formatted_results)} similar vectors")
+                return formatted_results
+            else:
+                logger.debug("Found 0 similar vectors")
+                return []
 
         except Exception as e:
             logger.error(f"Vector search failed: {e}")
@@ -150,10 +196,18 @@ class TurbopufferClient:
 
         try:
             ns = self.client.namespace(namespace)
-            ns.delete(ids=vector_ids)
 
-            logger.info(f"Successfully deleted vectors")
-            return {"deleted": len(vector_ids)}
+            # Use the write method with deletes parameter (v0.5+ API)
+            response = ns.write(deletes=vector_ids)
+
+            # Log actual results from the response
+            rows_affected = getattr(response, "rows_affected", 0)
+            logger.info(
+                f"Delete operation completed: requested {len(vector_ids)} vectors, "
+                f"actually affected {rows_affected} rows"
+            )
+
+            return {"deleted": rows_affected}
 
         except Exception as e:
             logger.error(f"Failed to delete vectors: {e}")
@@ -163,7 +217,7 @@ class TurbopufferClient:
         """List all available namespaces."""
         try:
             namespaces = self.client.namespaces()
-            return [ns.name for ns in namespaces]
+            return [ns.id for ns in namespaces.namespaces]
 
         except Exception as e:
             logger.error(f"Failed to list namespaces: {e}")
@@ -172,28 +226,35 @@ class TurbopufferClient:
     def create_namespace(
         self, namespace: str, dimension: int, **kwargs
     ) -> Dict[str, Any]:
-        """Create a new namespace."""
-        logger.info(f"Creating namespace '{namespace}' with dimension {dimension}")
+        """Create a new namespace - handled implicitly by Turbopuffer."""
+        logger.info(
+            f"Namespace '{namespace}' will be created automatically on first write "
+            f"(dimension: {dimension})"
+        )
 
-        try:
-            self.client.create_namespace(name=namespace, dimension=dimension)
-
-            logger.info(f"Successfully created namespace '{namespace}'")
-            return {"name": namespace, "dimension": dimension}
-
-        except Exception as e:
-            logger.error(f"Failed to create namespace: {e}")
-            raise RuntimeError(f"Namespace creation failed: {e}")
+        # Turbopuffer creates namespaces implicitly when data is first written
+        # No explicit creation is needed or supported
+        logger.debug("Turbopuffer creates namespaces implicitly on first data write")
+        return {"name": namespace, "dimension": dimension, "created_implicitly": True}
 
     def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace and all its vectors."""
         logger.warning(f"Deleting namespace '{namespace}' and all its vectors")
 
         try:
-            self.client.delete_namespace(namespace)
+            ns = self.client.namespace(namespace)
 
-            logger.info(f"Successfully deleted namespace '{namespace}'")
-            return {"deleted": namespace}
+            # Use delete_all method to delete the namespace (v0.5+ API)
+            response = ns.delete_all()
+
+            # Log actual results from the response
+            rows_affected = getattr(response, "rows_affected", 0)
+            logger.info(
+                f"Namespace deletion completed: '{namespace}' deleted, "
+                f"affected {rows_affected} rows"
+            )
+
+            return {"deleted": namespace, "rows_affected": rows_affected}
 
         except Exception as e:
             logger.error(f"Failed to delete namespace: {e}")
