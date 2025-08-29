@@ -16,9 +16,13 @@ from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
 from .monitoring.file_watcher import create_file_watcher, FileWatcher
+from .providers.voyage_client import VoyageClient, create_voyage_client
+from .providers.turbopuffer_client import create_turbopuffer_client
+from .services.embedding_service import EmbeddingService
+from .services.vector_storage_service import VectorStorageService
 
 from .monitoring.change_detector import FileChange, ChangeType
-from .chunking.ast_chunker import ASTChunker
+from .chunking.ast_chunker import ASTChunker, CodeChunk
 from .types import (
     ScanProjectTask,
     VectorDaemonTaskType,
@@ -68,6 +72,14 @@ class VectorDaemon:
             "errors_count": 0,
             "last_activity": time.time(),
         }
+
+        # Initialize VoyageClient and EmbeddingService for embedding generation  
+        self._voyage_client = create_voyage_client(self.config)
+        self._embedding_service = EmbeddingService(self._voyage_client, self.config)
+
+        # Initialize TurbopufferClient and VectorStorageService for vector storage
+        self._turbopuffer_client = create_turbopuffer_client(self.config)
+        self._vector_storage_service = VectorStorageService(self._turbopuffer_client, self.config)
 
         # Signal handling is delegated to the parent process
 
@@ -301,6 +313,7 @@ class VectorDaemon:
         try:
             # Skip deleted files - only process created/modified files
             if change.change_type == ChangeType.DELETED:
+                # TODO: handle deletions in vector DB
                 logger.debug(f"Worker {worker_id}: Skipping deleted file {change.path}")
                 return
 
@@ -368,7 +381,7 @@ class VectorDaemon:
                 embeddings = await self._generate_embeddings(
                     chunks, project_name, change.path
                 )
-                await self._store_embeddings(embeddings, project_name, change.path)
+                await self._store_embeddings(embeddings, chunks, project_name, change.path)
 
                 # Only increment stats for successfully chunked files
                 self.stats["files_processed"] += 1
@@ -557,18 +570,37 @@ class VectorDaemon:
         }
 
     async def _generate_embeddings(
-        self, chunks: list, project_name: str, file_path
+        self, chunks: list[CodeChunk], project_name: str, file_path: Path
     ) -> list[list[float]]:
-        """Generate embeddings for file chunks."""
-        # TODO: implement
-        return []
+        """Generate embeddings for file chunks using EmbeddingService."""
+        try:
+            embeddings = await self._embedding_service.generate_embeddings_for_chunks(
+                chunks, project_name, file_path
+            )
+            
+            # Update daemon statistics
+            self.stats["embeddings_generated"] += len(embeddings)
+            self.stats["last_activity"] = time.time()
+            
+            return embeddings
+            
+        except Exception as e:
+            # Update error statistics
+            self.stats["errors_count"] += 1
+            raise
 
     async def _store_embeddings(
-        self, embeddings: list[list[float]], project_name: str, file_path
+        self, embeddings: list[list[float]], chunks: list[CodeChunk], project_name: str, file_path: str
     ) -> None:
         """Store embeddings in vector database."""
-        # TODO: implement
-        pass
+        try:
+            await self._vector_storage_service.store_embeddings(
+                embeddings, chunks, project_name, file_path
+            )
+        except Exception as e:
+            # Update error statistics
+            self.stats["errors_count"] += 1
+            raise
 
 
 async def start_vector_daemon(
