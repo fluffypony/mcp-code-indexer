@@ -31,6 +31,12 @@ class VectorStorageService:
         """Initialize VectorStorageService with client and configuration."""
         self.turbopuffer_client = turbopuffer_client
         self.config = config
+        
+        # Validate API access immediately during initialization
+        logger.info("Validating Turbopuffer API access...")
+        self.turbopuffer_client.validate_api_access()
+        logger.info("Turbopuffer API access validated successfully")
+        
         self._namespace_cache: Dict[str, bool] = {}  # Cache for namespace existence
 
     async def store_embeddings(

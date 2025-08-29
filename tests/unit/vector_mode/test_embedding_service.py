@@ -37,6 +37,8 @@ class TestEmbeddingService:
     @pytest.fixture
     def embedding_service(self, mock_voyage_client, config):
         """Create an EmbeddingService with mocked client."""
+        # Mock the validate_api_access method to avoid actual API calls during testing
+        mock_voyage_client.validate_api_access = Mock()
         return EmbeddingService(mock_voyage_client, config)
 
     @pytest.fixture
@@ -243,3 +245,25 @@ class TestEmbeddingService:
         call_args = mock_voyage_client.generate_embeddings.call_args[0]
         texts = call_args[0]
         assert "[REDACTED]" in texts[0]
+
+    async def test_service_initialization_validates_api_access(self, mock_voyage_client, config):
+        """Test that API access is validated during service initialization."""
+        # Mock successful validation
+        mock_voyage_client.validate_api_access = Mock()
+        
+        # Create service (should call validate_api_access)
+        service = EmbeddingService(mock_voyage_client, config)
+        
+        # Verify validation was called
+        mock_voyage_client.validate_api_access.assert_called_once()
+
+    async def test_service_initialization_validation_failure(self, mock_voyage_client, config):
+        """Test that service initialization fails when API validation fails."""
+        # Mock validation failure
+        mock_voyage_client.validate_api_access = Mock(
+            side_effect=RuntimeError("API validation failed")
+        )
+        
+        # Service creation should fail
+        with pytest.raises(RuntimeError, match="API validation failed"):
+            EmbeddingService(mock_voyage_client, config)

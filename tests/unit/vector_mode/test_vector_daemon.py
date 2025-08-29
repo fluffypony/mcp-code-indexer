@@ -42,7 +42,11 @@ class TestVectorDaemonMonitoringStatus:
             turbopuffer_api_key="test-turbopuffer-key"
         )
         cache_dir = Path("/tmp/test_cache")
-        daemon = VectorDaemon(config, db_manager, cache_dir)
+        
+        # Mock API validation to avoid real API calls during testing
+        with patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'), \
+             patch('mcp_code_indexer.vector_mode.providers.turbopuffer_client.TurbopufferClient.validate_api_access'):
+            daemon = VectorDaemon(config, db_manager, cache_dir)
         return daemon
 
     async def test_get_project_monitoring_status_empty(
@@ -139,7 +143,11 @@ class TestVectorDaemonFileChangeProcessing:
             batch_size=32
         )
         cache_dir = tmp_path / "test_cache"
-        daemon = VectorDaemon(config, db_manager, cache_dir)
+        
+        # Mock API validation to avoid real API calls during testing
+        with patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'), \
+             patch('mcp_code_indexer.vector_mode.providers.turbopuffer_client.TurbopufferClient.validate_api_access'):
+            daemon = VectorDaemon(config, db_manager, cache_dir)
         # Initialize stats
         daemon.stats = {
             "files_processed": 0, 
@@ -538,7 +546,11 @@ class TestVectorDaemonEmbeddingGeneration:
             batch_size=32
         )
         cache_dir = tmp_path / "test_cache"
-        daemon = VectorDaemon(config, db_manager, cache_dir)
+        
+        # Mock API validation to avoid real API calls during testing
+        with patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'), \
+             patch('mcp_code_indexer.vector_mode.providers.turbopuffer_client.TurbopufferClient.validate_api_access'):
+            daemon = VectorDaemon(config, db_manager, cache_dir)
         # Initialize stats
         daemon.stats = {
             "files_processed": 0, 
@@ -752,8 +764,10 @@ class TestVectorDaemonEmbeddingGeneration:
         """Test that VoyageClient is properly initialized."""
         from mcp_code_indexer.vector_mode.config import VectorConfig
         
-        # Test client creation with mocked create_voyage_client
-        with patch('mcp_code_indexer.vector_mode.daemon.create_voyage_client') as mock_create:
+        # Test client creation with mocked create_voyage_client and mocked validation
+        with patch('mcp_code_indexer.vector_mode.daemon.create_voyage_client') as mock_create, \
+             patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'), \
+             patch('mcp_code_indexer.vector_mode.providers.turbopuffer_client.TurbopufferClient.validate_api_access'):
             mock_client = mock_create.return_value
             
             config = VectorConfig(
@@ -824,7 +838,11 @@ class TestVectorDaemonVectorStorageIntegration:
             turbopuffer_region="gcp-europe-west3"
         )
         cache_dir = tmp_path / "test_cache"
-        daemon = VectorDaemon(config, db_manager, cache_dir)
+        
+        # Mock API validation to avoid real API calls during testing
+        with patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'), \
+             patch('mcp_code_indexer.vector_mode.providers.turbopuffer_client.TurbopufferClient.validate_api_access'):
+            daemon = VectorDaemon(config, db_manager, cache_dir)
         daemon.stats = {
             "files_processed": 0, 
             "errors_count": 0, 
@@ -880,7 +898,9 @@ class TestVectorDaemonVectorStorageIntegration:
         """Test that TurbopufferClient is properly initialized."""
         from mcp_code_indexer.vector_mode.config import VectorConfig
         
-        with patch('mcp_code_indexer.vector_mode.daemon.create_turbopuffer_client') as mock_create_client:
+        with patch('mcp_code_indexer.vector_mode.daemon.create_turbopuffer_client') as mock_create_client, \
+             patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'), \
+             patch('mcp_code_indexer.vector_mode.providers.turbopuffer_client.TurbopufferClient.validate_api_access'):
             mock_client = mock_create_client.return_value
             
             config = VectorConfig(
@@ -1009,6 +1029,8 @@ class TestVectorDaemonVectorStorageIntegration:
         )
         cache_dir = tmp_path / "test_cache"
         
-        # Should raise ValueError when no API key provided
-        with pytest.raises(ValueError, match="TURBOPUFFER_API_KEY is required for vector storage"):
-            VectorDaemon(config, db_manager, cache_dir)
+        # Mock Voyage validation to pass, should fail on Turbopuffer validation  
+        with patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'):
+            # Should raise ValueError when no API key provided
+            with pytest.raises(ValueError, match="TURBOPUFFER_API_KEY is required for vector storage"):
+                VectorDaemon(config, db_manager, cache_dir)

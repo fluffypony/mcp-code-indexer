@@ -33,11 +33,46 @@ class TurbopufferClient:
     def health_check(self) -> bool:
         """Check if Turbopuffer service is healthy."""
         try:
-            namespaces = self.client.namespaces()
+            self.client.namespaces()
             return True
         except Exception as e:
             logger.warning(f"Turbopuffer health check failed: {e}")
             return False
+
+    def validate_api_access(self) -> None:
+        """
+        Validate API key and access to Turbopuffer service.
+        
+        Raises:
+            RuntimeError: If API access validation fails with specific error details
+        """
+        try:
+            self.client.namespaces()
+            logger.debug("Turbopuffer API access validated successfully")
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            if "401" in error_msg or "unauthorized" in error_msg:
+                raise RuntimeError(
+                    f"Turbopuffer API authentication failed: Invalid or expired API key. "
+                    f"Please check your TURBOPUFFER_API_KEY. Error: {e}"
+                )
+            elif "403" in error_msg or "forbidden" in error_msg:
+                raise RuntimeError(
+                    f"Turbopuffer API access denied: API key lacks required permissions. Error: {e}"
+                )
+            elif "429" in error_msg or "rate limit" in error_msg:
+                raise RuntimeError(
+                    f"Turbopuffer API rate limit exceeded: Too many requests. Error: {e}"
+                )
+            elif "5" in error_msg and ("error" in error_msg or "server" in error_msg):
+                raise RuntimeError(
+                    f"Turbopuffer service unavailable: Server error. Error: {e}"
+                )
+            else:
+                raise RuntimeError(
+                    f"Turbopuffer API access validation failed: {e}"
+                )
 
     def generate_vector_id(self, project_id: str, chunk_id: int) -> str:
         """Generate a unique vector ID."""

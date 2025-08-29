@@ -48,6 +48,8 @@ class TestVectorStorageService:
         self, mock_turbopuffer_client: TurbopufferClient, vector_config: VectorConfig
     ) -> VectorStorageService:
         """Create a VectorStorageService for testing."""
+        # Mock the validate_api_access method to avoid actual API calls during testing
+        mock_turbopuffer_client.validate_api_access = MagicMock()
         return VectorStorageService(mock_turbopuffer_client, vector_config)
 
     @pytest.fixture
@@ -370,3 +372,29 @@ class TestVectorStorageService:
 
         with pytest.raises(RuntimeError, match="Namespace operation failed: Creation failed"):
             await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
+
+    async def test_service_initialization_validates_api_access(
+        self, mock_turbopuffer_client: TurbopufferClient, vector_config: VectorConfig
+    ):
+        """Test that API access is validated during service initialization."""
+        # Mock successful validation
+        mock_turbopuffer_client.validate_api_access = MagicMock()
+        
+        # Create service (should call validate_api_access)
+        service = VectorStorageService(mock_turbopuffer_client, vector_config)
+        
+        # Verify validation was called
+        mock_turbopuffer_client.validate_api_access.assert_called_once()
+
+    async def test_service_initialization_validation_failure(
+        self, mock_turbopuffer_client: TurbopufferClient, vector_config: VectorConfig
+    ):
+        """Test that service initialization fails when API validation fails."""
+        # Mock validation failure
+        mock_turbopuffer_client.validate_api_access = MagicMock(
+            side_effect=RuntimeError("API validation failed")
+        )
+        
+        # Service creation should fail
+        with pytest.raises(RuntimeError, match="API validation failed"):
+            VectorStorageService(mock_turbopuffer_client, vector_config)
