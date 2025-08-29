@@ -1,8 +1,8 @@
 """
-Unit tests for TurbopufferService.
+Unit tests for VectorStorageService.
 
 Tests the service layer that handles vector storage operations,
-namespace management, and vector formatting for Turbopuffer integration.
+namespace management, and vector formatting for vector database integration.
 """
 
 from pathlib import Path
@@ -12,15 +12,15 @@ from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-from mcp_code_indexer.vector_mode.services.turbopuffer_service import TurbopufferService
+from mcp_code_indexer.vector_mode.services.vector_storage_service import VectorStorageService
 from mcp_code_indexer.vector_mode.providers.turbopuffer_client import TurbopufferClient
 from mcp_code_indexer.vector_mode.config import VectorConfig
 from mcp_code_indexer.vector_mode.chunking.ast_chunker import CodeChunk
 from mcp_code_indexer.database.models import ChunkType
 
 
-class TestTurbopufferService:
-    """Test TurbopufferService vector storage operations."""
+class TestVectorStorageService:
+    """Test VectorStorageService vector storage operations."""
 
     @pytest.fixture
     def mock_turbopuffer_client(self) -> TurbopufferClient:
@@ -44,11 +44,11 @@ class TestTurbopufferService:
         )
 
     @pytest.fixture
-    def turbopuffer_service(
+    def vector_storage_service(
         self, mock_turbopuffer_client: TurbopufferClient, vector_config: VectorConfig
-    ) -> TurbopufferService:
-        """Create a TurbopufferService for testing."""
-        return TurbopufferService(mock_turbopuffer_client, vector_config)
+    ) -> VectorStorageService:
+        """Create a VectorStorageService for testing."""
+        return VectorStorageService(mock_turbopuffer_client, vector_config)
 
     @pytest.fixture
     def sample_embeddings(self) -> List[List[float]]:
@@ -90,7 +90,7 @@ class TestTurbopufferService:
 
     async def test_store_embeddings_success(
         self,
-        turbopuffer_service: TurbopufferService,
+        vector_storage_service: VectorStorageService,
         sample_embeddings: List[List[float]],
         sample_chunks: List[CodeChunk],
     ):
@@ -98,17 +98,17 @@ class TestTurbopufferService:
         project_name = "test_project"
         file_path = "/test/file.py"
 
-        await turbopuffer_service.store_embeddings(
+        await vector_storage_service.store_embeddings(
             sample_embeddings, sample_chunks, project_name, file_path
         )
 
         # Verify client methods were called
-        turbopuffer_service.turbopuffer_client.get_namespace_for_project.assert_called_once_with(project_name)
-        turbopuffer_service.turbopuffer_client.list_namespaces.assert_called_once()
-        turbopuffer_service.turbopuffer_client.upsert_vectors.assert_called_once()
+        vector_storage_service.turbopuffer_client.get_namespace_for_project.assert_called_once_with(project_name)
+        vector_storage_service.turbopuffer_client.list_namespaces.assert_called_once()
+        vector_storage_service.turbopuffer_client.upsert_vectors.assert_called_once()
 
         # Verify vector formatting
-        call_args = turbopuffer_service.turbopuffer_client.upsert_vectors.call_args
+        call_args = vector_storage_service.turbopuffer_client.upsert_vectors.call_args
         vectors = call_args[0][0]  # First argument
         namespace = call_args[0][1]  # Second argument
 
@@ -120,22 +120,22 @@ class TestTurbopufferService:
         assert vectors[1]["values"] == sample_embeddings[1]
 
     async def test_store_embeddings_empty_list(
-        self, turbopuffer_service: TurbopufferService
+        self, vector_storage_service: VectorStorageService
     ):
         """Test storing empty embeddings list."""
         project_name = "test_project"
         file_path = "/test/file.py"
 
-        await turbopuffer_service.store_embeddings(
+        await vector_storage_service.store_embeddings(
             [], [], project_name, file_path
         )
 
         # Should not call any client methods for empty list
-        turbopuffer_service.turbopuffer_client.upsert_vectors.assert_not_called()
+        vector_storage_service.turbopuffer_client.upsert_vectors.assert_not_called()
 
     async def test_store_embeddings_count_mismatch(
         self,
-        turbopuffer_service: TurbopufferService,
+        vector_storage_service: VectorStorageService,
         sample_embeddings: List[List[float]],
         sample_chunks: List[CodeChunk],
     ):
@@ -147,58 +147,61 @@ class TestTurbopufferService:
         mismatched_embeddings = sample_embeddings[:-1]
 
         with pytest.raises(ValueError, match="Embeddings and chunks count mismatch"):
-            await turbopuffer_service.store_embeddings(
+            await vector_storage_service.store_embeddings(
                 mismatched_embeddings, sample_chunks, project_name, file_path
             )
 
     async def test_ensure_namespace_exists_existing(
-        self, turbopuffer_service: TurbopufferService
+        self, vector_storage_service: VectorStorageService
     ):
         """Test namespace check when namespace already exists."""
         project_name = "test_project"
+        embedding_dimension = 1536
 
         # Mock existing namespace
-        turbopuffer_service.turbopuffer_client.list_namespaces.return_value = ["mcp_code_test_project"]
+        vector_storage_service.turbopuffer_client.list_namespaces.return_value = ["mcp_code_test_project"]
 
-        namespace = await turbopuffer_service._ensure_namespace_exists(project_name)
+        namespace = await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
 
         assert namespace == "mcp_code_test_project"
-        turbopuffer_service.turbopuffer_client.create_namespace.assert_not_called()
+        vector_storage_service.turbopuffer_client.create_namespace.assert_not_called()
 
     async def test_ensure_namespace_exists_create_new(
-        self, turbopuffer_service: TurbopufferService
+        self, vector_storage_service: VectorStorageService
     ):
         """Test namespace creation when namespace doesn't exist."""
         project_name = "test_project"
+        embedding_dimension = 1536
 
         # Mock no existing namespaces
-        turbopuffer_service.turbopuffer_client.list_namespaces.return_value = []
+        vector_storage_service.turbopuffer_client.list_namespaces.return_value = []
 
-        namespace = await turbopuffer_service._ensure_namespace_exists(project_name)
+        namespace = await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
 
         assert namespace == "mcp_code_test_project"
-        turbopuffer_service.turbopuffer_client.create_namespace.assert_called_once_with(
+        vector_storage_service.turbopuffer_client.create_namespace.assert_called_once_with(
             namespace="mcp_code_test_project", dimension=1536
         )
 
     async def test_ensure_namespace_exists_cached(
-        self, turbopuffer_service: TurbopufferService
+        self, vector_storage_service: VectorStorageService
     ):
         """Test namespace caching to avoid repeated API calls."""
         project_name = "test_project"
+        embedding_dimension = 1536
 
         # First call
-        await turbopuffer_service._ensure_namespace_exists(project_name)
+        await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
         
         # Second call should use cache
-        await turbopuffer_service._ensure_namespace_exists(project_name)
+        await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
 
         # Should only call list_namespaces once
-        assert turbopuffer_service.turbopuffer_client.list_namespaces.call_count == 1
+        assert vector_storage_service.turbopuffer_client.list_namespaces.call_count == 1
 
     async def test_format_vectors_for_storage(
         self,
-        turbopuffer_service: TurbopufferService,
+        vector_storage_service: VectorStorageService,
         sample_embeddings: List[List[float]],
         sample_chunks: List[CodeChunk],
     ):
@@ -206,7 +209,7 @@ class TestTurbopufferService:
         project_name = "test_project"
         file_path = "/test/file.py"
 
-        vectors = turbopuffer_service._format_vectors_for_storage(
+        vectors = vector_storage_service._format_vectors_for_storage(
             sample_embeddings, sample_chunks, project_name, file_path
         )
 
@@ -236,26 +239,36 @@ class TestTurbopufferService:
         assert vector2["metadata"]["chunk_name"] == "TestClass"
         assert vector2["metadata"]["imports"] == ""  # No imports
 
-    async def test_get_embedding_dimension(
-        self, turbopuffer_service: TurbopufferService
+    async def test_store_embeddings_dimension_from_embeddings(
+        self,
+        vector_storage_service: VectorStorageService,
+        sample_chunks: List[CodeChunk],
     ):
-        """Test embedding dimension detection for different models."""
-        # voyage-code-2 (default in config)
-        dimension = turbopuffer_service._get_embedding_dimension()
-        assert dimension == 1536
+        """Test that embedding dimension is derived from actual embeddings."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Mock namespace doesn't exist so it gets created
+        vector_storage_service.turbopuffer_client.list_namespaces.return_value = []
+        
+        # Create embeddings with non-standard dimension
+        custom_embeddings = [
+            [0.1, 0.2, 0.3, 0.4],  # 4 dimensions
+            [0.5, 0.6, 0.7, 0.8]
+        ]
 
-        # Test other models
-        turbopuffer_service.config.embedding_model = "voyage-2"
-        dimension = turbopuffer_service._get_embedding_dimension()
-        assert dimension == 1024
+        await vector_storage_service.store_embeddings(
+            custom_embeddings, sample_chunks, project_name, file_path
+        )
 
-        turbopuffer_service.config.embedding_model = "unknown-model"
-        dimension = turbopuffer_service._get_embedding_dimension()
-        assert dimension == 1536  # Default fallback
+        # Verify namespace was created with correct dimension derived from embeddings
+        vector_storage_service.turbopuffer_client.create_namespace.assert_called_with(
+            namespace="mcp_code_test_project", dimension=4
+        )
 
     async def test_store_embeddings_with_client_error(
         self,
-        turbopuffer_service: TurbopufferService,
+        vector_storage_service: VectorStorageService,
         sample_embeddings: List[List[float]],
         sample_chunks: List[CodeChunk],
     ):
@@ -264,15 +277,15 @@ class TestTurbopufferService:
         file_path = "/test/file.py"
 
         # Mock client error
-        turbopuffer_service.turbopuffer_client.upsert_vectors.side_effect = RuntimeError("API Error")
+        vector_storage_service.turbopuffer_client.upsert_vectors.side_effect = RuntimeError("API Error")
 
         with pytest.raises(RuntimeError, match="Vector storage failed: API Error"):
-            await turbopuffer_service.store_embeddings(
+            await vector_storage_service.store_embeddings(
                 sample_embeddings, sample_chunks, project_name, file_path
             )
 
     async def test_search_similar_chunks(
-        self, turbopuffer_service: TurbopufferService
+        self, vector_storage_service: VectorStorageService
     ):
         """Test searching for similar chunks."""
         query_embedding = [0.1] * 1536
@@ -283,14 +296,14 @@ class TestTurbopufferService:
             {"id": "test_vec_1", "score": 0.9, "metadata": {"chunk_name": "similar_function"}},
             {"id": "test_vec_2", "score": 0.8, "metadata": {"chunk_name": "another_function"}}
         ]
-        turbopuffer_service.turbopuffer_client.search_with_metadata_filter.return_value = mock_results
+        vector_storage_service.turbopuffer_client.search_with_metadata_filter.return_value = mock_results
 
-        results = await turbopuffer_service.search_similar_chunks(
+        results = await vector_storage_service.search_similar_chunks(
             query_embedding, project_name, top_k=5, chunk_type="function"
         )
 
         assert results == mock_results
-        turbopuffer_service.turbopuffer_client.search_with_metadata_filter.assert_called_once_with(
+        vector_storage_service.turbopuffer_client.search_with_metadata_filter.assert_called_once_with(
             query_vector=query_embedding,
             project_id=project_name,
             chunk_type="function",
@@ -299,23 +312,23 @@ class TestTurbopufferService:
         )
 
     async def test_search_similar_chunks_with_error(
-        self, turbopuffer_service: TurbopufferService
+        self, vector_storage_service: VectorStorageService
     ):
         """Test search error handling."""
         query_embedding = [0.1] * 1536
         project_name = "test_project"
 
         # Mock search error
-        turbopuffer_service.turbopuffer_client.search_with_metadata_filter.side_effect = RuntimeError("Search Error")
+        vector_storage_service.turbopuffer_client.search_with_metadata_filter.side_effect = RuntimeError("Search Error")
 
         with pytest.raises(RuntimeError, match="Vector search failed: Search Error"):
-            await turbopuffer_service.search_similar_chunks(
+            await vector_storage_service.search_similar_chunks(
                 query_embedding, project_name
             )
 
     async def test_vector_metadata_with_custom_metadata(
         self,
-        turbopuffer_service: TurbopufferService,
+        vector_storage_service: VectorStorageService,
         sample_embeddings: List[List[float]],
     ):
         """Test vector formatting with custom chunk metadata."""
@@ -333,7 +346,7 @@ class TestTurbopufferService:
             metadata={"custom_field": "custom_value", "priority": "high"}
         )
 
-        vectors = turbopuffer_service._format_vectors_for_storage(
+        vectors = vector_storage_service._format_vectors_for_storage(
             sample_embeddings[:1], [chunk], "test_project", "/test/file.py"
         )
 
@@ -344,15 +357,16 @@ class TestTurbopufferService:
         assert metadata["chunk_name"] == "custom_function"  # Original metadata preserved
 
     async def test_namespace_creation_failure(
-        self, turbopuffer_service: TurbopufferService
+        self, vector_storage_service: VectorStorageService
     ):
         """Test handling of namespace creation failures."""
         project_name = "test_project"
+        embedding_dimension = 1536
 
         # Mock namespace doesn't exist
-        turbopuffer_service.turbopuffer_client.list_namespaces.return_value = []
+        vector_storage_service.turbopuffer_client.list_namespaces.return_value = []
         # Mock creation failure
-        turbopuffer_service.turbopuffer_client.create_namespace.side_effect = RuntimeError("Creation failed")
+        vector_storage_service.turbopuffer_client.create_namespace.side_effect = RuntimeError("Creation failed")
 
         with pytest.raises(RuntimeError, match="Namespace operation failed: Creation failed"):
-            await turbopuffer_service._ensure_namespace_exists(project_name)
+            await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)

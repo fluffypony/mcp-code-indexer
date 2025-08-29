@@ -1,8 +1,8 @@
 """
-TurbopufferService for vector storage and retrieval.
+VectorStorageService for vector storage and retrieval.
 
 Provides a clean abstraction layer between code chunks/embeddings and the
-TurbopufferClient, handling namespace management, vector formatting,
+vector storage backend, handling namespace management, vector formatting,
 and error handling.
 """
 
@@ -19,16 +19,16 @@ from ..config import VectorConfig
 logger = logging.getLogger(__name__)
 
 
-class TurbopufferService:
+class VectorStorageService:
     """
-    Service for storing code embeddings in Turbopuffer vector database.
+    Service for storing code embeddings in vector database.
 
     Handles namespace management, vector formatting, and provides a clean
     abstraction layer between the daemon orchestration and vector storage.
     """
 
     def __init__(self, turbopuffer_client: TurbopufferClient, config: VectorConfig):
-        """Initialize TurbopufferService with client and configuration."""
+        """Initialize VectorStorageService with client and configuration."""
         self.turbopuffer_client = turbopuffer_client
         self.config = config
         self._namespace_cache: Dict[str, bool] = {}  # Cache for namespace existence
@@ -64,8 +64,9 @@ class TurbopufferService:
             )
 
         try:
-            # Ensure namespace exists
-            namespace = await self._ensure_namespace_exists(project_name)
+            # Ensure namespace exists (using actual embedding dimension)
+            embedding_dimension = len(embeddings[0]) if embeddings else 1536
+            namespace = await self._ensure_namespace_exists(project_name, embedding_dimension)
             
             # Format vectors for storage
             vectors = self._format_vectors_for_storage(
@@ -84,12 +85,13 @@ class TurbopufferService:
             logger.error(f"Failed to store embeddings for {file_path}: {e}")
             raise RuntimeError(f"Vector storage failed: {e}")
 
-    async def _ensure_namespace_exists(self, project_name: str) -> str:
+    async def _ensure_namespace_exists(self, project_name: str, embedding_dimension: int) -> str:
         """
         Ensure the namespace for a project exists, creating it if necessary.
 
         Args:
             project_name: Name of the project
+            embedding_dimension: Dimension size of the embeddings
 
         Returns:
             The namespace name
@@ -109,7 +111,6 @@ class TurbopufferService:
             
             if namespace not in existing_namespaces:
                 # Create namespace with embedding dimension
-                embedding_dimension = self._get_embedding_dimension()
                 self.turbopuffer_client.create_namespace(
                     namespace=namespace, 
                     dimension=embedding_dimension
@@ -179,24 +180,7 @@ class TurbopufferService:
         logger.debug(f"Formatted {len(vectors)} vectors for storage")
         return vectors
 
-    def _get_embedding_dimension(self) -> int:
-        """
-        Get the embedding dimension based on the configured model.
 
-        Returns:
-            The dimension size for the embedding model
-        """
-        # Map embedding models to their dimensions
-        model_dimensions = {
-            "voyage-code-2": 1536,
-            "voyage-2": 1024,
-            "voyage-large-2": 1536,
-            "voyage-law-2": 1024,
-        }
-        
-        dimension = model_dimensions.get(self.config.embedding_model, 1536)
-        logger.debug(f"Using dimension {dimension} for model {self.config.embedding_model}")
-        return dimension
 
     async def delete_vectors_for_file(
         self, project_name: str, file_path: str

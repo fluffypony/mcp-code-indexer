@@ -19,7 +19,7 @@ from .monitoring.file_watcher import create_file_watcher, FileWatcher
 from .providers.voyage_client import VoyageClient, create_voyage_client
 from .providers.turbopuffer_client import create_turbopuffer_client
 from .services.embedding_service import EmbeddingService
-from .services.turbopuffer_service import TurbopufferService
+from .services.vector_storage_service import VectorStorageService
 
 from .monitoring.change_detector import FileChange, ChangeType
 from .chunking.ast_chunker import ASTChunker, CodeChunk
@@ -77,9 +77,9 @@ class VectorDaemon:
         self._voyage_client = create_voyage_client(self.config)
         self._embedding_service = EmbeddingService(self._voyage_client, self.config)
 
-        # Initialize TurbopufferClient and TurbopufferService for vector storage
+        # Initialize TurbopufferClient and VectorStorageService for vector storage
         self._turbopuffer_client = create_turbopuffer_client(self.config)
-        self._turbopuffer_service = TurbopufferService(self._turbopuffer_client, self.config)
+        self._vector_storage_service = VectorStorageService(self._turbopuffer_client, self.config)
 
         # Signal handling is delegated to the parent process
 
@@ -594,7 +594,7 @@ class VectorDaemon:
     ) -> None:
         """Store embeddings in vector database."""
         try:
-            await self._turbopuffer_service.store_embeddings(
+            await self._vector_storage_service.store_embeddings(
                 embeddings, chunks, project_name, file_path
             )
         except Exception as e:
