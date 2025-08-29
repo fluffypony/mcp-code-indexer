@@ -7,16 +7,23 @@ Handles embedding generation, change detection, and vector database synchronizat
 
 import asyncio
 import logging
-import signal
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-import json
+from typing import Any, Dict, List, Optional, Set
 import time
 
 from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
+from .monitoring.file_watcher import create_file_watcher, FileWatcher
+
+from .monitoring.change_detector import FileChange, ChangeType
+from .chunking.ast_chunker import ASTChunker
+from .types import (
+    ScanProjectTask,
+    VectorDaemonTaskType,
+    ProcessFileChangeTask,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +56,10 @@ class VectorDaemon:
         self.workers: list[asyncio.Task] = []
         self.monitor_tasks: list[asyncio.Task] = []
 
+        # File watcher management
+        self.file_watchers: Dict[str, FileWatcher] = {}
+        self.watcher_locks: Dict[str, asyncio.Lock] = {}
+
         # Statistics
         self.stats = {
             "start_time": time.time(),
@@ -59,6 +70,32 @@ class VectorDaemon:
         }
 
         # Signal handling is delegated to the parent process
+
+    def _on_file_change(self, project_name: str) -> callable:
+        """Create a non-blocking change callback for a specific project."""
+
+        def callback(change: FileChange) -> None:
+            """Non-blocking callback that queues file change processing."""
+            try:
+                # Create file change processing task
+                task_item: ProcessFileChangeTask = {
+                    "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
+                    "project_name": project_name,
+                    "change": change,
+                    "timestamp": time.time(),
+                }
+
+                # Put task in processing queue (non-blocking)
+                try:
+                    self.processing_queue.put_nowait(task_item)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"Processing queue full, dropping file change event for {change.path}"
+                    )
+            except Exception as e:
+                logger.error(f"Error queueing file change task: {e}")
+
+        return callback
 
     async def start(self) -> None:
         """Start the vector daemon."""
@@ -114,36 +151,40 @@ class VectorDaemon:
     async def _get_project_monitoring_status(self) -> Dict[str, List[Project]]:
         """
         Get projects categorized by monitoring status.
-        
+
         Returns:
             Dict with 'monitored' and 'unmonitored' keys containing project lists
         """
         # Get all projects with vector mode enabled
         vector_enabled_projects = await self.db_manager.get_vector_enabled_projects()
-        
+
         # Filter projects that should be monitored (have valid aliases)
         monitorable_projects = [
-            project for project in vector_enabled_projects 
+            project
+            for project in vector_enabled_projects
             if project.aliases and project.vector_mode
         ]
-        
+
         # Determine which projects to monitor (not currently monitored)
         projects_to_monitor = [
-            project for project in monitorable_projects
+            project
+            for project in monitorable_projects
             if project.name not in self.monitored_projects
         ]
-        
+
         # Determine which projects to unmonitor (currently monitored but no longer should be)
         monitorable_names = {project.name for project in monitorable_projects}
         projects_to_unmonitor = []
-        
+
         # Get full project data for unmonitoring
         all_projects = await self.db_manager.get_all_projects()
         for project in all_projects:
-            if (project.name in self.monitored_projects and 
-                project.name not in monitorable_names):
+            if (
+                project.name in self.monitored_projects
+                and project.name not in monitorable_names
+            ):
                 projects_to_unmonitor.append(project)
-        
+
         return {
             "monitored": projects_to_monitor,
             "unmonitored": projects_to_unmonitor,
@@ -157,18 +198,17 @@ class VectorDaemon:
             try:
                 # Get project monitoring status
                 monitoring_status = await self._get_project_monitoring_status()
-                
                 # Add new projects to monitoring
                 for project in monitoring_status["monitored"]:
                     logger.info(f"Adding project to monitoring: {project.name}")
                     self.monitored_projects.add(project.name)
-                    
+
                     # Use first alias as folder path
                     folder_path = project.aliases[0]
-                    
+
                     # Queue initial indexing task
                     await self._queue_project_scan(project.name, folder_path)
-                
+
                 # Remove projects from monitoring
                 for project in monitoring_status["unmonitored"]:
                     logger.info(f"Removing project from monitoring: {project.name}")
@@ -186,8 +226,8 @@ class VectorDaemon:
 
     async def _queue_project_scan(self, project_name: str, folder_path: str) -> None:
         """Queue a project for scanning and indexing."""
-        task = {
-            "type": "scan_project",
+        task: ScanProjectTask = {
+            "type": VectorDaemonTaskType.SCAN_PROJECT,
             "project_name": project_name,
             "folder_path": folder_path,
             "timestamp": time.time(),
@@ -231,10 +271,121 @@ class VectorDaemon:
         """Process a queued task."""
         task_type = task.get("type")
 
-        if task_type == "scan_project":
+        if task_type == VectorDaemonTaskType.SCAN_PROJECT:
             await self._process_project_scan(task, worker_id)
+        elif task_type == VectorDaemonTaskType.PROCESS_FILE_CHANGE:
+            await self._process_file_change_task(task, worker_id)
         else:
             logger.warning(f"Unknown task type: {task_type}")
+
+    async def _process_file_change_task(
+        self, task: ProcessFileChangeTask, worker_id: str
+    ) -> None:
+        """Process a file change task."""
+        project_name: str = task["project_name"]
+        change: FileChange = task["change"]
+        logger.info(
+            f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})",
+            extra={
+                "structured_data": {
+                    "worker_id": worker_id,
+                    "project_name": project_name,
+                    "file_path": str(change.path),
+                    "change_type": change.change_type.value,
+                    "timestamp": change.timestamp.isoformat(),
+                    "size": change.size,
+                }
+            },
+        )
+
+        try:
+            # Skip deleted files - only process created/modified files
+            if change.change_type == ChangeType.DELETED:
+                logger.debug(f"Worker {worker_id}: Skipping deleted file {change.path}")
+                return
+
+            # Initialize ASTChunker with default settings
+            chunker = ASTChunker(
+                max_chunk_size=1500,
+                min_chunk_size=50,
+                enable_redaction=True,
+                enable_optimization=True,
+            )
+
+            # Read and chunk the file
+            try:
+                chunks = chunker.chunk_file(str(change.path))
+                chunk_count = len(chunks)
+
+                # Only process files that actually produced chunks
+                if chunk_count == 0:
+                    logger.debug(
+                        f"Worker {worker_id}: No chunks produced for {change.path}"
+                    )
+                    return
+
+                # Log chunking results (to be replaced with embedding generation later)
+                chunk_types = {}
+                redacted_count = 0
+
+                for chunk in chunks:
+                    chunk_type = chunk.chunk_type.value
+                    chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+                    if chunk.redacted:
+                        redacted_count += 1
+
+                logger.info(
+                    f"Worker {worker_id}: Chunked {change.path} into {chunk_count} chunks",
+                    extra={
+                        "structured_data": {
+                            "worker_id": worker_id,
+                            "project_name": project_name,
+                            "file_path": str(change.path),
+                            "chunk_count": chunk_count,
+                            "chunk_types": chunk_types,
+                            "redacted_chunks": redacted_count,
+                            "file_size": change.size,
+                        }
+                    },
+                )
+
+                # Log detailed debug information
+                sample_chunks = [
+                    f"    [{i}] {chunk.chunk_type.value} - {chunk.name or 'unnamed'} "
+                    f"(lines {chunk.start_line}-{chunk.end_line}, "
+                    f"{len(chunk.content)} chars, redacted: {chunk.redacted})"
+                    for i, chunk in enumerate(chunks[:3])  # Show first 3 chunks
+                ]
+                logger.debug(
+                    f"Worker {worker_id}: File {change.path} chunking details: "
+                    f"Total chunks: {chunk_count}, "
+                    f"Chunk types: {chunk_types}, "
+                    f"Redacted chunks: {redacted_count}, "
+                    f"Sample chunks: {', '.join(sample_chunks)}"
+                )
+
+                # Generate and store embeddings for chunks
+                embeddings = await self._generate_embeddings(
+                    chunks, project_name, change.path
+                )
+                await self._store_embeddings(embeddings, project_name, change.path)
+
+                # Only increment stats for successfully chunked files
+                self.stats["files_processed"] += 1
+                self.stats["last_activity"] = time.time()
+
+            except Exception as read_error:
+                logger.error(
+                    f"Worker {worker_id}: Failed to read/chunk file {change.path}: {read_error}"
+                )
+                self.stats["errors_count"] += 1
+                return
+
+        except Exception as e:
+            logger.error(
+                f"Worker {worker_id}: Error processing file change {change.path}: {e}"
+            )
+            self.stats["errors_count"] += 1
 
     async def _process_project_scan(self, task: dict, worker_id: str) -> None:
         """Process a project scan task."""
@@ -244,23 +395,77 @@ class VectorDaemon:
         logger.debug(f"Worker {worker_id} processing project: {project_name}")
 
         try:
-            # Check if vector mode components are available
-            # For now, just log that we would process this project
-            logger.info(
-                f"Vector processing for project {project_name}",
-                extra={
-                    "structured_data": {
-                        "project_name": project_name,
-                        "folder_path": folder_path,
-                        "worker_id": worker_id,
-                    }
-                },
-            )
+            # Ensure we have a lock for this project
+            if project_name not in self.watcher_locks:
+                self.watcher_locks[project_name] = asyncio.Lock()
+
+            # Use project-specific lock to prevent race conditions
+            async with self.watcher_locks[project_name]:
+                # Check if file watcher already exists for this project
+                if project_name not in self.file_watchers:
+                    logger.info(
+                        f"Initializing file watcher for project {project_name}",
+                        extra={
+                            "structured_data": {
+                                "project_name": project_name,
+                                "folder_path": folder_path,
+                                "worker_id": worker_id,
+                            }
+                        },
+                    )
+
+                    # Validate folder path exists
+                    project_path = Path(folder_path)
+                    if not project_path.exists():
+                        logger.warning(f"Project folder does not exist: {folder_path}")
+                        return
+
+                    # Create file watcher with appropriate configuration
+                    watcher = create_file_watcher(
+                        project_root=project_path,
+                        project_id=project_name,
+                        ignore_patterns=self.config.ignore_patterns,
+                        debounce_interval=self.config.watch_debounce_ms / 1000.0,
+                    )
+                    logger.debug(f"VectorDaemon: Created watcher for {project_name}")
+                    # Initialize the watcher
+                    await watcher.initialize()
+                    logger.debug(
+                        f"VectorDaemon: Initialized watcher for {project_name}"
+                    )
+                    # Add change callback
+                    watcher.add_change_callback(self._on_file_change(project_name))
+                    logger.debug(
+                        f"VectorDaemon: Added change callback for {project_name}"
+                    )
+
+                    # Start watching
+                    watcher.start_watching()
+                    logger.debug(f"VectorDaemon: Started watching for {project_name}")
+
+                    # Store watcher for later cleanup
+                    self.file_watchers[project_name] = watcher
+                    logger.debug(f"VectorDaemon: Stored watcher for {project_name}")
+
+                    logger.info(
+                        f"File watcher started for project {project_name}",
+                        extra={
+                            "structured_data": {
+                                "project_name": project_name,
+                                "folder_path": folder_path,
+                                "watcher_stats": watcher.get_stats(),
+                            }
+                        },
+                    )
+                else:
+                    logger.debug(
+                        f"File watcher already exists for project {project_name}"
+                    )
 
             self.stats["files_processed"] += 1
 
-            # TODO: Implement actual vector processing:
-            # 1. Scan for file changes using Merkle tree
+            # TODO: Implement remaining vector processing:
+            # 1. Use watcher to get changed files since last scan
             # 2. Chunk modified files using AST
             # 3. Apply secret redaction
             # 4. Generate embeddings via Voyage
@@ -268,7 +473,7 @@ class VectorDaemon:
             # 6. Update database metadata
 
         except Exception as e:
-            logger.error(f"Error processing project {project_name}: {e}")
+            logger.error(f"Error processing project {project_name}: {e}", exc_info=True)
             self.stats["errors_count"] += 1
 
     async def _stats_reporter(self) -> None:
@@ -305,6 +510,18 @@ class VectorDaemon:
         logger.info("Starting daemon cleanup")
         self.is_running = False
 
+        # Stop and cleanup all file watchers first
+        if self.file_watchers:
+            logger.info(f"Cleaning up {len(self.file_watchers)} file watchers")
+            for project_name, watcher in self.file_watchers.items():
+                try:
+                    logger.debug(f"Stopping file watcher for project: {project_name}")
+                    watcher.cleanup()
+                except Exception as e:
+                    logger.error(f"Error cleaning up watcher for {project_name}: {e}")
+            self.file_watchers.clear()
+            self.watcher_locks.clear()
+
         # Cancel all workers
         for worker in self.workers:
             worker.cancel()
@@ -322,13 +539,36 @@ class VectorDaemon:
 
     def get_status(self) -> dict:
         """Get current daemon status."""
+        watcher_stats = {}
+        for project_name, watcher in self.file_watchers.items():
+            try:
+                watcher_stats[project_name] = watcher.get_stats()
+            except Exception as e:
+                watcher_stats[project_name] = {"error": str(e)}
+
         return {
             "is_running": self.is_running,
             "uptime": time.time() - self.stats["start_time"] if self.is_running else 0,
             "monitored_projects": len(self.monitored_projects),
+            "active_file_watchers": len(self.file_watchers),
             "queue_size": self.processing_queue.qsize(),
             "stats": self.stats.copy(),
+            "file_watcher_stats": watcher_stats,
         }
+
+    async def _generate_embeddings(
+        self, chunks: list, project_name: str, file_path
+    ) -> list[list[float]]:
+        """Generate embeddings for file chunks."""
+        # TODO: implement
+        return []
+
+    async def _store_embeddings(
+        self, embeddings: list[list[float]], project_name: str, file_path
+    ) -> None:
+        """Store embeddings in vector database."""
+        # TODO: implement
+        pass
 
 
 async def start_vector_daemon(

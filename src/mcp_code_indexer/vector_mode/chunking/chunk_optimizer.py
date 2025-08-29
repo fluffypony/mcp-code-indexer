@@ -27,6 +27,7 @@ class OptimizedChunk:
     imports: List[str] = None
     parent_context: Optional[str] = None
     optimization_applied: str = "none"
+    redacted: bool = False
     
     def __post_init__(self):
         if self.imports is None:
