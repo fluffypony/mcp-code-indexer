@@ -311,10 +311,16 @@ class VectorDaemon:
         )
 
         try:
-            # Skip deleted files - only process created/modified files
+            # Handle deleted files by removing their vectors from the database
             if change.change_type == ChangeType.DELETED:
-                # TODO: handle deletions in vector DB
-                logger.debug(f"Worker {worker_id}: Skipping deleted file {change.path}")
+                logger.info(f"Worker {worker_id}: Deleting vectors for deleted file {change.path}")
+                try:
+                    await self._vector_storage_service.delete_vectors_for_file(
+                        project_name, str(change.path)
+                    )
+                    logger.info(f"Worker {worker_id}: Successfully deleted vectors for {change.path}")
+                except Exception as e:
+                    logger.error(f"Worker {worker_id}: Failed to delete vectors for {change.path}: {e}")
                 return
 
             # Initialize ASTChunker with default settings

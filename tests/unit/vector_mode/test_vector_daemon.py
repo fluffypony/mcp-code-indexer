@@ -290,7 +290,7 @@ if __name__ == "__main__":
     async def test_process_file_change_task_deleted_file(
         self, vector_daemon: VectorDaemon, sample_python_file: Path
     ) -> None:
-        """Test processing a DELETED file change (should be skipped)."""
+        """Test processing a DELETED file change (should delete vectors from database)."""
         change = FileChange(
             path=str(sample_python_file),
             change_type=ChangeType.DELETED,
@@ -302,19 +302,63 @@ if __name__ == "__main__":
 
         worker_id = "worker_3"
 
-        # Spy on ASTChunker.chunk_file to verify it was NOT called for deleted files
-        with patch(
+        # Mock the vector storage service's delete_vectors_for_file method
+        with patch.object(
+            vector_daemon._vector_storage_service,
+            "delete_vectors_for_file"
+        ) as mock_delete_vectors, patch(
             "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
         ) as mock_chunk_file:
 
             await vector_daemon._process_file_change_task(task, worker_id)
 
-            # Verify no processing occurred
+            # Verify no file processing stats changed (deleted files don't count as processed)
             assert vector_daemon.stats["files_processed"] == 0
             assert vector_daemon.stats["errors_count"] == 0
 
-            # Verify ASTChunker.chunk_file was NOT called (deleted files are skipped)
+            # Verify ASTChunker.chunk_file was NOT called (deleted files don't need chunking)
             mock_chunk_file.assert_not_called()
+            
+            # Verify delete_vectors_for_file was called to clean up vectors
+            mock_delete_vectors.assert_called_once_with("test_project", str(sample_python_file))
+
+    async def test_process_file_change_task_deleted_file_error(
+        self, vector_daemon: VectorDaemon, sample_python_file: Path
+    ) -> None:
+        """Test processing a DELETED file change when vector deletion fails."""
+        change = FileChange(
+            path=str(sample_python_file),
+            change_type=ChangeType.DELETED,
+            timestamp=datetime.utcnow(),
+            size=0,
+        )
+
+        task = {"project_name": "test_project", "change": change}
+
+        worker_id = "worker_3"
+
+        # Mock the vector storage service's delete_vectors_for_file method to fail
+        with patch.object(
+            vector_daemon._vector_storage_service,
+            "delete_vectors_for_file"
+        ) as mock_delete_vectors, patch(
+            "mcp_code_indexer.vector_mode.chunking.ast_chunker.ASTChunker.chunk_file"
+        ) as mock_chunk_file:
+
+            # Make deletion fail
+            mock_delete_vectors.side_effect = RuntimeError("Vector deletion failed")
+
+            await vector_daemon._process_file_change_task(task, worker_id)
+
+            # Verify no file processing stats changed (error handling is graceful)
+            assert vector_daemon.stats["files_processed"] == 0
+            assert vector_daemon.stats["errors_count"] == 0
+
+            # Verify ASTChunker.chunk_file was NOT called (deleted files don't need chunking)
+            mock_chunk_file.assert_not_called()
+            
+            # Verify delete_vectors_for_file was called
+            mock_delete_vectors.assert_called_once_with("test_project", str(sample_python_file))
 
     async def test_process_file_change_task_binary_file(
         self, vector_daemon: VectorDaemon, sample_binary_file: Path
