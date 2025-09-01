@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable, Optional, List, Dict, Any
 import time
 from concurrent.futures import ThreadPoolExecutor
+from abc import ABC, abstractmethod
 
 try:
     from watchdog.observers import Observer, ObserverType
@@ -30,7 +31,28 @@ from .merkle_tree import MerkleTree
 logger = logging.getLogger(__name__)
 
 
+class BaseFileWatcher(ABC):
+    """Abstract base class for file watchers."""
 
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Initialize the file watcher."""
+        pass
+
+    @abstractmethod
+    def add_change_callback(self, callback: Callable[[FileChange], None]) -> None:
+        """Add a callback to be called when files change."""
+        pass
+
+    @abstractmethod
+    def start_watching(self) -> None:
+        """Start watching for file changes."""
+        pass
+
+    @abstractmethod
+    def get_stats(self) -> Dict[str, Any]:
+        """Get watcher statistics."""
+        pass
 
 
 class VectorModeEventHandler(FileSystemEventHandler):
@@ -134,7 +156,7 @@ class VectorModeEventHandler(FileSystemEventHandler):
         self.debounce_tasks.pop(file_path, None)
 
 
-class FileWatcher:
+class FileWatcher(BaseFileWatcher):
     """
     Real-time file system watcher for vector mode.
 
@@ -372,7 +394,7 @@ class FileWatcher:
 
 
 # Fallback implementation for when watchdog is not available
-class PollingFileWatcher:
+class PollingFileWatcher(BaseFileWatcher):
     """
     Fallback file watcher using polling instead of OS events.
 
@@ -442,6 +464,14 @@ class PollingFileWatcher:
                 logger.error(f"Error in polling loop: {e}")
                 await asyncio.sleep(self.poll_interval)
 
+    def get_stats(self) -> Dict[str, Any]:
+        """Get watcher statistics."""
+        return {
+            "project_root": str(self.project_root),
+            "project_id": self.project_id,
+            "is_watching": self.is_watching,
+        }
+
     def cleanup(self) -> None:
         """Clean up resources."""
         self.stop_watching()
@@ -449,7 +479,7 @@ class PollingFileWatcher:
 
 def create_file_watcher(
     project_root: Path, project_id: str, use_polling: bool = False, **kwargs
-) -> Any:
+) -> BaseFileWatcher:
     """
     Create appropriate file watcher based on availability.
 
