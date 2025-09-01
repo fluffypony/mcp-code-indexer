@@ -268,6 +268,61 @@ class TurbopufferClient:
         )
         return f"mcp_code_{safe_project_id}".lower()
 
+    def delete_vectors_for_file(self, namespace: str, file_path: str) -> Dict[str, Any]:
+        """
+        Delete all vectors associated with a specific file.
+
+        Args:
+            namespace: The namespace to delete from
+            file_path: Path to the source file
+
+        Returns:
+            Dictionary with deletion results
+
+        Raises:
+            RuntimeError: If deletion fails
+        """
+        logger.info(
+            f"Deleting vectors for file '{file_path}' in namespace '{namespace}'"
+        )
+
+        try:
+            ns = self.client.namespace(namespace)
+
+            # First, query for vectors with matching file_path
+            filter_condition = ("file_path", "Eq", file_path)
+            results = ns.query(
+                filters=filter_condition,
+                top_k=1200,  # Set high enough to catch all chunks for a single file. 1200 is max
+                include_attributes=False,  # We only need IDs
+            )
+
+            if not hasattr(results, "rows") or not results.rows:
+                logger.info(
+                    f"No vectors found for file '{file_path}' in namespace '{namespace}'"
+                )
+                return {"deleted": 0, "file_path": file_path}
+
+            # Extract vector IDs to delete
+            ids_to_delete = [row.id for row in results.rows]
+            logger.info(
+                f"Found {len(ids_to_delete)} vectors to delete for file '{file_path}'"
+            )
+
+            # Delete vectors by ID using existing method
+            delete_result = self.delete_vectors(ids_to_delete, namespace)
+
+            logger.info(
+                f"File deletion completed: removed {delete_result['deleted']} vectors "
+                f"for file '{file_path}' from namespace '{namespace}'"
+            )
+
+            return {"deleted": delete_result["deleted"], "file_path": file_path}
+
+        except Exception as e:
+            logger.error(f"Failed to delete vectors for file '{file_path}': {e}")
+            raise RuntimeError(f"File vector deletion failed: {e}")
+
     def search_with_metadata_filter(
         self,
         query_vector: List[float],

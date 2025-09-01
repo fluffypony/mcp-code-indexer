@@ -6,9 +6,7 @@ vector storage backend, handling namespace management, vector formatting,
 and error handling.
 """
 
-import asyncio
 import logging
-import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -76,6 +74,21 @@ class VectorStorageService:
                 project_name, embedding_dimension
             )
             # TODO: upsert_vectors creates namespace if not exists, so this may be redundant
+
+            # Clear existing vectors for this file to prevent redundant entries
+            logger.info(
+                f"Clearing existing vectors for file {file_path} before upserting new ones"
+            )
+            try:
+                delete_result = self.turbopuffer_client.delete_vectors_for_file(
+                    namespace, file_path
+                )
+                logger.info(
+                    f"Cleared {delete_result['deleted']} existing vectors for {file_path}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to clear existing vectors for {file_path}: {e}")
+                # Continue with upsert even if deletion fails - better to have duplicates than no data
 
             # Format vectors for storage
             vectors = self._format_vectors_for_storage(
@@ -206,16 +219,18 @@ class VectorStorageService:
         try:
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
-            # Search for vectors with matching file_path metadata
-            # This is a simplified approach - in practice, you might need
-            # to track vector IDs separately for efficient deletion
             logger.info(
                 f"Deleting vectors for file {file_path} in namespace {namespace}"
             )
 
-            # Note: Actual implementation would require searching by metadata
-            # and then deleting found vector IDs. This is left as TODO since
-            # it depends on specific Turbopuffer query capabilities.
+            # Use the TurbopufferClient method to delete by file_path filter
+            result = self.turbopuffer_client.delete_vectors_for_file(
+                namespace, file_path
+            )
+
+            logger.info(
+                f"Successfully deleted {result['deleted']} vectors for file {file_path}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to delete vectors for {file_path}: {e}")
