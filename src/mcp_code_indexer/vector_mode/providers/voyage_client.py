@@ -34,6 +34,47 @@ class VoyageClient:
             logger.warning(f"Voyage AI health check failed: {e}")
             return False
     
+    def validate_api_access(self) -> None:
+        """
+        Validate API key and access to Voyage AI service.
+        
+        Raises:
+            RuntimeError: If API access validation fails with specific error details
+        """
+        try:
+            result = self.client.embed(["test"], model=self.model, input_type="query")
+            if not result or not result.embeddings:
+                raise RuntimeError("Voyage AI API returned empty response")
+            logger.debug("Voyage AI API access validated successfully")
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            if "401" in error_msg or "unauthorized" in error_msg or "api key" in error_msg:
+                raise RuntimeError(
+                    f"Voyage AI API authentication failed: Invalid or expired API key. "
+                    f"Please check your VOYAGE_API_KEY. Error: {e}"
+                )
+            elif "403" in error_msg or "forbidden" in error_msg:
+                raise RuntimeError(
+                    f"Voyage AI API access denied: API key lacks required permissions. Error: {e}"
+                )
+            elif "429" in error_msg or "rate limit" in error_msg:
+                raise RuntimeError(
+                    f"Voyage AI API rate limit exceeded: Too many requests. Error: {e}"
+                )
+            elif "quota" in error_msg or "usage" in error_msg:
+                raise RuntimeError(
+                    f"Voyage AI API quota exceeded: Usage limit reached. Error: {e}"
+                )
+            elif "5" in error_msg and ("error" in error_msg or "server" in error_msg):
+                raise RuntimeError(
+                    f"Voyage AI service unavailable: Server error. Error: {e}"
+                )
+            else:
+                raise RuntimeError(
+                    f"Voyage AI API access validation failed: {e}"
+                )
+    
     def generate_embeddings(
         self,
         texts: List[str],

@@ -6,6 +6,9 @@ database setup, and mock data generation.
 """
 
 import asyncio
+import base64
+import random
+import string
 import tempfile
 from pathlib import Path
 from typing import AsyncGenerator, Generator
@@ -356,50 +359,36 @@ async def async_test_context():
 
 def generate_fake_aws_access_key() -> str:
     """Generate a fake AWS access key for testing."""
-    import random
-    import string
     suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
     return f"AKIA{suffix}"
 
 
 def generate_fake_github_token() -> str:
     """Generate a fake GitHub token for testing."""
-    import random
-    import string
     suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=36))
     return f"ghp_{suffix}"
 
 
 def generate_fake_google_api_key() -> str:
     """Generate a fake Google API key for testing."""
-    import random
-    import string
     suffix = ''.join(random.choices(string.ascii_letters + string.digits + '-_', k=35))
     return f"AIza{suffix}"
 
 
 def generate_fake_openai_key() -> str:
     """Generate a fake OpenAI API key for testing."""
-    import random
-    import string
     suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=48))
     return f"sk-{suffix}"
 
 
 def generate_fake_anthropic_key() -> str:
     """Generate a fake Anthropic API key for testing."""
-    import random
-    import string
     suffix = ''.join(random.choices(string.ascii_letters + string.digits + '-_', k=95))
     return f"sk-ant-api03-{suffix}"
 
 
 def generate_fake_jwt_token() -> str:
     """Generate a fake JWT token for testing."""
-    import random
-    import string
-    import base64
-    
     def random_base64(length):
         chars = string.ascii_letters + string.digits
         return base64.b64encode(''.join(random.choices(chars, k=length)).encode()).decode().rstrip('=')
@@ -412,9 +401,6 @@ def generate_fake_jwt_token() -> str:
 
 def generate_fake_connection_strings() -> dict:
     """Generate fake database connection strings for testing."""
-    import random
-    import string
-    
     def random_string(length):
         return ''.join(random.choices(string.ascii_lowercase, k=length))
     

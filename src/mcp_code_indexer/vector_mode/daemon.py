@@ -16,9 +16,13 @@ from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
 from .monitoring.file_watcher import create_file_watcher, FileWatcher
+from .providers.voyage_client import VoyageClient, create_voyage_client
+from .providers.turbopuffer_client import create_turbopuffer_client
+from .services.embedding_service import EmbeddingService
+from .services.vector_storage_service import VectorStorageService
 
 from .monitoring.change_detector import FileChange, ChangeType
-from .chunking.ast_chunker import ASTChunker
+from .chunking.ast_chunker import ASTChunker, CodeChunk
 from .types import (
     ScanProjectTask,
     VectorDaemonTaskType,
@@ -68,6 +72,16 @@ class VectorDaemon:
             "errors_count": 0,
             "last_activity": time.time(),
         }
+
+        # Initialize VoyageClient and EmbeddingService for embedding generation
+        self._voyage_client = create_voyage_client(self.config)
+        self._embedding_service = EmbeddingService(self._voyage_client, self.config)
+
+        # Initialize TurbopufferClient and VectorStorageService for vector storage
+        self._turbopuffer_client = create_turbopuffer_client(self.config)
+        self._vector_storage_service = VectorStorageService(
+            self._turbopuffer_client, self.config
+        )
 
         # Signal handling is delegated to the parent process
 
@@ -285,23 +299,26 @@ class VectorDaemon:
         project_name: str = task["project_name"]
         change: FileChange = task["change"]
         logger.info(
-            f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})",
-            extra={
-                "structured_data": {
-                    "worker_id": worker_id,
-                    "project_name": project_name,
-                    "file_path": str(change.path),
-                    "change_type": change.change_type.value,
-                    "timestamp": change.timestamp.isoformat(),
-                    "size": change.size,
-                }
-            },
+            f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})"
         )
 
         try:
-            # Skip deleted files - only process created/modified files
+            # Handle deleted files by removing their vectors from the database
             if change.change_type == ChangeType.DELETED:
-                logger.debug(f"Worker {worker_id}: Skipping deleted file {change.path}")
+                logger.info(
+                    f"Worker {worker_id}: Deleting vectors for deleted file {change.path}"
+                )
+                try:
+                    await self._vector_storage_service.delete_vectors_for_file(
+                        project_name, str(change.path)
+                    )
+                    logger.info(
+                        f"Worker {worker_id}: Successfully deleted vectors for {change.path}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Worker {worker_id}: Failed to delete vectors for {change.path}: {e}"
+                    )
                 return
 
             # Initialize ASTChunker with default settings
@@ -335,40 +352,16 @@ class VectorDaemon:
                         redacted_count += 1
 
                 logger.info(
-                    f"Worker {worker_id}: Chunked {change.path} into {chunk_count} chunks",
-                    extra={
-                        "structured_data": {
-                            "worker_id": worker_id,
-                            "project_name": project_name,
-                            "file_path": str(change.path),
-                            "chunk_count": chunk_count,
-                            "chunk_types": chunk_types,
-                            "redacted_chunks": redacted_count,
-                            "file_size": change.size,
-                        }
-                    },
-                )
-
-                # Log detailed debug information
-                sample_chunks = [
-                    f"    [{i}] {chunk.chunk_type.value} - {chunk.name or 'unnamed'} "
-                    f"(lines {chunk.start_line}-{chunk.end_line}, "
-                    f"{len(chunk.content)} chars, redacted: {chunk.redacted})"
-                    for i, chunk in enumerate(chunks[:3])  # Show first 3 chunks
-                ]
-                logger.debug(
-                    f"Worker {worker_id}: File {change.path} chunking details: "
-                    f"Total chunks: {chunk_count}, "
-                    f"Chunk types: {chunk_types}, "
-                    f"Redacted chunks: {redacted_count}, "
-                    f"Sample chunks: {', '.join(sample_chunks)}"
+                    f"Worker {worker_id}: Chunked {change.path} into {chunk_count} chunks"
                 )
 
                 # Generate and store embeddings for chunks
                 embeddings = await self._generate_embeddings(
                     chunks, project_name, change.path
                 )
-                await self._store_embeddings(embeddings, project_name, change.path)
+                await self._store_embeddings(
+                    embeddings, chunks, project_name, change.path
+                )
 
                 # Only increment stats for successfully chunked files
                 self.stats["files_processed"] += 1
@@ -430,22 +423,15 @@ class VectorDaemon:
                     logger.debug(f"VectorDaemon: Created watcher for {project_name}")
                     # Initialize the watcher
                     await watcher.initialize()
-                    logger.debug(
-                        f"VectorDaemon: Initialized watcher for {project_name}"
-                    )
+
                     # Add change callback
                     watcher.add_change_callback(self._on_file_change(project_name))
-                    logger.debug(
-                        f"VectorDaemon: Added change callback for {project_name}"
-                    )
 
                     # Start watching
                     watcher.start_watching()
-                    logger.debug(f"VectorDaemon: Started watching for {project_name}")
 
                     # Store watcher for later cleanup
                     self.file_watchers[project_name] = watcher
-                    logger.debug(f"VectorDaemon: Stored watcher for {project_name}")
 
                     logger.info(
                         f"File watcher started for project {project_name}",
@@ -463,14 +449,6 @@ class VectorDaemon:
                     )
 
             self.stats["files_processed"] += 1
-
-            # TODO: Implement remaining vector processing:
-            # 1. Use watcher to get changed files since last scan
-            # 2. Chunk modified files using AST
-            # 3. Apply secret redaction
-            # 4. Generate embeddings via Voyage
-            # 5. Store in Turbopuffer
-            # 6. Update database metadata
 
         except Exception as e:
             logger.error(f"Error processing project {project_name}: {e}", exc_info=True)
@@ -557,18 +535,41 @@ class VectorDaemon:
         }
 
     async def _generate_embeddings(
-        self, chunks: list, project_name: str, file_path
+        self, chunks: list[CodeChunk], project_name: str, file_path: Path
     ) -> list[list[float]]:
-        """Generate embeddings for file chunks."""
-        # TODO: implement
-        return []
+        """Generate embeddings for file chunks using EmbeddingService."""
+        try:
+            embeddings = await self._embedding_service.generate_embeddings_for_chunks(
+                chunks, project_name, file_path
+            )
+
+            # Update daemon statistics
+            self.stats["embeddings_generated"] += len(embeddings)
+            self.stats["last_activity"] = time.time()
+
+            return embeddings
+
+        except Exception as e:
+            # Update error statistics
+            self.stats["errors_count"] += 1
+            raise
 
     async def _store_embeddings(
-        self, embeddings: list[list[float]], project_name: str, file_path
+        self,
+        embeddings: list[list[float]],
+        chunks: list[CodeChunk],
+        project_name: str,
+        file_path: str,
     ) -> None:
         """Store embeddings in vector database."""
-        # TODO: implement
-        pass
+        try:
+            await self._vector_storage_service.store_embeddings(
+                embeddings, chunks, project_name, file_path
+            )
+        except Exception as e:
+            # Update error statistics
+            self.stats["errors_count"] += 1
+            raise
 
 
 async def start_vector_daemon(
