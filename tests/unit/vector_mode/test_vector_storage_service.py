@@ -100,13 +100,21 @@ class TestVectorStorageService:
         project_name = "test_project"
         file_path = "/test/file.py"
 
+        # Mock successful deletion before upsert
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.return_value = {
+            "deleted": 0, "file_path": file_path
+        }
+
         await vector_storage_service.store_embeddings(
             sample_embeddings, sample_chunks, project_name, file_path
         )
 
-        # Verify client methods were called
+        # Verify client methods were called including deletion
         vector_storage_service.turbopuffer_client.get_namespace_for_project.assert_called_once_with(project_name)
         vector_storage_service.turbopuffer_client.list_namespaces.assert_called_once()
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.assert_called_once_with(
+            "mcp_code_test_project", file_path
+        )
         vector_storage_service.turbopuffer_client.upsert_vectors.assert_called_once()
 
         # Verify vector formatting
@@ -398,3 +406,94 @@ class TestVectorStorageService:
         # Service creation should fail
         with pytest.raises(RuntimeError, match="API validation failed"):
             VectorStorageService(mock_turbopuffer_client, vector_config)
+
+    async def test_delete_vectors_for_file_success(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test successful deletion of vectors for a file."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Mock successful deletion
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.return_value = {
+            "deleted": 3, "file_path": file_path
+        }
+        
+        # Test deletion
+        await vector_storage_service.delete_vectors_for_file(project_name, file_path)
+        
+        # Verify client method was called correctly
+        vector_storage_service.turbopuffer_client.get_namespace_for_project.assert_called_once_with(project_name)
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.assert_called_once_with(
+            "mcp_code_test_project", file_path
+        )
+
+    async def test_delete_vectors_for_file_failure(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test handling of deletion failures."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Mock deletion failure
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.side_effect = RuntimeError(
+            "Deletion failed"
+        )
+        
+        # Test deletion should raise RuntimeError
+        with pytest.raises(RuntimeError, match="Vector deletion failed: Deletion failed"):
+            await vector_storage_service.delete_vectors_for_file(project_name, file_path)
+
+    async def test_store_embeddings_with_deletion_step(
+        self,
+        vector_storage_service: VectorStorageService,
+        sample_embeddings: List[List[float]],
+        sample_chunks: List[CodeChunk],
+    ):
+        """Test that store_embeddings now includes deletion step before upserting."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Mock successful deletion before upsert
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.return_value = {
+            "deleted": 1, "file_path": file_path
+        }
+        
+        # Store embeddings
+        await vector_storage_service.store_embeddings(
+            sample_embeddings, sample_chunks, project_name, file_path
+        )
+        
+        # Verify deletion was called before upsert
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.assert_called_once_with(
+            "mcp_code_test_project", file_path
+        )
+        
+        # Verify upsert was still called
+        vector_storage_service.turbopuffer_client.upsert_vectors.assert_called_once()
+
+    async def test_store_embeddings_deletion_failure_continues_with_upsert(
+        self,
+        vector_storage_service: VectorStorageService,
+        sample_embeddings: List[List[float]],
+        sample_chunks: List[CodeChunk],
+    ):
+        """Test that store_embeddings continues with upsert even if deletion fails."""
+        project_name = "test_project"
+        file_path = "/test/file.py"
+        
+        # Mock deletion failure
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.side_effect = RuntimeError(
+            "Deletion failed"
+        )
+        
+        # Store embeddings should still succeed despite deletion failure
+        await vector_storage_service.store_embeddings(
+            sample_embeddings, sample_chunks, project_name, file_path
+        )
+        
+        # Verify deletion was attempted
+        vector_storage_service.turbopuffer_client.delete_vectors_for_file.assert_called_once()
+        
+        # Verify upsert was still called even though deletion failed
+        vector_storage_service.turbopuffer_client.upsert_vectors.assert_called_once()

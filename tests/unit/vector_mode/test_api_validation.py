@@ -74,6 +74,99 @@ class TestTurbopufferClientValidation:
         with pytest.raises(RuntimeError, match="Turbopuffer API access validation failed"):
             mock_turbopuffer_client.validate_api_access()
 
+    def test_delete_vectors_for_file_success(self, mock_turbopuffer_client):
+        """Test successful deletion of vectors for a file."""
+        # Mock namespace and query results
+        mock_namespace = MagicMock()
+        mock_turbopuffer_client.client.namespace.return_value = mock_namespace
+        
+        # Mock query results with vectors to delete
+        mock_row1 = MagicMock()
+        mock_row1.id = "test_project_vec_1_abc123"
+        mock_row2 = MagicMock()
+        mock_row2.id = "test_project_vec_2_def456"
+        
+        mock_query_result = MagicMock()
+        mock_query_result.rows = [mock_row1, mock_row2]
+        mock_namespace.query.return_value = mock_query_result
+        
+        # Mock successful deletion
+        mock_delete_result = MagicMock()
+        mock_delete_result.rows_affected = 2
+        mock_namespace.write.return_value = mock_delete_result
+        
+        # Test deletion
+        result = mock_turbopuffer_client.delete_vectors_for_file("test_namespace", "/test/file.py")
+        
+        # Verify query was called with correct filter
+        mock_namespace.query.assert_called_once_with(
+            filters=("file_path", "Eq", "/test/file.py"),
+            top_k=1200,
+            include_attributes=False
+        )
+        
+        # Verify delete was called with correct IDs
+        mock_namespace.write.assert_called_once_with(
+            deletes=["test_project_vec_1_abc123", "test_project_vec_2_def456"]
+        )
+        
+        # Verify result
+        assert result == {"deleted": 2, "file_path": "/test/file.py"}
+
+    def test_delete_vectors_for_file_no_vectors_found(self, mock_turbopuffer_client):
+        """Test deletion when no vectors are found for the file."""
+        # Mock namespace and empty query results
+        mock_namespace = MagicMock()
+        mock_turbopuffer_client.client.namespace.return_value = mock_namespace
+        
+        # Mock empty query results
+        mock_query_result = MagicMock()
+        mock_query_result.rows = []
+        mock_namespace.query.return_value = mock_query_result
+        
+        # Test deletion
+        result = mock_turbopuffer_client.delete_vectors_for_file("test_namespace", "/test/file.py")
+        
+        # Verify query was called
+        mock_namespace.query.assert_called_once()
+        
+        # Verify delete was NOT called since no vectors found
+        mock_namespace.write.assert_not_called()
+        
+        # Verify result
+        assert result == {"deleted": 0, "file_path": "/test/file.py"}
+
+    def test_delete_vectors_for_file_query_failure(self, mock_turbopuffer_client):
+        """Test handling of query failure during deletion."""
+        # Mock namespace and query failure
+        mock_namespace = MagicMock()
+        mock_turbopuffer_client.client.namespace.return_value = mock_namespace
+        mock_namespace.query.side_effect = Exception("Query failed")
+        
+        # Test deletion should raise RuntimeError
+        with pytest.raises(RuntimeError, match="File vector deletion failed: Query failed"):
+            mock_turbopuffer_client.delete_vectors_for_file("test_namespace", "/test/file.py")
+
+    def test_delete_vectors_for_file_delete_failure(self, mock_turbopuffer_client):
+        """Test handling of delete failure."""
+        # Mock namespace and query results
+        mock_namespace = MagicMock()
+        mock_turbopuffer_client.client.namespace.return_value = mock_namespace
+        
+        # Mock query results with vectors to delete
+        mock_row = MagicMock()
+        mock_row.id = "test_project_vec_1_abc123"
+        mock_query_result = MagicMock()
+        mock_query_result.rows = [mock_row]
+        mock_namespace.query.return_value = mock_query_result
+        
+        # Mock delete failure
+        mock_namespace.write.side_effect = Exception("Delete failed")
+        
+        # Test deletion should raise RuntimeError
+        with pytest.raises(RuntimeError, match="File vector deletion failed: Vector deletion failed: Delete failed"):
+            mock_turbopuffer_client.delete_vectors_for_file("test_namespace", "/test/file.py")
+
 
 class TestVoyageClientValidation:
     """Test VoyageClient API access validation."""
