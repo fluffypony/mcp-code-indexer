@@ -571,6 +571,186 @@ class VectorDaemon:
             self.stats["errors_count"] += 1
             raise
 
+    async def _perform_initial_project_embedding(
+        self, project_name: str, folder_path: str
+    ) -> dict[str, int]:
+        """
+        Perform initial project embedding for all files, processing only changed files.
+
+        Args:
+            project_name: Name of the project
+            folder_path: Root folder path of the project
+
+        Returns:
+            Dictionary with processing statistics
+        """
+        from pathlib import Path
+
+        stats = {
+            "scanned": 0,
+            "processed": 0,
+            "skipped": 0,
+            "failed": 0,
+        }
+
+        logger.info(f"Starting initial project embedding for {project_name}")
+
+        try:
+            project_root = Path(folder_path)
+            if not project_root.exists():
+                logger.error(f"Project folder does not exist: {folder_path}")
+                return stats
+
+            # Get stored file metadata from vector database
+            stored_metadata = await self._vector_storage_service.get_file_metadata(project_name)
+
+            # Discover all relevant files in the project
+            file_extensions = {".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".rb", ".go", ".rs", ".php"}
+            project_files = []
+
+            for file_path in project_root.rglob("*"):
+                if (file_path.is_file() and 
+                    file_path.suffix.lower() in file_extensions and
+                    not self._should_ignore_file(file_path)):
+                    project_files.append(file_path)
+
+            stats["scanned"] = len(project_files)
+            logger.info(f"Found {len(project_files)} files to scan in {project_name}")
+
+            # Process files in batches
+            batch_size = 50
+            processed_count = 0
+
+            for i in range(0, len(project_files), batch_size):
+                batch = project_files[i:i + batch_size]
+                batch_stats = await self._process_file_batch_for_initial_embedding(
+                    batch, project_name, stored_metadata
+                )
+
+                # Update stats
+                stats["processed"] += batch_stats["processed"]
+                stats["skipped"] += batch_stats["skipped"]
+                stats["failed"] += batch_stats["failed"]
+
+                processed_count += len(batch)
+                if processed_count % 100 == 0:
+                    logger.info(f"Initial embedding progress: {processed_count}/{len(project_files)} files processed")
+
+            logger.info(
+                f"Initial project embedding complete for {project_name}: "
+                f"scanned={stats['scanned']}, processed={stats['processed']}, "
+                f"skipped={stats['skipped']}, failed={stats['failed']}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error during initial project embedding for {project_name}: {e}")
+            stats["failed"] += 1
+
+        return stats
+
+    async def _process_file_batch_for_initial_embedding(
+        self, file_batch: list[Path], project_name: str, stored_metadata: dict[str, float]
+    ) -> dict[str, int]:
+        """
+        Process a batch of files for initial embedding.
+
+        Args:
+            file_batch: List of file paths to process
+            project_name: Name of the project
+            stored_metadata: Dictionary of file_path -> mtime from vector database
+
+        Returns:
+            Dictionary with batch processing statistics
+        """
+        batch_stats = {"processed": 0, "skipped": 0, "failed": 0}
+
+        # Filter files that need processing based on mtime comparison
+        files_to_process = []
+        for file_path in file_batch:
+            try:
+                current_mtime = file_path.stat().st_mtime
+                stored_mtime = stored_metadata.get(str(file_path), 0.0)
+
+                # Use epsilon comparison for floating point mtime
+                if abs(current_mtime - stored_mtime) > 0.001:
+                    files_to_process.append(file_path)
+                    logger.debug(f"File {file_path} needs processing (current: {current_mtime}, stored: {stored_mtime})")
+                else:
+                    batch_stats["skipped"] += 1
+                    logger.debug(f"File {file_path} unchanged, skipping")
+
+            except (OSError, FileNotFoundError) as e:
+                logger.warning(f"Failed to get mtime for {file_path}: {e}")
+                batch_stats["failed"] += 1
+
+        # Process files that need updates
+        for file_path in files_to_process:
+            try:
+                await self._process_single_file_for_embedding(file_path, project_name)
+                batch_stats["processed"] += 1
+
+            except Exception as e:
+                logger.error(f"Failed to process file {file_path} during initial embedding: {e}")
+                batch_stats["failed"] += 1
+
+        return batch_stats
+
+    async def _process_single_file_for_embedding(
+        self, file_path: Path, project_name: str
+    ) -> None:
+        """
+        Process a single file for embedding generation and storage.
+
+        Args:
+            file_path: Path to the file to process
+            project_name: Name of the project
+        """
+        # Initialize ASTChunker with same settings as regular file processing
+        chunker = ASTChunker(
+            max_chunk_size=1500,
+            min_chunk_size=50,
+            enable_redaction=True,
+            enable_optimization=True,
+        )
+
+        # Read and chunk the file
+        chunks = chunker.chunk_file(str(file_path))
+        chunk_count = len(chunks)
+
+        if chunk_count == 0:
+            logger.debug(f"No chunks produced for {file_path}")
+            return
+
+        # Generate and store embeddings for chunks
+        embeddings = await self._generate_embeddings(chunks, project_name, file_path)
+        await self._store_embeddings(embeddings, chunks, project_name, str(file_path))
+
+        logger.debug(f"Initial embedding complete for {file_path}: {chunk_count} chunks processed")
+
+    def _should_ignore_file(self, file_path: Path) -> bool:
+        """
+        Check if file should be ignored based on common patterns.
+
+        Args:
+            file_path: Path to check
+
+        Returns:
+            True if file should be ignored
+        """
+        ignore_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "env", ".env", "dist", "build", "target"}
+        ignore_files = {".gitignore", ".env", ".DS_Store", ".pyc"}
+
+        # Check if any parent directory should be ignored
+        for parent in file_path.parents:
+            if parent.name in ignore_dirs:
+                return True
+
+        # Check if file itself should be ignored
+        if file_path.name in ignore_files or file_path.suffix == ".pyc":
+            return True
+
+        return False
+
 
 async def start_vector_daemon(
     config_path: Optional[Path] = None,
