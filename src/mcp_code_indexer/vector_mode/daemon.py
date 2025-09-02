@@ -625,13 +625,11 @@ class VectorDaemon:
             stored_metadata = await self._vector_storage_service.get_file_metadata(project_name)
 
             # Discover all relevant files in the project
-            file_extensions = {".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".rb", ".go", ".rs", ".php"}
             project_files = []
 
             for file_path in project_root.rglob("*"):
                 if (file_path.is_file() and 
-                    file_path.suffix.lower() in file_extensions and
-                    not self._should_ignore_file(file_path)):
+                    not self._should_ignore_file(file_path, project_root)):
                     project_files.append(file_path)
 
             stats["scanned"] = len(project_files)
@@ -703,10 +701,26 @@ class VectorDaemon:
                 logger.warning(f"Failed to get mtime for {file_path}: {e}")
                 batch_stats["failed"] += 1
 
-        # Process files that need updates
+        # Process files that need updates using existing file change processing logic
         for file_path in files_to_process:
             try:
-                await self._process_single_file_for_embedding(file_path, project_name)
+                # Create FileChange object for initial processing
+                file_change = FileChange(
+                    path=file_path,
+                    change_type=ChangeType.MODIFIED,  # Treat as modified for processing
+                    timestamp=time.time()
+                )
+                
+                # Create ProcessFileChangeTask similar to regular file change processing
+                task_item: ProcessFileChangeTask = {
+                    "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
+                    "project_name": project_name,
+                    "change": file_change,
+                    "timestamp": time.time(),
+                }
+                
+                # Process using existing file change task logic
+                await self._process_file_change_task(task_item, "initial-processing")
                 batch_stats["processed"] += 1
 
             except Exception as e:
@@ -715,61 +729,38 @@ class VectorDaemon:
 
         return batch_stats
 
-    async def _process_single_file_for_embedding(
-        self, file_path: Path, project_name: str
-    ) -> None:
+    def _should_ignore_file(self, file_path: Path, project_root: Path) -> bool:
         """
-        Process a single file for embedding generation and storage.
-
-        Args:
-            file_path: Path to the file to process
-            project_name: Name of the project
-        """
-        # Initialize ASTChunker with same settings as regular file processing
-        chunker = ASTChunker(
-            max_chunk_size=1500,
-            min_chunk_size=50,
-            enable_redaction=True,
-            enable_optimization=True,
-        )
-
-        # Read and chunk the file
-        chunks = chunker.chunk_file(str(file_path))
-        chunk_count = len(chunks)
-
-        if chunk_count == 0:
-            logger.debug(f"No chunks produced for {file_path}")
-            return
-
-        # Generate and store embeddings for chunks
-        embeddings = await self._generate_embeddings(chunks, project_name, file_path)
-        await self._store_embeddings(embeddings, chunks, project_name, str(file_path))
-
-        logger.debug(f"Initial embedding complete for {file_path}: {chunk_count} chunks processed")
-
-    def _should_ignore_file(self, file_path: Path) -> bool:
-        """
-        Check if file should be ignored based on common patterns.
+        Check if file should be ignored based on ignore patterns from config.
 
         Args:
             file_path: Path to check
+            project_root: Root path of the project
 
         Returns:
             True if file should be ignored
         """
-        ignore_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "env", ".env", "dist", "build", "target"}
-        ignore_files = {".gitignore", ".env", ".DS_Store", ".pyc"}
+        try:
+            relative_path = file_path.relative_to(project_root)
+            path_str = str(relative_path)
 
-        # Check if any parent directory should be ignored
-        for parent in file_path.parents:
-            if parent.name in ignore_dirs:
-                return True
+            import re
+            import fnmatch
 
-        # Check if file itself should be ignored
-        if file_path.name in ignore_files or file_path.suffix == ".pyc":
+            # Compile ignore patterns for performance (similar to ChangeDetector)
+            compiled_patterns = [
+                fnmatch.translate(pattern) for pattern in self.config.ignore_patterns
+            ]
+
+            for pattern in compiled_patterns:
+                if re.match(pattern, path_str):
+                    return True
+
+            return False
+
+        except ValueError:
+            # Path is not relative to project root
             return True
-
-        return False
 
 
 async def start_vector_daemon(
