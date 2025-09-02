@@ -611,6 +611,7 @@ class VectorDaemon:
             "processed": 0,
             "skipped": 0,
             "failed": 0,
+            "deleted": 0,
         }
 
         logger.info(f"Starting initial project embedding for {project_name}")
@@ -654,10 +655,13 @@ class VectorDaemon:
                 if processed_count % 100 == 0:
                     logger.info(f"Initial embedding progress: {processed_count}/{len(project_files)} files processed")
 
+            # Handle deleted files - files that exist in vector DB but not locally
+            await self._cleanup_deleted_files(project_name, project_files, stored_metadata, stats)
+
             logger.info(
                 f"Initial project embedding complete for {project_name}: "
                 f"scanned={stats['scanned']}, processed={stats['processed']}, "
-                f"skipped={stats['skipped']}, failed={stats['failed']}"
+                f"skipped={stats['skipped']}, failed={stats['failed']}, deleted={stats.get('deleted', 0)}"
             )
 
         except Exception as e:
@@ -728,6 +732,73 @@ class VectorDaemon:
                 batch_stats["failed"] += 1
 
         return batch_stats
+
+    async def _cleanup_deleted_files(
+        self, 
+        project_name: str, 
+        existing_files: list[Path], 
+        stored_metadata: dict[str, float], 
+        stats: dict[str, int]
+    ) -> None:
+        """
+        Clean up files that exist in vector database but not locally (deleted files).
+
+        Args:
+            project_name: Name of the project
+            existing_files: List of files that exist locally
+            stored_metadata: Dictionary of file_path -> mtime from vector database
+            stats: Statistics dictionary to update
+        """
+        if not stored_metadata:
+            return
+
+        # Create set of existing file paths for efficient lookup
+        existing_file_paths = {str(file_path) for file_path in existing_files}
+
+        # Find files that exist in vector DB but not locally
+        deleted_files = []
+        for stored_file_path in stored_metadata.keys():
+            if stored_file_path not in existing_file_paths:
+                # Convert string path back to Path object for processing
+                deleted_file_path = Path(stored_file_path)
+                deleted_files.append(deleted_file_path)
+
+        if deleted_files:
+            logger.info(f"Found {len(deleted_files)} deleted files to clean up from vector database")
+            
+            # Initialize deleted count in stats
+            if "deleted" not in stats:
+                stats["deleted"] = 0
+
+            # Process each deleted file
+            for deleted_file_path in deleted_files:
+                try:
+                    # Create FileChange object for deleted file
+                    file_change = FileChange(
+                        path=deleted_file_path,
+                        change_type=ChangeType.DELETED,
+                        timestamp=time.time()
+                    )
+                    
+                    # Create ProcessFileChangeTask for deletion
+                    task_item: ProcessFileChangeTask = {
+                        "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
+                        "project_name": project_name,
+                        "change": file_change,
+                        "timestamp": time.time(),
+                    }
+                    
+                    # Process deletion using existing file change task logic
+                    await self._process_file_change_task(task_item, "initial-processing")
+                    stats["deleted"] += 1
+                    
+                    logger.debug(f"Cleaned up deleted file: {deleted_file_path}")
+
+                except Exception as e:
+                    logger.error(f"Failed to clean up deleted file {deleted_file_path}: {e}")
+                    stats["failed"] += 1
+        else:
+            logger.debug("No deleted files found during initial processing")
 
     def _should_ignore_file(self, file_path: Path, project_root: Path) -> bool:
         """
