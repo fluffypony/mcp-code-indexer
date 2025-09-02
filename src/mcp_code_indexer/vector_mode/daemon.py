@@ -394,6 +394,26 @@ class VectorDaemon:
 
             # Use project-specific lock to prevent race conditions
             async with self.watcher_locks[project_name]:
+                # Perform initial project embedding before starting file watcher
+                try:
+                    logger.info(f"Starting initial project embedding for {project_name}")
+                    initial_stats = await self._perform_initial_project_embedding(
+                        project_name, folder_path
+                    )
+                    logger.info(
+                        f"Initial project embedding completed for {project_name}",
+                        extra={
+                            "structured_data": {
+                                "project_name": project_name,
+                                "folder_path": folder_path,
+                                "stats": initial_stats,
+                            }
+                        },
+                    )
+                except Exception as e:
+                    logger.error(f"Initial project embedding failed for {project_name}: {e}")
+                    # Continue with watcher setup even if initial embedding fails
+
                 # Check if file watcher already exists for this project
                 if project_name not in self.file_watchers:
                     logger.info(
