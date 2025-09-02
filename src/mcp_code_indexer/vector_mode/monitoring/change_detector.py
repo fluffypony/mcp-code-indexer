@@ -95,31 +95,6 @@ class ChangeDetector:
         # Statistics
         self.stats = ChangeStats(start_time=datetime.utcnow())
 
-        # Compile ignore patterns for performance
-        import fnmatch
-
-        self._compiled_patterns = [
-            fnmatch.translate(pattern) for pattern in self.ignore_patterns
-        ]
-
-    def should_ignore_path(self, path: Path) -> bool:
-        """Check if a path should be ignored based on patterns."""
-        try:
-            relative_path = path.relative_to(self.project_root)
-            path_str = str(relative_path)
-
-            import re
-
-            for pattern in self._compiled_patterns:
-                if re.match(pattern, path_str):
-                    return True
-
-            return False
-
-        except ValueError:
-            # Path is not relative to project root
-            return True
-
     def _should_debounce(self, file_path: str) -> bool:
         """Check if change should be debounced."""
         now = datetime.utcnow()
@@ -154,7 +129,8 @@ class ChangeDetector:
             return None
 
         # Check if should be ignored
-        if self.should_ignore_path(path):
+        from ..utils import should_ignore_path
+        if should_ignore_path(path, self.project_root, self.ignore_patterns):
             logger.debug(f"Ignoring change to {relative_path} (matches ignore pattern)")
             return None
 

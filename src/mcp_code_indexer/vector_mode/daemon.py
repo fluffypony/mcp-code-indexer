@@ -23,6 +23,7 @@ from .services.vector_storage_service import VectorStorageService
 
 from .monitoring.change_detector import FileChange, ChangeType
 from .chunking.ast_chunker import ASTChunker, CodeChunk
+from .utils import should_ignore_path
 from .types import (
     ScanProjectTask,
     VectorDaemonTaskType,
@@ -630,7 +631,7 @@ class VectorDaemon:
 
             for file_path in project_root.rglob("*"):
                 if (file_path.is_file() and 
-                    not self._should_ignore_file(file_path, project_root)):
+                    not should_ignore_path(file_path, project_root, self.config.ignore_patterns)):
                     project_files.append(file_path)
 
             stats["scanned"] = len(project_files)
@@ -799,40 +800,6 @@ class VectorDaemon:
                     stats["failed"] += 1
         else:
             logger.debug("No deleted files found during initial processing")
-
-    def _should_ignore_file(self, file_path: Path, project_root: Path) -> bool:
-        """
-        Check if file should be ignored based on ignore patterns from config.
-
-        Args:
-            file_path: Path to check
-            project_root: Root path of the project
-
-        Returns:
-            True if file should be ignored
-        """
-        try:
-            relative_path = file_path.relative_to(project_root)
-            path_str = str(relative_path)
-
-            import re
-            import fnmatch
-
-            # Compile ignore patterns for performance (similar to ChangeDetector)
-            compiled_patterns = [
-                fnmatch.translate(pattern) for pattern in self.config.ignore_patterns
-            ]
-
-            for pattern in compiled_patterns:
-                if re.match(pattern, path_str):
-                    return True
-
-            return False
-
-        except ValueError:
-            # Path is not relative to project root
-            return True
-
 
 async def start_vector_daemon(
     config_path: Optional[Path] = None,
