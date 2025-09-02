@@ -286,3 +286,61 @@ class VectorStorageService:
         except Exception as e:
             logger.error(f"Failed to search similar chunks: {e}")
             raise RuntimeError(f"Vector search failed: {e}")
+
+    async def get_file_metadata(
+        self, project_name: str, file_paths: list[str] | None = None
+    ) -> dict[str, float]:
+        """
+        Retrieve file modification times from stored vector metadata.
+
+        Args:
+            project_name: Name of the project
+            file_paths: Optional list of specific file paths to query. If None, queries all files.
+
+        Returns:
+            Dictionary mapping file_path to mtime (Unix timestamp)
+
+        Raises:
+            RuntimeError: If metadata query fails
+        """
+        try:
+            namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
+            
+            if file_paths is None or len(file_paths) == 0:
+                # Query all files for the project
+                results = self.turbopuffer_client.search_vectors(
+                    query_vector=[0.0] * 1536,  # Dummy vector since we only want metadata
+                    top_k=1200,  # High limit to get all files
+                    namespace=namespace,
+                    filters={"project_id": project_name},
+                )
+            else:
+                # Query specific files
+                all_results = []
+                for file_path in file_paths:
+                    file_results = self.turbopuffer_client.search_vectors(
+                        query_vector=[0.0] * 1536,
+                        top_k=100,  # Should be enough for chunks from one file
+                        namespace=namespace,
+                        filters={"project_id": project_name, "file_path": file_path},
+                    )
+                    all_results.extend(file_results)
+                results = all_results
+
+            # Extract file metadata, keeping only the most recent mtime per file
+            file_metadata = {}
+            for result in results:
+                if "file_path" in result["metadata"] and "file_mtime" in result["metadata"]:
+                    file_path = result["metadata"]["file_path"]
+                    mtime = result["metadata"]["file_mtime"]
+                    
+                    # Keep the most recent mtime for each file
+                    if file_path not in file_metadata or mtime > file_metadata[file_path]:
+                        file_metadata[file_path] = mtime
+
+            logger.debug(f"Retrieved metadata for {len(file_metadata)} files from {project_name}")
+            return file_metadata
+
+        except Exception as e:
+            logger.error(f"Failed to get file metadata for {project_name}: {e}")
+            return {}
