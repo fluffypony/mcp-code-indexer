@@ -46,6 +46,7 @@ class TurbopufferClient:
         Raises:
             RuntimeError: If API access validation fails with specific error details
         """
+        logger.info("Validating Turbopuffer API access...")
         try:
             self.client.namespaces()
             logger.debug("Turbopuffer API access validated successfully")

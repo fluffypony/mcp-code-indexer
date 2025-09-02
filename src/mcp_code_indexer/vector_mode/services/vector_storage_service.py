@@ -31,10 +31,7 @@ class VectorStorageService:
         self.config = config
 
         # Validate API access immediately during initialization
-        logger.info("Validating Turbopuffer API access...")
         self.turbopuffer_client.validate_api_access()
-        logger.info("Turbopuffer API access validated successfully")
-
         self._namespace_cache: Dict[str, bool] = {}  # Cache for namespace existence
 
     async def store_embeddings(
@@ -169,7 +166,19 @@ class VectorStorageService:
         Returns:
             List of formatted vector dictionaries
         """
+        from datetime import datetime
+        
         vectors = []
+
+        # Get file modification time once for all chunks
+        try:
+            file_path_obj = Path(file_path)
+            mtime_unix = file_path_obj.stat().st_mtime
+            mtime_iso = datetime.fromtimestamp(mtime_unix).isoformat()
+        except (OSError, FileNotFoundError) as e:
+            logger.warning(f"Failed to get mtime for {file_path}: {e}")
+            mtime_unix = 0.0
+            mtime_iso = datetime.fromtimestamp(0.0).isoformat()
 
         for i, (embedding, chunk) in enumerate(zip(embeddings, chunks)):
             # Generate unique vector ID
@@ -189,6 +198,8 @@ class VectorStorageService:
                 "redacted": chunk.redacted,
                 "chunk_index": i,
                 "imports": ",".join(chunk.imports) if chunk.imports else "",
+                "file_mtime": mtime_unix,
+                "file_mtime_iso": mtime_iso,
             }
 
             # Add custom metadata if present
