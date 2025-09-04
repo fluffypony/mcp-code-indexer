@@ -141,6 +141,7 @@ class TurbopufferClient:
         logger.debug(f"Searching {top_k} vectors in namespace '{namespace}'")
 
         try:
+            _write_debug_log(f"Existing namespaces: {self.list_namespaces()}")
             ns = self.client.namespace(namespace)
 
             # Convert filters to proper tuple format for v0.5+
@@ -225,20 +226,6 @@ class TurbopufferClient:
         except Exception as e:
             logger.error(f"Failed to list namespaces: {e}")
             raise RuntimeError(f"Namespace listing failed: {e}")
-
-    def create_namespace(
-        self, namespace: str, dimension: int, **kwargs
-    ) -> Dict[str, Any]:
-        """Create a new namespace - handled implicitly by Turbopuffer."""
-        logger.info(
-            f"Namespace '{namespace}' will be created automatically on first write "
-            f"(dimension: {dimension})"
-        )
-
-        # Turbopuffer creates namespaces implicitly when data is first written
-        # No explicit creation is needed or supported
-        logger.debug("Turbopuffer creates namespaces implicitly on first data write")
-        return {"name": namespace, "dimension": dimension, "created_implicitly": True}
 
     def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace and all its vectors."""

@@ -50,7 +50,7 @@ class TestVectorStorageService:
         """Create a VectorStorageService for testing."""
         # Mock the validate_api_access method to avoid actual API calls during testing
         mock_turbopuffer_client.validate_api_access = MagicMock()
-        return VectorStorageService(mock_turbopuffer_client, vector_config)
+        return VectorStorageService(mock_turbopuffer_client, 1536, vector_config)
 
     @pytest.fixture
     def sample_embeddings(self) -> List[List[float]]:
@@ -111,7 +111,6 @@ class TestVectorStorageService:
 
         # Verify client methods were called including deletion
         vector_storage_service.turbopuffer_client.get_namespace_for_project.assert_called_once_with(project_name)
-        vector_storage_service.turbopuffer_client.list_namespaces.assert_called_once()
         vector_storage_service.turbopuffer_client.delete_vectors_for_file.assert_called_once_with(
             "mcp_code_test_project", file_path
         )
@@ -166,45 +165,38 @@ class TestVectorStorageService:
     ):
         """Test namespace check when namespace already exists."""
         project_name = "test_project"
-        embedding_dimension = 1536
 
         # Mock existing namespace
         vector_storage_service.turbopuffer_client.list_namespaces.return_value = ["mcp_code_test_project"]
 
-        namespace = await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
+        namespace = await vector_storage_service._ensure_namespace_exists(project_name)
 
         assert namespace == "mcp_code_test_project"
-        vector_storage_service.turbopuffer_client.create_namespace.assert_not_called()
 
     async def test_ensure_namespace_exists_create_new(
         self, vector_storage_service: VectorStorageService
     ):
-        """Test namespace creation when namespace doesn't exist."""
+        """Test namespace handling when namespace doesn't exist (returns None)."""
         project_name = "test_project"
-        embedding_dimension = 1536
 
         # Mock no existing namespaces
         vector_storage_service.turbopuffer_client.list_namespaces.return_value = []
 
-        namespace = await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
+        namespace = await vector_storage_service._ensure_namespace_exists(project_name)
 
-        assert namespace == "mcp_code_test_project"
-        vector_storage_service.turbopuffer_client.create_namespace.assert_called_once_with(
-            namespace="mcp_code_test_project", dimension=1536
-        )
+        assert namespace is None
 
     async def test_ensure_namespace_exists_cached(
         self, vector_storage_service: VectorStorageService
     ):
         """Test namespace caching to avoid repeated API calls."""
         project_name = "test_project"
-        embedding_dimension = 1536
 
         # First call
-        await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
+        await vector_storage_service._ensure_namespace_exists(project_name)
         
         # Second call should use cache
-        await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
+        await vector_storage_service._ensure_namespace_exists(project_name)
 
         # Should only call list_namespaces once
         assert vector_storage_service.turbopuffer_client.list_namespaces.call_count == 1
@@ -271,10 +263,8 @@ class TestVectorStorageService:
             custom_embeddings, sample_chunks, project_name, file_path
         )
 
-        # Verify namespace was created with correct dimension derived from embeddings
-        vector_storage_service.turbopuffer_client.create_namespace.assert_called_with(
-            namespace="mcp_code_test_project", dimension=4
-        )
+        # Verify that embeddings were stored by checking upsert_vectors was called
+        vector_storage_service.turbopuffer_client.upsert_vectors.assert_called_once()
 
     async def test_store_embeddings_with_client_error(
         self,
@@ -366,21 +356,6 @@ class TestVectorStorageService:
         assert metadata["priority"] == "high"
         assert metadata["chunk_name"] == "custom_function"  # Original metadata preserved
 
-    async def test_namespace_creation_failure(
-        self, vector_storage_service: VectorStorageService
-    ):
-        """Test handling of namespace creation failures."""
-        project_name = "test_project"
-        embedding_dimension = 1536
-
-        # Mock namespace doesn't exist
-        vector_storage_service.turbopuffer_client.list_namespaces.return_value = []
-        # Mock creation failure
-        vector_storage_service.turbopuffer_client.create_namespace.side_effect = RuntimeError("Creation failed")
-
-        with pytest.raises(RuntimeError, match="Namespace operation failed: Creation failed"):
-            await vector_storage_service._ensure_namespace_exists(project_name, embedding_dimension)
-
     async def test_service_initialization_validates_api_access(
         self, mock_turbopuffer_client: TurbopufferClient, vector_config: VectorConfig
     ):
@@ -389,7 +364,7 @@ class TestVectorStorageService:
         mock_turbopuffer_client.validate_api_access = MagicMock()
         
         # Create service (should call validate_api_access)
-        service = VectorStorageService(mock_turbopuffer_client, vector_config)
+        service = VectorStorageService(mock_turbopuffer_client, 1536, vector_config)
         
         # Verify validation was called
         mock_turbopuffer_client.validate_api_access.assert_called_once()
@@ -405,7 +380,7 @@ class TestVectorStorageService:
         
         # Service creation should fail
         with pytest.raises(RuntimeError, match="API validation failed"):
-            VectorStorageService(mock_turbopuffer_client, vector_config)
+            VectorStorageService(mock_turbopuffer_client, 1536, vector_config)
 
     async def test_delete_vectors_for_file_success(
         self, vector_storage_service: VectorStorageService

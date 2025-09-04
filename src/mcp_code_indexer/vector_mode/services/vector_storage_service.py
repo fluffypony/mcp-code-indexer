@@ -27,7 +27,12 @@ class VectorStorageService:
     abstraction layer between the daemon orchestration and vector storage.
     """
 
-    def __init__(self, turbopuffer_client: TurbopufferClient, embedding_dimension: int, config: VectorConfig):
+    def __init__(
+        self,
+        turbopuffer_client: TurbopufferClient,
+        embedding_dimension: int,
+        config: VectorConfig,
+    ):
         """Initialize VectorStorageService with client, embedding dimension, and configuration."""
         self.turbopuffer_client = turbopuffer_client
         self.embedding_dimension = embedding_dimension
@@ -68,9 +73,8 @@ class VectorStorageService:
             )
 
         try:
-            # Ensure namespace exists (using configured embedding dimension)
-            namespace = await self._ensure_namespace_exists(project_name)
-            # TODO: upsert_vectors creates namespace if not exists, so this may be redundant
+            # Get namespace name (will be created implicitly by upsert_vectors)
+            namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
             # Clear existing vectors for this file to prevent redundant entries
             logger.info(
@@ -104,21 +108,21 @@ class VectorStorageService:
             logger.error(f"Failed to store embeddings for {file_path}: {e}")
             raise RuntimeError(f"Vector storage failed: {e}")
 
-    async def _ensure_namespace_exists(self, project_name: str) -> str:
+    async def _ensure_namespace_exists(self, project_name: str) -> str | None:
         """
-        Ensure the namespace for a project exists, creating it if necessary.
+        Ensure the namespace for a project exists.
 
         Args:
             project_name: Name of the project
 
         Returns:
-            The namespace name
+            The namespace name if it exists, None otherwise
 
         Raises:
             RuntimeError: If namespace operations fail
         """
         namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
-
+        _write_debug_log(f"Ensuring namespace: {namespace}")
         # Check cache first
         if namespace in self._namespace_cache:
             return namespace
@@ -126,17 +130,15 @@ class VectorStorageService:
         try:
             # List existing namespaces
             existing_namespaces = self.turbopuffer_client.list_namespaces()
-
+            _write_debug_log(f"Existing namespaces: {existing_namespaces}")
             if namespace not in existing_namespaces:
-                # Create namespace with embedding dimension
-                self.turbopuffer_client.create_namespace(
-                    namespace=namespace, dimension=self.embedding_dimension
-                )
+                # Namespace doesn't exist and will be created implicitly on first write
                 logger.info(
-                    f"Created namespace '{namespace}' for project '{project_name}'"
+                    f"Namespace '{namespace}' for project '{project_name}' does not exist"
                 )
+                return None
 
-            # Cache the result
+            # Cache the result for existing namespace
             self._namespace_cache[namespace] = True
             return namespace
 
@@ -303,6 +305,11 @@ class VectorStorageService:
         try:
             namespace = await self._ensure_namespace_exists(project_name)
             
+            # If namespace doesn't exist, return empty metadata
+            if namespace is None:
+                logger.debug(f"No namespace found for project {project_name}, returning empty metadata")
+                return {}
+
             # Create dummy vector with correct dimensions
             dummy_vector = [0.0] * self.embedding_dimension
 

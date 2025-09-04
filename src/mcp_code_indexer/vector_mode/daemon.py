@@ -307,6 +307,9 @@ class VectorDaemon:
         logger.info(
             f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})"
         )
+        _write_debug_log(
+            f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})"
+        )
 
         try:
             # Handle deleted files by removing their vectors from the database
@@ -405,18 +408,8 @@ class VectorDaemon:
                     logger.info(
                         f"Starting initial project embedding for {project_name}"
                     )
-                    initial_stats = await self._perform_initial_project_embedding(
+                    await self._perform_initial_project_embedding(
                         project_name, folder_path
-                    )
-                    logger.info(
-                        f"Initial project embedding completed for {project_name}",
-                        extra={
-                            "structured_data": {
-                                "project_name": project_name,
-                                "folder_path": folder_path,
-                                "stats": initial_stats,
-                            }
-                        },
                     )
                 except Exception as e:
                     logger.error(
@@ -614,8 +607,6 @@ class VectorDaemon:
         Returns:
             Dictionary with processing statistics
         """
-        from pathlib import Path
-
         stats = {
             "scanned": 0,
             "processed": 0,
