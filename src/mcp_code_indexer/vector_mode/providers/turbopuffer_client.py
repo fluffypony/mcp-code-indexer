@@ -14,6 +14,8 @@ import uuid
 from typing import List, Dict, Any, Optional
 import turbopuffer
 
+from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 from ..config import VectorConfig
 
 logger = logging.getLogger(__name__)
@@ -241,21 +243,17 @@ class TurbopufferClient:
     def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace and all its vectors."""
         logger.warning(f"Deleting namespace '{namespace}' and all its vectors")
-
         try:
             ns = self.client.namespace(namespace)
-
             # Use delete_all method to delete the namespace (v0.5+ API)
             response = ns.delete_all()
 
-            # Log actual results from the response
-            rows_affected = getattr(response, "rows_affected", 0)
             logger.info(
                 f"Namespace deletion completed: '{namespace}' deleted, "
-                f"affected {rows_affected} rows"
+                f"status: {response.status}, "
             )
 
-            return {"deleted": namespace, "rows_affected": rows_affected}
+            return {"deleted": namespace}
 
         except Exception as e:
             logger.error(f"Failed to delete namespace: {e}")

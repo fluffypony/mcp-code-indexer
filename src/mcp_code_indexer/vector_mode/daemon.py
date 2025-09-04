@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import time
 
+from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 from ..database.database import DatabaseManager
 from ..database.models import Project
 from .config import VectorConfig, load_vector_config
@@ -80,7 +82,6 @@ class VectorDaemon:
 
         # Get embedding dimension from VoyageClient
         embedding_dimension = self._voyage_client.get_embedding_dimension()
-        logger.info(f"Using embedding dimension: {embedding_dimension}")
 
         # Initialize TurbopufferClient and VectorStorageService for vector storage
         self._turbopuffer_client = create_turbopuffer_client(self.config)
@@ -401,7 +402,9 @@ class VectorDaemon:
             async with self.watcher_locks[project_name]:
                 # Perform initial project embedding before starting file watcher
                 try:
-                    logger.info(f"Starting initial project embedding for {project_name}")
+                    logger.info(
+                        f"Starting initial project embedding for {project_name}"
+                    )
                     initial_stats = await self._perform_initial_project_embedding(
                         project_name, folder_path
                     )
@@ -416,7 +419,9 @@ class VectorDaemon:
                         },
                     )
                 except Exception as e:
-                    logger.error(f"Initial project embedding failed for {project_name}: {e}")
+                    logger.error(
+                        f"Initial project embedding failed for {project_name}: {e}"
+                    )
                     # Continue with watcher setup even if initial embedding fails
 
                 # Check if file watcher already exists for this project
@@ -628,14 +633,17 @@ class VectorDaemon:
                 return stats
 
             # Get stored file metadata from vector database
-            stored_metadata = await self._vector_storage_service.get_file_metadata(project_name)
+            stored_metadata = await self._vector_storage_service.get_file_metadata(
+                project_name
+            )
 
             # Discover all relevant files in the project
             project_files = []
 
             for file_path in project_root.rglob("*"):
-                if (file_path.is_file() and 
-                    not should_ignore_path(file_path, project_root, self.config.ignore_patterns)):
+                if file_path.is_file() and not should_ignore_path(
+                    file_path, project_root, self.config.ignore_patterns
+                ):
                     project_files.append(file_path)
 
             stats["scanned"] = len(project_files)
@@ -646,7 +654,7 @@ class VectorDaemon:
             processed_count = 0
 
             for i in range(0, len(project_files), batch_size):
-                batch = project_files[i:i + batch_size]
+                batch = project_files[i : i + batch_size]
                 batch_stats = await self._process_file_batch_for_initial_embedding(
                     batch, project_name, stored_metadata
                 )
@@ -658,10 +666,14 @@ class VectorDaemon:
 
                 processed_count += len(batch)
                 if processed_count % 100 == 0:
-                    logger.info(f"Initial embedding progress: {processed_count}/{len(project_files)} files processed")
+                    logger.info(
+                        f"Initial embedding progress: {processed_count}/{len(project_files)} files processed"
+                    )
 
             # Handle deleted files - files that exist in vector DB but not locally
-            await self._cleanup_deleted_files(project_name, project_files, stored_metadata, stats)
+            await self._cleanup_deleted_files(
+                project_name, project_files, stored_metadata, stats
+            )
 
             logger.info(
                 f"Initial project embedding complete for {project_name}: "
@@ -670,13 +682,18 @@ class VectorDaemon:
             )
 
         except Exception as e:
-            logger.error(f"Error during initial project embedding for {project_name}: {e}")
+            logger.error(
+                f"Error during initial project embedding for {project_name}: {e}"
+            )
             stats["failed"] += 1
 
         return stats
 
     async def _process_file_batch_for_initial_embedding(
-        self, file_batch: list[Path], project_name: str, stored_metadata: dict[str, float]
+        self,
+        file_batch: list[Path],
+        project_name: str,
+        stored_metadata: dict[str, float],
     ) -> dict[str, int]:
         """
         Process a batch of files for initial embedding.
@@ -701,7 +718,9 @@ class VectorDaemon:
                 # Use epsilon comparison for floating point mtime
                 if abs(current_mtime - stored_mtime) > 0.001:
                     files_to_process.append(file_path)
-                    logger.debug(f"File {file_path} needs processing (current: {current_mtime}, stored: {stored_mtime})")
+                    logger.debug(
+                        f"File {file_path} needs processing (current: {current_mtime}, stored: {stored_mtime})"
+                    )
                 else:
                     batch_stats["skipped"] += 1
                     logger.debug(f"File {file_path} unchanged, skipping")
@@ -717,9 +736,9 @@ class VectorDaemon:
                 file_change = FileChange(
                     path=file_path,
                     change_type=ChangeType.MODIFIED,  # Treat as modified for processing
-                    timestamp=time.time()
+                    timestamp=time.time(),
                 )
-                
+
                 # Create ProcessFileChangeTask similar to regular file change processing
                 task_item: ProcessFileChangeTask = {
                     "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
@@ -727,23 +746,25 @@ class VectorDaemon:
                     "change": file_change,
                     "timestamp": time.time(),
                 }
-                
+
                 # Process using existing file change task logic
                 await self._process_file_change_task(task_item, "initial-processing")
                 batch_stats["processed"] += 1
 
             except Exception as e:
-                logger.error(f"Failed to process file {file_path} during initial embedding: {e}")
+                logger.error(
+                    f"Failed to process file {file_path} during initial embedding: {e}"
+                )
                 batch_stats["failed"] += 1
 
         return batch_stats
 
     async def _cleanup_deleted_files(
-        self, 
-        project_name: str, 
-        existing_files: list[Path], 
-        stored_metadata: dict[str, float], 
-        stats: dict[str, int]
+        self,
+        project_name: str,
+        existing_files: list[Path],
+        stored_metadata: dict[str, float],
+        stats: dict[str, int],
     ) -> None:
         """
         Clean up files that exist in vector database but not locally (deleted files).
@@ -769,8 +790,10 @@ class VectorDaemon:
                 deleted_files.append(deleted_file_path)
 
         if deleted_files:
-            logger.info(f"Found {len(deleted_files)} deleted files to clean up from vector database")
-            
+            logger.info(
+                f"Found {len(deleted_files)} deleted files to clean up from vector database"
+            )
+
             # Initialize deleted count in stats
             if "deleted" not in stats:
                 stats["deleted"] = 0
@@ -782,9 +805,9 @@ class VectorDaemon:
                     file_change = FileChange(
                         path=deleted_file_path,
                         change_type=ChangeType.DELETED,
-                        timestamp=time.time()
+                        timestamp=time.time(),
                     )
-                    
+
                     # Create ProcessFileChangeTask for deletion
                     task_item: ProcessFileChangeTask = {
                         "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
@@ -792,18 +815,23 @@ class VectorDaemon:
                         "change": file_change,
                         "timestamp": time.time(),
                     }
-                    
+
                     # Process deletion using existing file change task logic
-                    await self._process_file_change_task(task_item, "initial-processing")
+                    await self._process_file_change_task(
+                        task_item, "initial-processing"
+                    )
                     stats["deleted"] += 1
-                    
+
                     logger.debug(f"Cleaned up deleted file: {deleted_file_path}")
 
                 except Exception as e:
-                    logger.error(f"Failed to clean up deleted file {deleted_file_path}: {e}")
+                    logger.error(
+                        f"Failed to clean up deleted file {deleted_file_path}: {e}"
+                    )
                     stats["failed"] += 1
         else:
             logger.debug("No deleted files found during initial processing")
+
 
 async def start_vector_daemon(
     config_path: Optional[Path] = None,
