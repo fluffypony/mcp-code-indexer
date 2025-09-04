@@ -78,10 +78,14 @@ class VectorDaemon:
         self._voyage_client = create_voyage_client(self.config)
         self._embedding_service = EmbeddingService(self._voyage_client, self.config)
 
+        # Get embedding dimension from VoyageClient
+        embedding_dimension = self._voyage_client.get_embedding_dimension()
+        logger.info(f"Using embedding dimension: {embedding_dimension}")
+
         # Initialize TurbopufferClient and VectorStorageService for vector storage
         self._turbopuffer_client = create_turbopuffer_client(self.config)
         self._vector_storage_service = VectorStorageService(
-            self._turbopuffer_client, self.config
+            self._turbopuffer_client, embedding_dimension, self.config
         )
 
         # Signal handling is delegated to the parent process

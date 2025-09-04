@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 from ..chunking.ast_chunker import CodeChunk
 from ..providers.turbopuffer_client import TurbopufferClient
 from ..config import VectorConfig
@@ -25,9 +27,10 @@ class VectorStorageService:
     abstraction layer between the daemon orchestration and vector storage.
     """
 
-    def __init__(self, turbopuffer_client: TurbopufferClient, config: VectorConfig):
-        """Initialize VectorStorageService with client and configuration."""
+    def __init__(self, turbopuffer_client: TurbopufferClient, embedding_dimension: int, config: VectorConfig):
+        """Initialize VectorStorageService with client, embedding dimension, and configuration."""
         self.turbopuffer_client = turbopuffer_client
+        self.embedding_dimension = embedding_dimension
         self.config = config
 
         # Validate API access immediately during initialization
@@ -167,7 +170,7 @@ class VectorStorageService:
             List of formatted vector dictionaries
         """
         from datetime import datetime
-        
+
         vectors = []
 
         # Get file modification time once for all chunks
@@ -306,10 +309,13 @@ class VectorStorageService:
         try:
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
             
+            # Create dummy vector with correct dimensions
+            dummy_vector = [0.0] * self.embedding_dimension
+
             if file_paths is None or len(file_paths) == 0:
                 # Query all files for the project
                 results = self.turbopuffer_client.search_vectors(
-                    query_vector=[0.0] * 1536,  # Dummy vector since we only want metadata
+                    query_vector=dummy_vector,  # Dummy vector since we only want metadata
                     top_k=1200,  # High limit to get all files
                     namespace=namespace,
                     filters={"project_id": project_name},
@@ -319,7 +325,7 @@ class VectorStorageService:
                 all_results = []
                 for file_path in file_paths:
                     file_results = self.turbopuffer_client.search_vectors(
-                        query_vector=[0.0] * 1536,
+                        query_vector=dummy_vector,
                         top_k=100,  # Should be enough for chunks from one file
                         namespace=namespace,
                         filters={"project_id": project_name, "file_path": file_path},
@@ -330,17 +336,26 @@ class VectorStorageService:
             # Extract file metadata, keeping only the most recent mtime per file
             file_metadata = {}
             for result in results:
-                if "file_path" in result["metadata"] and "file_mtime" in result["metadata"]:
+                if (
+                    "file_path" in result["metadata"]
+                    and "file_mtime" in result["metadata"]
+                ):
                     file_path = result["metadata"]["file_path"]
                     mtime = result["metadata"]["file_mtime"]
-                    
+
                     # Keep the most recent mtime for each file
-                    if file_path not in file_metadata or mtime > file_metadata[file_path]:
+                    if (
+                        file_path not in file_metadata
+                        or mtime > file_metadata[file_path]
+                    ):
                         file_metadata[file_path] = mtime
 
-            logger.debug(f"Retrieved metadata for {len(file_metadata)} files from {project_name}")
+            logger.debug(
+                f"Retrieved metadata for {len(file_metadata)} files from {project_name}"
+            )
             return file_metadata
 
         except Exception as e:
             logger.error(f"Failed to get file metadata for {project_name}: {e}")
+            _write_debug_log(f"Failed to get file metadata for {project_name}: {e}")
             return {}
