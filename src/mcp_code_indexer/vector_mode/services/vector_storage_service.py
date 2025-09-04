@@ -197,7 +197,7 @@ class VectorStorageService:
                 "redacted": chunk.redacted,
                 "chunk_index": i,
                 "imports": ",".join(chunk.imports) if chunk.imports else "",
-                "file_mtime": mtime_unix,
+                "file_mtime": str(mtime_unix),
                 "file_mtime_iso": mtime_iso,
             }
 
@@ -304,10 +304,12 @@ class VectorStorageService:
         """
         try:
             namespace = await self._ensure_namespace_exists(project_name)
-            
+
             # If namespace doesn't exist, return empty metadata
             if namespace is None:
-                logger.debug(f"No namespace found for project {project_name}, returning empty metadata")
+                logger.debug(
+                    f"No namespace found for project {project_name}, returning empty metadata"
+                )
                 return {}
 
             # Create dummy vector with correct dimensions
@@ -321,6 +323,7 @@ class VectorStorageService:
                     namespace=namespace,
                     filters={"project_id": project_name},
                 )
+                # _write_debug_log(f"QUERY RESULTS: {results}")
             else:
                 # Query specific files
                 all_results = []
@@ -332,17 +335,21 @@ class VectorStorageService:
                         filters={"project_id": project_name, "file_path": file_path},
                     )
                     all_results.extend(file_results)
+
                 results = all_results
 
             # Extract file metadata, keeping only the most recent mtime per file
             file_metadata = {}
+            # _write_debug_log(
+            #     f"Retrieved {results} metadata entries for project {project_name}"
+            # )
             for result in results:
                 if (
                     "file_path" in result["metadata"]
                     and "file_mtime" in result["metadata"]
                 ):
                     file_path = result["metadata"]["file_path"]
-                    mtime = result["metadata"]["file_mtime"]
+                    mtime = float(result["metadata"]["file_mtime"])
 
                     # Keep the most recent mtime for each file
                     if (

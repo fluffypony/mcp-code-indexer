@@ -700,13 +700,18 @@ class VectorDaemon:
         batch_stats = {"processed": 0, "skipped": 0, "failed": 0}
 
         # Filter files that need processing based on mtime comparison
-        files_to_process = []
+        files_to_process: list[Path] = []
         for file_path in file_batch:
             try:
                 current_mtime = file_path.stat().st_mtime
                 stored_mtime = stored_metadata.get(str(file_path), 0.0)
-
+                _write_debug_log(
+                    f"File: {file_path} stored_metadata: {stored_metadata}"
+                )
                 # Use epsilon comparison for floating point mtime
+                _write_debug_log(
+                    f"Comparing mtime for {file_path}: current={current_mtime}, stored={stored_mtime}"
+                )
                 if abs(current_mtime - stored_mtime) > 0.001:
                     files_to_process.append(file_path)
                     logger.debug(
@@ -725,7 +730,7 @@ class VectorDaemon:
             try:
                 # Create FileChange object for initial processing
                 file_change = FileChange(
-                    path=file_path,
+                    path=str(file_path),
                     change_type=ChangeType.MODIFIED,  # Treat as modified for processing
                     timestamp=time.time(),
                 )
