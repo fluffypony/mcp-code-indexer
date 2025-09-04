@@ -301,7 +301,7 @@ class VectorStorageService:
             RuntimeError: If metadata query fails
         """
         try:
-            namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
+            namespace = await self._ensure_namespace_exists(project_name)
             
             # Create dummy vector with correct dimensions
             dummy_vector = [0.0] * self.embedding_dimension
