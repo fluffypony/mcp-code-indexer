@@ -11,9 +11,11 @@ from unittest.mock import Mock, patch
 import pytest
 import pytest_asyncio
 
+from mcp_code_indexer.vector_mode.providers.voyage_client import VoyageClient
 from mcp_code_indexer.vector_mode.services.embedding_service import EmbeddingService
 from mcp_code_indexer.vector_mode.config import VectorConfig
 from mcp_code_indexer.vector_mode.chunking.ast_chunker import CodeChunk
+from mcp_code_indexer.vector_mode.const import MODEL_DIMENSIONS
 from mcp_code_indexer.database.models import ChunkType
 
 
@@ -29,9 +31,7 @@ class TestEmbeddingService:
     def config(self):
         """Create a test configuration."""
         return VectorConfig(
-            voyage_api_key="test-key",
-            embedding_model="voyage-code-2",
-            batch_size=32
+            voyage_api_key="test-key", embedding_model="voyage-code-2", batch_size=32
         )
 
     @pytest.fixture
@@ -55,7 +55,7 @@ class TestEmbeddingService:
                 content_hash="abc123",
                 language="python",
                 redacted=False,
-                imports=["print"]
+                imports=["print"],
             ),
             CodeChunk(
                 content="class TestClass:\n    def __init__(self):\n        pass",
@@ -67,21 +67,23 @@ class TestEmbeddingService:
                 content_hash="def456",
                 language="python",
                 redacted=False,
-                imports=[]
-            )
+                imports=[],
+            ),
         ]
 
     async def test_generate_embeddings_success(
-        self, embedding_service, mock_voyage_client, sample_chunks
+        self, embedding_service, mock_voyage_client: VoyageClient, sample_chunks, config
     ):
         """Test successful embedding generation."""
         project_name = "test_project"
         file_path = Path("/test/file.py")
 
         # Mock VoyageClient response
+        embedding_dim = config.get_embedding_dimensions()
+        third_dim = embedding_dim // 3
         mock_voyage_client.generate_embeddings.return_value = [
-            [0.1, 0.2, 0.3] * 512,  # 1536 dimensions
-            [0.4, 0.5, 0.6] * 512
+            [0.1, 0.2, 0.3] * third_dim,  # Full embedding dimensions
+            [0.4, 0.5, 0.6] * third_dim,
         ]
 
         embeddings = await embedding_service.generate_embeddings_for_chunks(
@@ -90,8 +92,8 @@ class TestEmbeddingService:
 
         # Verify embeddings were returned
         assert len(embeddings) == 2
-        assert len(embeddings[0]) == 1536
-        assert len(embeddings[1]) == 1536
+        assert len(embeddings[0]) == embedding_dim
+        assert len(embeddings[1]) == embedding_dim
 
         # Verify VoyageClient was called correctly
         mock_voyage_client.generate_embeddings.assert_called_once()
@@ -121,9 +123,7 @@ class TestEmbeddingService:
         # VoyageClient should not be called
         mock_voyage_client.generate_embeddings.assert_not_called()
 
-    async def test_generate_embeddings_batching(
-        self, mock_voyage_client, config
-    ):
+    async def test_generate_embeddings_batching(self, mock_voyage_client, config):
         """Test batching logic with large chunk list."""
         # Create service with small batch size for testing
         config.batch_size = 3
@@ -137,10 +137,10 @@ class TestEmbeddingService:
                 chunk_type=ChunkType.FUNCTION,
                 name=f"function_{i}",
                 file_path="/test/file.py",
-                start_line=i*2,
-                end_line=i*2+1,
+                start_line=i * 2,
+                end_line=i * 2 + 1,
                 content_hash=f"hash_{i}",
-                language="python"
+                language="python",
             )
             chunks.append(chunk)
 
@@ -148,9 +148,10 @@ class TestEmbeddingService:
         file_path = Path("/test/file.py")
 
         # Mock VoyageClient for batched calls
+        embedding_dim = config.get_embedding_dimensions()
         mock_voyage_client.generate_embeddings.side_effect = [
-            [[0.1] * 1536] * 3,  # First batch (3 chunks)
-            [[0.2] * 1536] * 2   # Second batch (2 chunks)
+            [[0.1] * embedding_dim] * 3,  # First batch (3 chunks)
+            [[0.2] * embedding_dim] * 2,  # Second batch (2 chunks)
         ]
 
         embeddings = await embedding_service.generate_embeddings_for_chunks(
@@ -164,8 +165,12 @@ class TestEmbeddingService:
         assert mock_voyage_client.generate_embeddings.call_count == 2
 
         # Verify batch sizes
-        first_call_texts = mock_voyage_client.generate_embeddings.call_args_list[0][0][0]
-        second_call_texts = mock_voyage_client.generate_embeddings.call_args_list[1][0][0]
+        first_call_texts = mock_voyage_client.generate_embeddings.call_args_list[0][0][
+            0
+        ]
+        second_call_texts = mock_voyage_client.generate_embeddings.call_args_list[1][0][
+            0
+        ]
         assert len(first_call_texts) == 3  # First batch
         assert len(second_call_texts) == 2  # Second batch
 
@@ -191,8 +196,13 @@ class TestEmbeddingService:
 
         assert len(texts) == 2
         # Verify context enhancement for named chunks
-        assert texts[0] == "# hello_world\ndef hello_world():\n    print('Hello, World!')"
-        assert texts[1] == "# TestClass\nclass TestClass:\n    def __init__(self):\n        pass"
+        assert (
+            texts[0] == "# hello_world\ndef hello_world():\n    print('Hello, World!')"
+        )
+        assert (
+            texts[1]
+            == "# TestClass\nclass TestClass:\n    def __init__(self):\n        pass"
+        )
 
     async def test_prepare_chunk_texts_no_name(self, embedding_service):
         """Test text preparation for chunks without names."""
@@ -204,7 +214,7 @@ class TestEmbeddingService:
             start_line=1,
             end_line=1,
             content_hash="xyz789",
-            language="python"
+            language="python",
         )
 
         texts = embedding_service._prepare_chunk_texts([chunk_without_name])
@@ -226,13 +236,16 @@ class TestEmbeddingService:
             end_line=3,
             content_hash="redacted123",
             language="python",
-            redacted=True
+            redacted=True,
         )
 
         project_name = "test_project"
         file_path = Path("/test/file.py")
 
-        mock_voyage_client.generate_embeddings.return_value = [[0.1] * 1536]
+        # Use dynamic dimensions based on config
+        config = VectorConfig(embedding_model="voyage-code-2")
+        embedding_dim = config.get_embedding_dimensions()
+        mock_voyage_client.generate_embeddings.return_value = [[0.1] * embedding_dim]
 
         embeddings = await embedding_service.generate_embeddings_for_chunks(
             [redacted_chunk], project_name, file_path
@@ -246,24 +259,28 @@ class TestEmbeddingService:
         texts = call_args[0]
         assert "[REDACTED]" in texts[0]
 
-    async def test_service_initialization_validates_api_access(self, mock_voyage_client, config):
+    async def test_service_initialization_validates_api_access(
+        self, mock_voyage_client, config
+    ):
         """Test that API access is validated during service initialization."""
         # Mock successful validation
         mock_voyage_client.validate_api_access = Mock()
-        
+
         # Create service (should call validate_api_access)
-        service = EmbeddingService(mock_voyage_client, config)
-        
+        EmbeddingService(mock_voyage_client, config)
+
         # Verify validation was called
         mock_voyage_client.validate_api_access.assert_called_once()
 
-    async def test_service_initialization_validation_failure(self, mock_voyage_client, config):
+    async def test_service_initialization_validation_failure(
+        self, mock_voyage_client, config
+    ):
         """Test that service initialization fails when API validation fails."""
         # Mock validation failure
         mock_voyage_client.validate_api_access = Mock(
             side_effect=RuntimeError("API validation failed")
         )
-        
+
         # Service creation should fail
         with pytest.raises(RuntimeError, match="API validation failed"):
             EmbeddingService(mock_voyage_client, config)
