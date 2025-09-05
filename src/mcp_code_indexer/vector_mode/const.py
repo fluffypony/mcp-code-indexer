@@ -5,10 +5,8 @@ Contains model names, dimensions, and other constants used across
 Voyage AI provider implementations.
 """
 
-from enum import Enum
 
-
-class VoyageModel(Enum):
+class VoyageModel:
     """Voyage AI model names."""
 
     VOYAGE_CODE_2 = "voyage-code-2"
