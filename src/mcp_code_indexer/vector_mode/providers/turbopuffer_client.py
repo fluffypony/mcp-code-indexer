@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional
 import turbopuffer
 
 from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+from turbopuffer.types import Row
 
 from ..config import VectorConfig
 
@@ -115,18 +116,22 @@ class TurbopufferClient:
                 upsert_columns=data,
                 distance_metric="cosine_distance",  # Default metric TODO: which one to use?
             )
-
             # Log actual results from the response
             rows_affected = getattr(response, "rows_affected", len(vectors))
             logger.info(
+                f"Upsert operation completed: for namespace '{namespace}'. Requested {len(vectors)} vectors, "
+                f"actually affected {rows_affected} rows. Response status: {response.status}, response message: {response.message}"
+            )
+            _write_debug_log(
                 f"Upsert operation completed: requested {len(vectors)} vectors, "
-                f"actually affected {rows_affected} rows"
+                f"actually affected {rows_affected} rows. Response status: {response.status}, response message: {response.message}"
             )
 
             return {"upserted": rows_affected}
 
         except Exception as e:
             logger.error(f"Failed to upsert vectors: {e}")
+            _write_debug_log(f"Failed to upsert vectors: {e}")
             raise RuntimeError(f"Vector upsert failed: {e}")
 
     def search_vectors(
@@ -136,7 +141,7 @@ class TurbopufferClient:
         namespace: str = "default",
         filters: Optional[Dict[str, Any]] = None,
         **kwargs,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Row] | None:
         """Search for similar vectors."""
         logger.debug(f"Searching {top_k} vectors in namespace '{namespace}'")
 
@@ -161,29 +166,15 @@ class TurbopufferClient:
                 rank_by=("vector", "ANN", query_vector),  # Use tuple format for v0.5+
                 top_k=top_k,
                 filters=query_filters,
-                include_attributes=True,
+                exclude_attributes=["vector"],
             )
-
-            # Convert results to expected format
+            # Return only rows if present, otherwise None
             if hasattr(results, "rows") and results.rows:
-                formatted_results = []
-                for row in results.rows:
-                    formatted_results.append(
-                        {
-                            "id": row.id,
-                            "score": getattr(row, "$dist", 0.0),  # Distance as score
-                            "metadata": {
-                                k: v
-                                for k, v in row.__dict__.items()
-                                if k not in ["id", "vector", "$dist"]
-                            },
-                        }
-                    )
-                logger.debug(f"Found {len(formatted_results)} similar vectors")
-                return formatted_results
+                logger.debug(f"Found {len(results.rows)} similar vectors")
+                return results.rows
             else:
                 logger.debug("Found 0 similar vectors")
-                return []
+                return None
 
         except Exception as e:
             logger.error(f"Vector search failed: {e}")

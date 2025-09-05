@@ -291,7 +291,7 @@ class TestVectorStorageService:
         query_embedding = [0.1] * 1536
         project_name = "test_project"
         
-        # Mock search results
+        # Mock search results - raw results from turbopuffer_client
         mock_results = [
             {"id": "test_vec_1", "score": 0.9, "metadata": {"chunk_name": "similar_function"}},
             {"id": "test_vec_2", "score": 0.8, "metadata": {"chunk_name": "another_function"}}
@@ -302,6 +302,7 @@ class TestVectorStorageService:
             query_embedding, project_name, top_k=5, chunk_type="function"
         )
 
+        # Should return results directly without formatting
         assert results == mock_results
         vector_storage_service.turbopuffer_client.search_with_metadata_filter.assert_called_once_with(
             query_vector=query_embedding,
@@ -472,3 +473,224 @@ class TestVectorStorageService:
         
         # Verify upsert was still called even though deletion failed
         vector_storage_service.turbopuffer_client.upsert_vectors.assert_called_once()
+
+    async def test_get_file_metadata_all_files(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test retrieving file metadata for all files in a project."""
+        project_name = "test_project"
+        
+        # Create mock Row objects matching the real interface
+        class MockRow:
+            def __init__(self, file_path: str, file_mtime: str, **kwargs):
+                self.file_path = file_path
+                self.file_mtime = file_mtime
+                # Add other attributes that might be present
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
+        
+        mock_rows = [
+            MockRow("/test/file1.py", "1751984561.6831303", 
+                   id="test_project_0_123", chunk_type="function"),
+            MockRow("/test/file2.py", "1751984562.5", 
+                   id="test_project_1_456", chunk_type="class"),
+            MockRow("/test/file1.py", "1751984563.0",  # newer timestamp for same file
+                   id="test_project_2_789", chunk_type="method"),
+        ]
+        
+        # Mock the search_vectors call
+        vector_storage_service.turbopuffer_client.search_vectors.return_value = mock_rows
+        
+        result = await vector_storage_service.get_file_metadata(project_name)
+        
+        # Should return the most recent mtime for each file
+        expected_result = {
+            "/test/file1.py": 1751984563.0,  # Most recent timestamp
+            "/test/file2.py": 1751984562.5,
+        }
+        assert result == expected_result
+        
+        # Verify correct search_vectors call
+        vector_storage_service.turbopuffer_client.search_vectors.assert_called_once_with(
+            query_vector=[0.0] * 1536,  # dummy vector with embedding_dimension
+            top_k=1200,
+            namespace="mcp_code_test_project",
+            filters={"project_id": project_name},
+        )
+
+    async def test_get_file_metadata_specific_files(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test retrieving file metadata for specific files."""
+        project_name = "test_project"
+        file_paths = ["/test/file1.py", "/test/file2.py"]
+        
+        class MockRow:
+            def __init__(self, file_path: str, file_mtime: str, **kwargs):
+                self.file_path = file_path
+                self.file_mtime = file_mtime
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
+        
+        # Mock responses for each file path query
+        mock_rows_file1 = [
+            MockRow("/test/file1.py", "1751984561.0", id="test_project_0_123"),
+            MockRow("/test/file1.py", "1751984562.0", id="test_project_1_456"),  # newer
+        ]
+        mock_rows_file2 = [
+            MockRow("/test/file2.py", "1751984563.0", id="test_project_2_789"),
+        ]
+        
+        # Mock search_vectors to return different results for different calls
+        vector_storage_service.turbopuffer_client.search_vectors.side_effect = [
+            mock_rows_file1, mock_rows_file2
+        ]
+        
+        result = await vector_storage_service.get_file_metadata(project_name, file_paths)
+        
+        expected_result = {
+            "/test/file1.py": 1751984562.0,  # Most recent from file1
+            "/test/file2.py": 1751984563.0,
+        }
+        assert result == expected_result
+        
+        # Verify correct number of search_vectors calls (one per file)
+        assert vector_storage_service.turbopuffer_client.search_vectors.call_count == 2
+
+    async def test_get_file_metadata_no_namespace(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test get_file_metadata when namespace doesn't exist."""
+        project_name = "nonexistent_project"
+        
+        # Mock _ensure_namespace_exists to return None (namespace doesn't exist)
+        with patch.object(vector_storage_service, '_ensure_namespace_exists', return_value=None):
+            result = await vector_storage_service.get_file_metadata(project_name)
+            
+        assert result == {}
+
+    async def test_get_file_metadata_no_rows_found(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test get_file_metadata when no rows are found."""
+        project_name = "test_project"
+        
+        # Mock search_vectors to return None (no rows found)
+        vector_storage_service.turbopuffer_client.search_vectors.return_value = None
+        
+        result = await vector_storage_service.get_file_metadata(project_name)
+        
+        assert result == {}
+
+    async def test_get_file_metadata_empty_rows(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test get_file_metadata when empty rows are returned."""
+        project_name = "test_project"
+        
+        # Mock search_vectors to return empty list
+        vector_storage_service.turbopuffer_client.search_vectors.return_value = []
+        
+        result = await vector_storage_service.get_file_metadata(project_name)
+        
+        assert result == {}
+
+    async def test_get_file_metadata_missing_attributes(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test get_file_metadata with rows missing file_path or file_mtime attributes."""
+        project_name = "test_project"
+        
+        class MockRow:
+            def __init__(self, **kwargs):
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
+        
+        mock_rows = [
+            MockRow(file_path="/test/file1.py", file_mtime="1751984561.0"),  # Complete row
+            MockRow(file_path="/test/file2.py"),  # Missing file_mtime
+            MockRow(file_mtime="1751984562.0"),   # Missing file_path
+            MockRow(id="test_project_3_xyz"),     # Missing both
+        ]
+        
+        vector_storage_service.turbopuffer_client.search_vectors.return_value = mock_rows
+        
+        result = await vector_storage_service.get_file_metadata(project_name)
+        
+        # Should only include rows with both attributes
+        expected_result = {
+            "/test/file1.py": 1751984561.0,
+        }
+        assert result == expected_result
+
+    async def test_get_file_metadata_invalid_mtime_format(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test get_file_metadata handles invalid mtime format gracefully."""
+        project_name = "test_project"
+        
+        class MockRow:
+            def __init__(self, file_path: str, file_mtime: str):
+                self.file_path = file_path
+                self.file_mtime = file_mtime
+        
+        mock_rows = [
+            MockRow("/test/file1.py", "1751984561.0"),     # Valid
+            MockRow("/test/file2.py", "invalid_timestamp"), # Invalid
+            MockRow("/test/file3.py", "1751984562.5"),     # Valid
+        ]
+        
+        vector_storage_service.turbopuffer_client.search_vectors.return_value = mock_rows
+        
+        # The method should handle the invalid timestamp gracefully and return empty dict
+        result = await vector_storage_service.get_file_metadata(project_name)
+        
+        # Should return empty dict due to exception handling
+        assert result == {}
+
+    async def test_get_file_metadata_exception_handling(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test get_file_metadata exception handling."""
+        project_name = "test_project"
+        
+        # Mock search_vectors to raise an exception
+        vector_storage_service.turbopuffer_client.search_vectors.side_effect = RuntimeError("Search failed")
+        
+        result = await vector_storage_service.get_file_metadata(project_name)
+        
+        # Should return empty dict on exception
+        assert result == {}
+
+    async def test_get_file_metadata_specific_files_with_empty_list(
+        self, vector_storage_service: VectorStorageService
+    ):
+        """Test get_file_metadata with empty file_paths list."""
+        project_name = "test_project"
+        
+        class MockRow:
+            def __init__(self, file_path: str, file_mtime: str):
+                self.file_path = file_path
+                self.file_mtime = file_mtime
+        
+        mock_rows = [
+            MockRow("/test/file1.py", "1751984561.0"),
+        ]
+        
+        vector_storage_service.turbopuffer_client.search_vectors.return_value = mock_rows
+        
+        # Empty list should be treated like None (query all files)
+        result = await vector_storage_service.get_file_metadata(project_name, [])
+        
+        expected_result = {
+            "/test/file1.py": 1751984561.0,
+        }
+        assert result == expected_result
+        
+        # Verify it called search_vectors with project-wide filters (not per-file)
+        vector_storage_service.turbopuffer_client.search_vectors.assert_called_once_with(
+            query_vector=[0.0] * 1536,
+            top_k=1200,
+            namespace="mcp_code_test_project",
+            filters={"project_id": project_name},
+        )

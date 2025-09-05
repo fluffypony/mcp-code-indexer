@@ -317,39 +317,41 @@ class VectorStorageService:
 
             if file_paths is None or len(file_paths) == 0:
                 # Query all files for the project
-                results = self.turbopuffer_client.search_vectors(
+                rows = self.turbopuffer_client.search_vectors(
                     query_vector=dummy_vector,  # Dummy vector since we only want metadata
                     top_k=1200,  # High limit to get all files
                     namespace=namespace,
                     filters={"project_id": project_name},
                 )
-                # _write_debug_log(f"QUERY RESULTS: {results}")
             else:
                 # Query specific files
-                all_results = []
+                all_rows = []
                 for file_path in file_paths:
-                    file_results = self.turbopuffer_client.search_vectors(
+                    file_rows = self.turbopuffer_client.search_vectors(
                         query_vector=dummy_vector,
                         top_k=100,  # Should be enough for chunks from one file
                         namespace=namespace,
                         filters={"project_id": project_name, "file_path": file_path},
                     )
-                    all_results.extend(file_results)
+                    if file_rows:
+                        all_rows.extend(file_rows)
 
-                results = all_results
+                rows = all_rows if all_rows else None
+
+            if not rows:
+                logger.debug(
+                    f"No rows found for project {project_name}, returning empty metadata"
+                )
+                return {}
 
             # Extract file metadata, keeping only the most recent mtime per file
             file_metadata = {}
-            # _write_debug_log(
-            #     f"Retrieved {results} metadata entries for project {project_name}"
-            # )
-            for result in results:
-                if (
-                    "file_path" in result["metadata"]
-                    and "file_mtime" in result["metadata"]
-                ):
-                    file_path = result["metadata"]["file_path"]
-                    mtime = float(result["metadata"]["file_mtime"])
+            for row in rows:
+                logger.info(f"Row metadata: {row}")
+                # Check if row has file_path and file_mtime attributes
+                if hasattr(row, "file_path") and hasattr(row, "file_mtime"):
+                    file_path = row.file_path
+                    mtime = float(row.file_mtime)
 
                     # Keep the most recent mtime for each file
                     if (
