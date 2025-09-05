@@ -31,7 +31,7 @@ class TestEmbeddingService:
     def config(self):
         """Create a test configuration."""
         return VectorConfig(
-            voyage_api_key="test-key", embedding_model="voyage-code-2", batch_size=32
+            voyage_api_key="test-key", batch_size=32
         )
 
     @pytest.fixture
@@ -243,7 +243,7 @@ class TestEmbeddingService:
         file_path = Path("/test/file.py")
 
         # Use dynamic dimensions based on config
-        config = VectorConfig(embedding_model="voyage-code-2")
+        config = VectorConfig()
         embedding_dim = config.get_embedding_dimensions()
         mock_voyage_client.generate_embeddings.return_value = [[0.1] * embedding_dim]
 

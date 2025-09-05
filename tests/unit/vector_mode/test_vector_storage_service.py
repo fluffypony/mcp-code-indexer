@@ -43,7 +43,6 @@ class TestVectorStorageService:
         return VectorConfig(
             voyage_api_key="test-voyage-key",
             turbopuffer_api_key="test-turbopuffer-key",
-            embedding_model="voyage-code-2",
             batch_size=32,
             turbopuffer_region="gcp-europe-west3",
         )

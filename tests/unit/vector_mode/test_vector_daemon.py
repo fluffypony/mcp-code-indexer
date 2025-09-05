@@ -139,7 +139,6 @@ class TestVectorDaemonFileChangeProcessing:
         config = VectorConfig(
             voyage_api_key="test-voyage-key",
             turbopuffer_api_key="test-turbopuffer-key",
-            embedding_model="voyage-code-2", 
             batch_size=32
         )
         cache_dir = tmp_path / "test_cache"
@@ -586,7 +585,6 @@ class TestVectorDaemonEmbeddingGeneration:
         config = VectorConfig(
             voyage_api_key="test-voyage-key",
             turbopuffer_api_key="test-turbopuffer-key",
-            embedding_model="voyage-code-2",
             batch_size=32
         )
         cache_dir = tmp_path / "test_cache"
@@ -817,7 +815,6 @@ class TestVectorDaemonEmbeddingGeneration:
             config = VectorConfig(
                 voyage_api_key="test-voyage-key",
                 turbopuffer_api_key="test-turbopuffer-key",
-                embedding_model="voyage-code-2",
                 batch_size=32
             )
             cache_dir = tmp_path / "test_cache"
@@ -835,7 +832,6 @@ class TestVectorDaemonEmbeddingGeneration:
         
         config = VectorConfig(
             voyage_api_key=None,  # No API key
-            embedding_model="voyage-code-2",
             batch_size=32
         )
         cache_dir = tmp_path / "test_cache"
@@ -877,7 +873,6 @@ class TestVectorDaemonVectorStorageIntegration:
         config = VectorConfig(
             voyage_api_key="test-voyage-key",
             turbopuffer_api_key="test-turbopuffer-key",
-            embedding_model="voyage-code-2",
             batch_size=32,
             turbopuffer_region="gcp-europe-west3"
         )
@@ -950,7 +945,6 @@ class TestVectorDaemonVectorStorageIntegration:
             config = VectorConfig(
                 voyage_api_key="test-voyage-key",
                 turbopuffer_api_key="test-turbopuffer-key",
-                embedding_model="voyage-code-2",
                 turbopuffer_region="gcp-europe-west3"
             )
             cache_dir = tmp_path / "test_cache"
@@ -1068,8 +1062,7 @@ class TestVectorDaemonVectorStorageIntegration:
         
         config = VectorConfig(
             voyage_api_key="test-voyage-key",
-            turbopuffer_api_key=None,  # No API key
-            embedding_model="voyage-code-2"
+            turbopuffer_api_key=None  # No API key
         )
         cache_dir = tmp_path / "test_cache"
         
