@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Optional
 import yaml
 
+from .const import MODEL_DIMENSIONS
+
 DEFAULT_EMBEDDING_MODEL = "voyage-code-2"
 
 
@@ -177,6 +179,10 @@ class VectorConfig:
             errors.append("worker_count must be positive")
 
         return errors
+
+    def get_embedding_dimensions(self) -> int:
+        """Get the vector dimensions for the current embedding model."""
+        return MODEL_DIMENSIONS.get(self.embedding_model, 1536)  # Default to 1536 if model not found
 
 
 def load_vector_config(config_path: Optional[Path] = None) -> VectorConfig:
