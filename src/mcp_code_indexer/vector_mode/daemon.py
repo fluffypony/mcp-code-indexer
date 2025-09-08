@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import time
-
+import time
 from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
 
 from ..database.database import DatabaseManager
@@ -307,9 +307,6 @@ class VectorDaemon:
         logger.info(
             f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})"
         )
-        _write_debug_log(
-            f"Worker {worker_id}: File change detected for project {project_name}: {change.path} ({change.change_type.value})"
-        )
 
         try:
             # Handle deleted files by removing their vectors from the database
@@ -408,8 +405,12 @@ class VectorDaemon:
                     logger.info(
                         f"Starting initial project embedding for {project_name}"
                     )
+                    start_time = time.time()
                     await self._perform_initial_project_embedding(
                         project_name, folder_path
+                    )
+                    _write_debug_log(
+                        f"Initial project embedding completed for {project_name} in {time.time() - start_time:.2f} seconds"
                     )
                 except Exception as e:
                     logger.error(
@@ -594,6 +595,26 @@ class VectorDaemon:
             self.stats["errors_count"] += 1
             raise
 
+    def _gather_project_files(self, project_root: Path) -> list[Path]:
+        """
+        Gather all relevant files in the project by applying ignore patterns.
+
+        Args:
+            project_root: Root path of the project
+
+        Returns:
+            List of file paths that should be processed
+        """
+        project_files = []
+
+        for file_path in project_root.rglob("*"):
+            if file_path.is_file() and not should_ignore_path(
+                file_path, project_root, self.config.ignore_patterns
+            ):
+                project_files.append(file_path)
+
+        return project_files
+
     async def _perform_initial_project_embedding(
         self, project_name: str, folder_path: str
     ) -> dict[str, int]:
@@ -629,13 +650,7 @@ class VectorDaemon:
             )
 
             # Discover all relevant files in the project
-            project_files = []
-
-            for file_path in project_root.rglob("*"):
-                if file_path.is_file() and not should_ignore_path(
-                    file_path, project_root, self.config.ignore_patterns
-                ):
-                    project_files.append(file_path)
+            project_files = self._gather_project_files(project_root)
 
             stats["scanned"] = len(project_files)
             logger.info(f"Found {len(project_files)} files to scan in {project_name}")
@@ -705,13 +720,7 @@ class VectorDaemon:
             try:
                 current_mtime = file_path.stat().st_mtime
                 stored_mtime = stored_metadata.get(str(file_path), 0.0)
-                _write_debug_log(
-                    f"File: {file_path} stored_metadata: {stored_metadata}"
-                )
                 # Use epsilon comparison for floating point mtime
-                _write_debug_log(
-                    f"Comparing mtime for {file_path}: current={current_mtime}, stored={stored_mtime}"
-                )
                 if abs(current_mtime - stored_mtime) > 0.001:
                     files_to_process.append(file_path)
                     logger.debug(
@@ -726,6 +735,7 @@ class VectorDaemon:
                 batch_stats["failed"] += 1
 
         # Process files that need updates using existing file change processing logic
+        # TODO: make it async, process multiple files at once
         for file_path in files_to_process:
             try:
                 # Create FileChange object for initial processing

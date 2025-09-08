@@ -30,11 +30,9 @@ class EmbeddingService:
         """Initialize embedding service with client and configuration."""
         self.embedding_client = embedding_client
         self.config = config
-        
+
         # Validate API access immediately during initialization
-        logger.info("Validating Voyage AI API access...")
         self.embedding_client.validate_api_access()
-        logger.info("Voyage AI API access validated successfully")
 
     async def generate_embeddings_for_chunks(
         self, chunks: List[CodeChunk], project_name: str, file_path: Path

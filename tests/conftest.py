@@ -429,3 +429,34 @@ def fake_secrets():
         'jwt_token': generate_fake_jwt_token(),
         **connection_strings,
     }
+
+
+@pytest_asyncio.fixture
+async def vector_daemon(db_manager: DatabaseManager, tmp_path: Path):
+    """Create a VectorDaemon for testing with mocked API validation."""
+    from unittest.mock import patch
+    from mcp_code_indexer.vector_mode.config import VectorConfig
+    from mcp_code_indexer.vector_mode.daemon import VectorDaemon
+    
+    config = VectorConfig(
+        voyage_api_key="test-voyage-key",
+        turbopuffer_api_key="test-turbopuffer-key",
+        batch_size=32,
+        turbopuffer_region="gcp-europe-west3"
+    )
+    cache_dir = tmp_path / "test_cache"
+    
+    # Mock API validation to avoid real API calls during testing
+    with patch('mcp_code_indexer.vector_mode.providers.voyage_client.VoyageClient.validate_api_access'), \
+         patch('mcp_code_indexer.vector_mode.providers.turbopuffer_client.TurbopufferClient.validate_api_access'):
+        daemon = VectorDaemon(config, db_manager, cache_dir)
+    
+    # Initialize stats (commonly needed by tests)
+    daemon.stats = {
+        "files_processed": 0,
+        "errors_count": 0,
+        "last_activity": 0.0,
+        "embeddings_generated": 0
+    }
+    
+    return daemon

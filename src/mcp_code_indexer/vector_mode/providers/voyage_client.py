@@ -43,6 +43,7 @@ class VoyageClient:
         Raises:
             RuntimeError: If API access validation fails with specific error details
         """
+        logger.info("Validating Voyage AI API access...")
         try:
             result = self.client.embed(["test"], model=self.model, input_type="query")
             if not result or not result.embeddings:
@@ -78,6 +79,8 @@ class VoyageClient:
                 )
             else:
                 raise RuntimeError(f"Voyage AI API access validation failed: {e}")
+
+        logger.info("Voyage AI API access validated successfully")
 
     def generate_embeddings(
         self, texts: List[str], input_type: str = "document", **kwargs

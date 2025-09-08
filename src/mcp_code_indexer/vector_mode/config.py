@@ -54,6 +54,13 @@ class VectorConfig:
             "*.pyo",
             ".DS_Store",
             "Thumbs.db",
+            ".coverage",
+            ".ruff_cache/*",
+            ".mypy_cache/*",
+            ".code-index/*",
+            ".hypothesis/*",
+            "poetry.lock",
+            "venv/*",
         ]
     )
 
@@ -182,7 +189,9 @@ class VectorConfig:
 
     def get_embedding_dimensions(self) -> int:
         """Get the vector dimensions for the current embedding model."""
-        return MODEL_DIMENSIONS.get(self.embedding_model, 1536)  # Default to 1536 if model not found
+        return MODEL_DIMENSIONS.get(
+            self.embedding_model, 1536
+        )  # Default to 1536 if model not found
 
 
 def load_vector_config(config_path: Optional[Path] = None) -> VectorConfig:

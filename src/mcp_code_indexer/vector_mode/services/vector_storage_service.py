@@ -122,7 +122,6 @@ class VectorStorageService:
             RuntimeError: If namespace operations fail
         """
         namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
-        _write_debug_log(f"Ensuring namespace: {namespace}")
         # Check cache first
         if namespace in self._namespace_cache:
             return namespace
@@ -347,7 +346,6 @@ class VectorStorageService:
             # Extract file metadata, keeping only the most recent mtime per file
             file_metadata = {}
             for row in rows:
-                logger.info(f"Row metadata: {row}")
                 # Check if row has file_path and file_mtime attributes
                 if hasattr(row, "file_path") and hasattr(row, "file_mtime"):
                     file_path = row.file_path

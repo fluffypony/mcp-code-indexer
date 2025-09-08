@@ -31,7 +31,6 @@ class TurbopufferClient:
 
         # Initialize official TurboPuffer client
         self.client = turbopuffer.Turbopuffer(api_key=api_key, region=region)
-        logger.info(f"Initialized TurboPuffer client with region {region}")
 
     def health_check(self) -> bool:
         """Check if Turbopuffer service is healthy."""
@@ -120,10 +119,6 @@ class TurbopufferClient:
             rows_affected = getattr(response, "rows_affected", len(vectors))
             logger.info(
                 f"Upsert operation completed: for namespace '{namespace}'. Requested {len(vectors)} vectors, "
-                f"actually affected {rows_affected} rows. Response status: {response.status}, response message: {response.message}"
-            )
-            _write_debug_log(
-                f"Upsert operation completed: requested {len(vectors)} vectors, "
                 f"actually affected {rows_affected} rows. Response status: {response.status}, response message: {response.message}"
             )
 

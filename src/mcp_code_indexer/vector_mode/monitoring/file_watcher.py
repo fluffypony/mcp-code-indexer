@@ -227,9 +227,6 @@ class FileWatcher(BaseFileWatcher):
         """Handle a file change by notifying all callbacks."""
         for callback in self.change_callbacks:
             try:
-                _write_debug_log(
-                    f"File change detected: {change.path} ({change.change_type.value})"
-                )
                 callback(change)
             except Exception as e:
                 logger.error(f"Change callback failed: {e}")
