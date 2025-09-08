@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+from turbopuffer.types import Row
+
 from .. import is_vector_mode_available
 from ..chunking.ast_chunker import ASTChunker, CodeChunk
 from ..config import VectorConfig, load_vector_config
@@ -51,13 +53,12 @@ class VectorModeToolsService:
 
         # Initialize clients
         voyage_client = VoyageClient(
-            api_key=self.config.voyage_api_key,
-            model_name=self.config.embedding_model
+            api_key=self.config.voyage_api_key, model_name=self.config.embedding_model
         )
-        
+
         turbopuffer_client = TurbopufferClient(
             api_key=self.config.turbopuffer_api_key,
-            region=self.config.turbopuffer_region
+            region=self.config.turbopuffer_region,
         )
 
         # Get embedding dimension for the model
@@ -71,7 +72,7 @@ class VectorModeToolsService:
         )
 
         self._initialized = True
-        
+
         logger.info(
             "Vector mode services initialized",
             extra={
@@ -117,16 +118,18 @@ class VectorModeToolsService:
         # Validate mutually exclusive inputs
         if code_snippet and file_path:
             raise ValueError("Cannot specify both code_snippet and file_path")
-        
+
         if not code_snippet and not file_path:
-            raise ValueError("Must specify either code_snippet or file_path with line range")
-        
+            raise ValueError(
+                "Must specify either code_snippet or file_path with line range"
+            )
+
         if file_path and (line_start is None or line_end is None):
             raise ValueError("file_path requires both line_start and line_end")
 
         # Ensure services are initialized
         self._ensure_initialized()
-        
+
         # Use config defaults if not specified
         similarity_threshold = similarity_threshold or self.config.similarity_threshold
         max_results = max_results or self.config.max_search_results
@@ -158,11 +161,11 @@ class VectorModeToolsService:
 
             # Chunk the query code
             query_chunks = await self._chunk_code(query_code, query_source)
-            
+
             if not query_chunks:
                 logger.warning(
                     "No chunks generated from query code",
-                    extra={"structured_data": {"query_source": query_source}}
+                    extra={"structured_data": {"query_source": query_source}},
                 )
                 return {
                     "results": [],
@@ -172,16 +175,23 @@ class VectorModeToolsService:
                         "chunks_generated": 0,
                         "similarity_threshold": similarity_threshold,
                     },
-                    "message": "No valid code chunks could be generated from the input"
+                    "message": "No valid code chunks could be generated from the input",
                 }
 
             # Generate embeddings for query chunks
-            query_embeddings = await self.embedding_service.generate_embeddings_for_chunks(
-                query_chunks, project_name, Path(query_source)
+            query_embeddings = (
+                await self.embedding_service.generate_embeddings_for_chunks(
+                    query_chunks, project_name, Path(query_source)
+                )
             )
 
             # Search for similar code using each query chunk
-            all_results = []
+            # Get more results per chunk to allow for deduplication and filtering
+            results_per_chunk = min(
+                max_results * 2, 50
+            )  # Cap at 50 per chunk to avoid excessive results
+
+            all_results: List[Row] = []
             for i, (chunk, embedding) in enumerate(zip(query_chunks, query_embeddings)):
                 logger.debug(
                     f"Searching with query chunk {i+1}/{len(query_chunks)}",
@@ -190,16 +200,17 @@ class VectorModeToolsService:
                             "chunk_type": chunk.chunk_type.value,
                             "chunk_name": chunk.name,
                         }
-                    }
+                    },
                 )
 
                 chunk_results = await self.vector_storage_service.search_similar_chunks(
                     query_embedding=embedding,
                     project_name=project_name,
-                    top_k=max_results * 2,  # Get more results to filter
+                    top_k=results_per_chunk,
                 )
 
-                all_results.extend(chunk_results)
+                if chunk_results:
+                    all_results.extend(chunk_results)
 
             # Filter by similarity threshold and deduplicate
             filtered_results = self._filter_and_deduplicate_results(
@@ -236,7 +247,9 @@ class VectorModeToolsService:
                 extra={
                     "structured_data": {
                         "project_name": project_name,
-                        "query_source": query_source if 'query_source' in locals() else "unknown",
+                        "query_source": (
+                            query_source if "query_source" in locals() else "unknown"
+                        ),
                         "error": str(e),
                     }
                 },
@@ -267,7 +280,7 @@ class VectorModeToolsService:
             # Resolve file path safely
             folder_path_obj = Path(folder_path).expanduser().resolve()
             file_path_obj = folder_path_obj / file_path
-            
+
             # Security check: ensure file is within project folder
             if not str(file_path_obj.resolve()).startswith(str(folder_path_obj)):
                 raise ValueError(f"File path {file_path} is outside project folder")
@@ -282,10 +295,12 @@ class VectorModeToolsService:
             # Validate line range
             if line_start < 1 or line_end < 1:
                 raise ValueError("Line numbers must be >= 1")
-            
+
             if line_start > len(lines):
-                raise ValueError(f"line_start {line_start} exceeds file length {len(lines)}")
-            
+                raise ValueError(
+                    f"line_start {line_start} exceeds file length {len(lines)}"
+                )
+
             # Clamp line_end to file length
             actual_line_end = min(line_end, len(lines))
             if line_end > len(lines):
@@ -294,15 +309,19 @@ class VectorModeToolsService:
                 )
 
             # Extract section (convert to 0-based indexing)
-            section_lines = lines[line_start - 1:actual_line_end]
+            section_lines = lines[line_start - 1 : actual_line_end]
             return "\n".join(section_lines)
 
         except ValueError:
             raise
         except Exception as e:
-            raise RuntimeError(f"Failed to read file section {file_path}:{line_start}-{line_end}: {e}") from e
+            raise RuntimeError(
+                f"Failed to read file section {file_path}:{line_start}-{line_end}: {e}"
+            ) from e
 
-    async def _chunk_code(self, code_content: str, source_identifier: str) -> List[CodeChunk]:
+    async def _chunk_code(
+        self, code_content: str, source_identifier: str
+    ) -> List[CodeChunk]:
         """
         Chunk code content using AST-based analysis.
 
@@ -319,6 +338,7 @@ class VectorModeToolsService:
         try:
             # Attempt to detect language from source or content
             language = "python"  # Default fallback
+            # TODO: remove. This is handle by language handler in ASTChunker
             if "." in source_identifier:
                 ext = Path(source_identifier).suffix.lower()
                 if ext in [".py"]:
@@ -361,7 +381,7 @@ class VectorModeToolsService:
 
     def _filter_and_deduplicate_results(
         self,
-        results: List[Dict[str, Any]],
+        results: List[Any],
         similarity_threshold: float,
         max_results: int,
     ) -> List[Dict[str, Any]]:
@@ -369,33 +389,60 @@ class VectorModeToolsService:
         Filter results by similarity threshold and remove duplicates.
 
         Args:
-            results: Raw search results
+            results: Raw search results (turbopuffer Row objects)
             similarity_threshold: Minimum similarity score
             max_results: Maximum number of results to return
 
         Returns:
-            Filtered and deduplicated results
+            Filtered and deduplicated results as dictionaries
         """
-        # Filter by similarity threshold
-        filtered = [r for r in results if r.get("score", 0) >= similarity_threshold]
+        processed_results = []
+
+        for row in results:
+            if row is None:
+                continue
+
+            # Extract similarity score (turbopuffer uses dist for distance)
+            # Lower distance = higher similarity, so convert: similarity = 1 - distance
+            distance = getattr(row, "dist", 1.0)
+            similarity = 1.0 - distance
+
+            # Filter by similarity threshold
+            if similarity < similarity_threshold:
+                continue
+
+            # Convert to result dictionary
+            result_dict = {
+                "id": row.id,
+                "score": similarity,
+                "metadata": {
+                    "file_path": getattr(row, "file_path", ""),
+                    "content_hash": getattr(row, "content_hash", ""),
+                    "start_line": getattr(row, "start_line", 0),
+                    "end_line": getattr(row, "end_line", 0),
+                    "chunk_type": getattr(row, "chunk_type", ""),
+                    "content": getattr(row, "content", ""),
+                },
+            }
+            processed_results.append(result_dict)
 
         # Sort by similarity score (descending)
-        filtered.sort(key=lambda x: x.get("score", 0), reverse=True)
+        processed_results.sort(key=lambda x: x["score"], reverse=True)
 
         # Deduplicate by file_path + content hash to avoid duplicate chunks
         seen = set()
         deduplicated = []
-        
-        for result in filtered:
-            # Create a key for deduplication
-            file_path = result.get("metadata", {}).get("file_path", "")
-            content_hash = result.get("metadata", {}).get("content_hash", "")
+
+        for result in processed_results:
+            metadata = result["metadata"]
+            file_path = metadata["file_path"]
+            content_hash = metadata["content_hash"]
             dedup_key = f"{file_path}:{content_hash}"
-            
+
             if dedup_key not in seen:
                 seen.add(dedup_key)
                 deduplicated.append(result)
-                
+
                 if len(deduplicated) >= max_results:
                     break
 

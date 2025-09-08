@@ -303,7 +303,7 @@ class TurbopufferClient:
         file_path: Optional[str] = None,
         top_k: int = 10,
         **kwargs,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Row] | None:
         """Search vectors with metadata filtering."""
         namespace = self.get_namespace_for_project(project_id)
 

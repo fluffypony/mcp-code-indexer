@@ -12,6 +12,8 @@ from typing import List, Dict, Any, Optional
 
 from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
 
+from turbopuffer.types import Row
+
 from ..chunking.ast_chunker import CodeChunk
 from ..providers.turbopuffer_client import TurbopufferClient
 from ..config import VectorConfig
@@ -252,7 +254,7 @@ class VectorStorageService:
         top_k: int = 10,
         chunk_type: Optional[str] = None,
         file_path: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Row] | None:
         """
         Search for similar code chunks using embedding similarity.
 
