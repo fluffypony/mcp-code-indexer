@@ -54,6 +54,7 @@ class VectorConfig:
             "*.pyo",
             ".DS_Store",
             "Thumbs.db",
+            ".vscode/*",
             ".coverage",
             ".ruff_cache/*",
             ".mypy_cache/*",
@@ -69,6 +70,7 @@ class VectorConfig:
     daemon_poll_interval: int = 5
     max_queue_size: int = 1000
     worker_count: int = 3
+    max_concurrent_files: int = 5
 
     # Security Configuration
     redact_secrets: bool = True
@@ -97,6 +99,7 @@ class VectorConfig:
             daemon_poll_interval=int(os.getenv("VECTOR_POLL_INTERVAL", "5")),
             max_queue_size=int(os.getenv("VECTOR_MAX_QUEUE", "1000")),
             worker_count=int(os.getenv("VECTOR_WORKERS", "3")),
+            max_concurrent_files=int(os.getenv("VECTOR_MAX_CONCURRENT_FILES", "5")),
             redact_secrets=os.getenv("VECTOR_REDACT_SECRETS", "true").lower() == "true",
         )
 
@@ -184,6 +187,8 @@ class VectorConfig:
             errors.append("chunk_overlap cannot be negative")
         if self.worker_count <= 0:
             errors.append("worker_count must be positive")
+        if self.max_concurrent_files <= 0 or self.max_concurrent_files > 50:
+            errors.append("max_concurrent_files must be between 1 and 50")
 
         return errors
 

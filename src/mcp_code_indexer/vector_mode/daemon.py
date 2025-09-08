@@ -67,6 +67,9 @@ class VectorDaemon:
         self.file_watchers: Dict[str, FileWatcher] = {}
         self.watcher_locks: Dict[str, asyncio.Lock] = {}
 
+        # Concurrency control for batch file processing
+        self.file_processing_semaphore = asyncio.Semaphore(config.max_concurrent_files)
+
         # Statistics
         self.stats = {
             "start_time": time.time(),
@@ -734,9 +737,54 @@ class VectorDaemon:
                 logger.warning(f"Failed to get mtime for {file_path}: {e}")
                 batch_stats["failed"] += 1
 
-        # Process files that need updates using existing file change processing logic
-        # TODO: make it async, process multiple files at once
-        for file_path in files_to_process:
+        # Process files that need updates in parallel using async gather
+        if files_to_process:
+            logger.debug(
+                f"Processing {len(files_to_process)} files in parallel "
+                f"(max concurrent: {self.config.max_concurrent_files})"
+            )
+
+            # Create tasks for parallel processing
+            tasks = [
+                self._process_single_file_with_semaphore(file_path, project_name)
+                for file_path in files_to_process
+            ]
+
+            # Process all files concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Aggregate results and update statistics
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Task failed with exception: {result}")
+                    batch_stats["failed"] += 1
+                elif isinstance(result, dict):
+                    if result["status"] == "processed":
+                        batch_stats["processed"] += 1
+                    elif result["status"] == "failed":
+                        batch_stats["failed"] += 1
+                else:
+                    logger.warning(f"Unexpected result type: {type(result)}")
+                    batch_stats["failed"] += 1
+
+        return batch_stats
+
+    async def _process_single_file_with_semaphore(
+        self,
+        file_path: Path,
+        project_name: str,
+    ) -> dict[str, Any]:
+        """
+        Process a single file with semaphore-based concurrency control.
+
+        Args:
+            file_path: Path to the file to process
+            project_name: Name of the project
+
+        Returns:
+            Dictionary with processing result and statistics
+        """
+        async with self.file_processing_semaphore:
             try:
                 # Create FileChange object for initial processing
                 file_change = FileChange(
@@ -754,16 +802,25 @@ class VectorDaemon:
                 }
 
                 # Process using existing file change task logic
-                await self._process_file_change_task(task_item, "initial-processing")
-                batch_stats["processed"] += 1
+                await self._process_file_change_task(task_item, "batch-processing")
+
+                return {
+                    "status": "processed",
+                    "file_path": str(file_path),
+                    "error": None,
+                    "chunks_processed": 1,  # Will be updated by caller if needed
+                }
 
             except Exception as e:
                 logger.error(
-                    f"Failed to process file {file_path} during initial embedding: {e}"
+                    f"Failed to process file {file_path} during batch processing: {e}"
                 )
-                batch_stats["failed"] += 1
-
-        return batch_stats
+                return {
+                    "status": "failed",
+                    "file_path": str(file_path),
+                    "error": str(e),
+                    "chunks_processed": 0,
+                }
 
     async def _cleanup_deleted_files(
         self,
