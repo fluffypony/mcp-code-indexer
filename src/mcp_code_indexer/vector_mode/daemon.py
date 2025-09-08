@@ -350,20 +350,6 @@ class VectorDaemon:
                     )
                     return
 
-                # Log chunking results (to be replaced with embedding generation later)
-                chunk_types = {}
-                redacted_count = 0
-
-                for chunk in chunks:
-                    chunk_type = chunk.chunk_type.value
-                    chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
-                    if chunk.redacted:
-                        redacted_count += 1
-
-                logger.info(
-                    f"Worker {worker_id}: Chunked {change.path} into {chunk_count} chunks"
-                )
-
                 # Generate and store embeddings for chunks
                 embeddings = await self._generate_embeddings(
                     chunks, project_name, change.path

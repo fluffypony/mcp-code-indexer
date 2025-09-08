@@ -1539,6 +1539,65 @@ class MCPCodeIndexServer:
                 "vector_mode": None,
             }
 
+    async def _handle_find_similar_code(
+        self, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle find_similar_code tool calls."""
+        try:
+            from mcp_code_indexer.vector_mode.services.vector_mode_tools_service import VectorModeToolsService
+            
+            # Initialize the tools service (handles all vector mode setup internally)
+            tools_service = VectorModeToolsService()
+
+            # Extract project info
+            project_name = arguments["project_name"]
+            folder_path = arguments["folder_path"]
+
+            logger.info(
+                "Processing find_similar_code request",
+                extra={
+                    "structured_data": {
+                        "project_name": project_name,
+                        "has_code_snippet": "code_snippet" in arguments,
+                        "has_file_path": "file_path" in arguments,
+                    }
+                },
+            )
+
+            # Call the service method
+            result = await tools_service.find_similar_code(
+                project_name=project_name,
+                folder_path=folder_path,
+                code_snippet=arguments.get("code_snippet"),
+                file_path=arguments.get("file_path"),
+                line_start=arguments.get("line_start"),
+                line_end=arguments.get("line_end"),
+                similarity_threshold=arguments.get("similarity_threshold"),
+                max_results=arguments.get("max_results"),
+            )
+
+            # Add success indicator to the result
+            result["success"] = True
+            return result
+
+        except Exception as e:
+            logger.error(
+                "Failed to execute find_similar_code",
+                extra={
+                    "structured_data": {
+                        "error": str(e),
+                        "project_name": arguments.get("project_name", "unknown"),
+                    }
+                },
+                exc_info=True,
+            )
+            return {
+                "success": False,
+                "error": str(e),
+                "results": [],
+                "total_results": 0,
+            }
+
     def _generate_health_summary(self, diagnostics: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a concise health summary from comprehensive diagnostics."""
         if "resilience_indicators" not in diagnostics:
