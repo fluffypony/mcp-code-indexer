@@ -381,7 +381,7 @@ class VectorModeToolsService:
 
     def _filter_and_deduplicate_results(
         self,
-        results: List[Any],
+        results: List[Row],
         similarity_threshold: float,
         max_results: int,
     ) -> List[Dict[str, Any]]:
@@ -412,16 +412,19 @@ class VectorModeToolsService:
                 continue
 
             # Convert to result dictionary
+            file_path = getattr(row, "file_path", "")
+            file_name = Path(file_path).name if file_path else ""
+            
             result_dict = {
-                "id": row.id,
+                "file_name": file_name,
+                "start_line": getattr(row, "start_line", 0),
+                "end_line": getattr(row, "end_line", 0),
                 "score": similarity,
+                "content": getattr(row, "content", ""),
                 "metadata": {
-                    "file_path": getattr(row, "file_path", ""),
+                    "file_path": file_path,
                     "content_hash": getattr(row, "content_hash", ""),
-                    "start_line": getattr(row, "start_line", 0),
-                    "end_line": getattr(row, "end_line", 0),
                     "chunk_type": getattr(row, "chunk_type", ""),
-                    "content": getattr(row, "content", ""),
                 },
             }
             processed_results.append(result_dict)
