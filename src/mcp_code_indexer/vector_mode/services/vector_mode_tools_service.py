@@ -53,7 +53,7 @@ class VectorModeToolsService:
 
         # Initialize clients
         voyage_client = VoyageClient(
-            api_key=self.config.voyage_api_key, model_name=self.config.embedding_model
+            api_key=self.config.voyage_api_key, model=self.config.embedding_model
         )
 
         turbopuffer_client = TurbopufferClient(
@@ -414,7 +414,7 @@ class VectorModeToolsService:
             # Convert to result dictionary
             file_path = getattr(row, "file_path", "")
             file_name = Path(file_path).name if file_path else ""
-            
+
             result_dict = {
                 "file_name": file_name,
                 "start_line": getattr(row, "start_line", 0),
