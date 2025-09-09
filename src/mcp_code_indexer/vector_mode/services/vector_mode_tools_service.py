@@ -402,9 +402,9 @@ class VectorModeToolsService:
             if row is None:
                 continue
 
-            # Extract similarity score (turbopuffer uses dist for distance)
+            # Extract similarity score (turbopuffer uses $dist for distance)
             # Lower distance = higher similarity, so convert: similarity = 1 - distance
-            distance = getattr(row, "dist", 1.0)
+            distance = getattr(row, "$dist", 1.0)
             similarity = 1.0 - distance
 
             # Filter by similarity threshold

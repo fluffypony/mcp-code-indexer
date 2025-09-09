@@ -138,10 +138,9 @@ class TurbopufferClient:
         **kwargs,
     ) -> List[Row] | None:
         """Search for similar vectors."""
-        logger.debug(f"Searching {top_k} vectors in namespace '{namespace}'")
+        logger.info(f"Searching {top_k} vectors in namespace '{namespace}'")
 
         try:
-            _write_debug_log(f"Existing namespaces: {self.list_namespaces()}")
             ns = self.client.namespace(namespace)
 
             # Convert filters to proper tuple format for v0.5+

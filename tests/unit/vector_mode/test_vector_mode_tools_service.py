@@ -85,7 +85,7 @@ class TestVectorModeToolsService:
         return [
             Row(
                 id="result1",
-                dist=0.1,  # Distance of 0.1 = similarity of 0.9
+                **{"$dist": 0.1},  # Distance of 0.1 = similarity of 0.9
                 file_path="src/utils.py",
                 start_line=10,
                 end_line=12,
@@ -95,7 +95,7 @@ class TestVectorModeToolsService:
             ),
             Row(
                 id="result2",
-                dist=0.3,  # Distance of 0.3 = similarity of 0.7
+                **{"$dist": 0.3},  # Distance of 0.3 = similarity of 0.7
                 file_path="src/helpers.py",
                 start_line=20,
                 end_line=25,
@@ -381,7 +381,7 @@ class TestVectorModeToolsService:
         low_similarity_results = [
             Row(
                 id="low_sim",
-                dist=0.9,  # Distance 0.9 = similarity 0.1 (below 0.8 threshold)
+                **{"$dist": 0.9},  # Distance 0.9 = similarity 0.1 (below 0.8 threshold)
                 file_path="low_sim.py",
                 start_line=1,
                 end_line=2,
@@ -391,7 +391,7 @@ class TestVectorModeToolsService:
             ),
             Row(
                 id="high_sim",
-                dist=0.1,  # Distance 0.1 = similarity 0.9 (above 0.8 threshold)
+                **{"$dist": 0.1},  # Distance 0.1 = similarity 0.9 (above 0.8 threshold)
                 file_path="high_sim.py",
                 start_line=1,
                 end_line=2,
@@ -436,7 +436,7 @@ class TestVectorModeToolsService:
         duplicate_results = [
             Row(
                 id="dup1",
-                dist=0.1,
+                **{"$dist": 0.1},
                 file_path="same_file.py",
                 start_line=1,
                 end_line=2,
@@ -446,7 +446,7 @@ class TestVectorModeToolsService:
             ),
             Row(
                 id="dup2",
-                dist=0.2,  # Different similarity but same file+hash
+                **{"$dist": 0.2},  # Different similarity but same file+hash
                 file_path="same_file.py",
                 start_line=1,
                 end_line=2,
@@ -493,7 +493,7 @@ class TestVectorModeToolsService:
             many_results.append(
                 Row(
                     id=f"result{i}",
-                    dist=0.1,
+                    **{"$dist": 0.1},
                     file_path=f"file{i}.py",
                     start_line=1,
                     end_line=2,
@@ -691,7 +691,7 @@ class TestVectorModeToolsService:
             None,
             Row(
                 id="valid",
-                dist=0.1,
+                **{"$dist": 0.1},
                 file_path="test.py",
                 start_line=1,
                 end_line=2,
@@ -720,7 +720,7 @@ class TestVectorModeToolsService:
         results = [
             Row(
                 id="low",
-                dist=0.4,  # Similarity 0.6
+                **{"$dist": 0.4},  # Similarity 0.6
                 file_path="low.py",
                 start_line=1,
                 end_line=2,
@@ -730,7 +730,7 @@ class TestVectorModeToolsService:
             ),
             Row(
                 id="high",
-                dist=0.1,  # Similarity 0.9
+                **{"$dist": 0.1},  # Similarity 0.9
                 file_path="high.py",
                 start_line=1,
                 end_line=2,
@@ -740,7 +740,7 @@ class TestVectorModeToolsService:
             ),
             Row(
                 id="medium",
-                dist=0.2,  # Similarity 0.8
+                **{"$dist": 0.2},  # Similarity 0.8
                 file_path="medium.py",
                 start_line=1,
                 end_line=2,
