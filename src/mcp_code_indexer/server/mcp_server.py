@@ -1622,8 +1622,8 @@ class MCPCodeIndexServer:
             tools_service = VectorModeToolsService()
 
             # Extract project info
-            project_name = arguments["project_name"]
-            folder_path = arguments["folder_path"]
+            project_name = arguments["projectName"]
+            folder_path = arguments["folderPath"]
 
             logger.info(
                 "Processing find_similar_code request",
@@ -1658,7 +1658,7 @@ class MCPCodeIndexServer:
                 extra={
                     "structured_data": {
                         "error": str(e),
-                        "project_name": arguments.get("project_name", "unknown"),
+                        "project_name": arguments.get("projectName", "unknown"),
                     }
                 },
                 exc_info=True,
