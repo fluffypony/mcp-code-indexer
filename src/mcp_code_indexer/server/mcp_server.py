@@ -715,6 +715,73 @@ class MCPCodeIndexServer:
                         "additionalProperties": False,
                     },
                 ),
+                types.Tool(
+                    name="find_similar_code",
+                    description=(
+                        "Find code similar to a given code snippet or file section using "
+                        "vector-based semantic search. This tool uses AI embeddings to "
+                        "understand code context and meaning, providing more intelligent "
+                        "similarity detection than text-based matching. Requires vector "
+                        "mode to be enabled for the project."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "projectName": {
+                                "type": "string",
+                                "description": "The name of the project",
+                            },
+                            "folderPath": {
+                                "type": "string",
+                                "description": (
+                                    "Absolute path to the project folder on disk"
+                                ),
+                            },
+                            "code_snippet": {
+                                "type": "string",
+                                "description": (
+                                    "Direct code snippet to search for similarities (mutually "
+                                    "exclusive with file_path)"
+                                ),
+                            },
+                            "file_path": {
+                                "type": "string",
+                                "description": (
+                                    "Path to file containing code to analyze (mutually "
+                                    "exclusive with code_snippet)"
+                                ),
+                            },
+                            "line_start": {
+                                "type": "integer",
+                                "description": (
+                                    "Starting line number for file section (1-indexed, "
+                                    "used with file_path)"
+                                ),
+                            },
+                            "line_end": {
+                                "type": "integer",
+                                "description": (
+                                    "Ending line number for file section (1-indexed, "
+                                    "used with file_path)"
+                                ),
+                            },
+                            "similarity_threshold": {
+                                "type": "number",
+                                "description": (
+                                    "Minimum similarity score (0.0-1.0, optional)"
+                                ),
+                            },
+                            "max_results": {
+                                "type": "integer",
+                                "description": (
+                                    "Maximum number of results to return (optional)"
+                                ),
+                            },
+                        },
+                        "required": ["projectName", "folderPath"],
+                        "additionalProperties": False,
+                    },
+                ),
             ]
 
         @self.server.call_tool()  # type: ignore[misc]
@@ -743,6 +810,7 @@ class MCPCodeIndexServer:
                 "check_database_health": self._handle_check_database_health,
                 "search_codebase_overview": self._handle_search_codebase_overview,
                 "enabled_vector_mode": self._handle_enabled_vector_mode,
+                "find_similar_code": self._handle_find_similar_code,
             }
 
             if name not in tool_handlers:
@@ -866,7 +934,9 @@ class MCPCodeIndexServer:
                 )
 
             if project is None:
-                raise RuntimeError("Project should always be set in if/else branches above")
+                raise RuntimeError(
+                    "Project should always be set in if/else branches above"
+                )
             return project.id
 
     async def _find_matching_project(
@@ -1521,10 +1591,10 @@ class MCPCodeIndexServer:
         db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
         enabled = arguments["enabled"]
-        
+
         try:
             await db_manager.set_project_vector_mode(project_id, enabled)
-            
+
             return {
                 "success": True,
                 "message": f"Vector mode {'enabled' if enabled else 'disabled'} for project",
@@ -1544,8 +1614,10 @@ class MCPCodeIndexServer:
     ) -> Dict[str, Any]:
         """Handle find_similar_code tool calls."""
         try:
-            from mcp_code_indexer.vector_mode.services.vector_mode_tools_service import VectorModeToolsService
-            
+            from mcp_code_indexer.vector_mode.services.vector_mode_tools_service import (
+                VectorModeToolsService,
+            )
+
             # Initialize the tools service (handles all vector mode setup internally)
             tools_service = VectorModeToolsService()
 
