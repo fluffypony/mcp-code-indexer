@@ -134,7 +134,7 @@ class TurbopufferClient:
         query_vector: List[float],
         top_k: int = 10,
         namespace: str = "default",
-        filters: Optional[Dict[str, Any]] = None,
+        filters: turbopuffer.types.Filter | turbopuffer.NotGiven = turbopuffer.NotGiven,
         **kwargs,
     ) -> List[Row] | None:
         """Search for similar vectors."""
@@ -142,24 +142,10 @@ class TurbopufferClient:
 
         try:
             ns = self.client.namespace(namespace)
-
-            # Convert filters to proper tuple format for v0.5+
-            query_filters = None
-            if filters:
-                # Convert dict filters to turbopuffer filter format
-                filter_conditions = []
-                for key, value in filters.items():
-                    filter_conditions.append((key, "Eq", value))
-
-                if len(filter_conditions) == 1:
-                    query_filters = filter_conditions[0]
-                else:
-                    query_filters = ("And", tuple(filter_conditions))
-
             results = ns.query(
                 rank_by=("vector", "ANN", query_vector),  # Use tuple format for v0.5+
                 top_k=top_k,
-                filters=query_filters,
+                filters=filters,
                 exclude_attributes=["vector"],
             )
             # Return only rows if present, otherwise None

@@ -1205,6 +1205,7 @@ class MCPCodeIndexServer:
             "isLarge": is_large,
             "recommendation": recommendation,
             "tokenLimit": token_limit,
+            "totalTokens": total_tokens,
             "totalFiles": len(file_descriptions),
             "cleanedUpCount": cleaned_up_count,
         }

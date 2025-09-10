@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import time
 import time
-from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
 
 from ..database.database import DatabaseManager
 from ..database.models import Project
@@ -354,6 +353,7 @@ class VectorDaemon:
                 embeddings = await self._generate_embeddings(
                     chunks, project_name, change.path
                 )
+                store_time = time.time()
                 await self._store_embeddings(
                     embeddings, chunks, project_name, change.path
                 )
@@ -398,7 +398,7 @@ class VectorDaemon:
                     await self._perform_initial_project_embedding(
                         project_name, folder_path
                     )
-                    _write_debug_log(
+                    logger.debug(
                         f"Initial project embedding completed for {project_name} in {time.time() - start_time:.2f} seconds"
                     )
                 except Exception as e:
@@ -552,6 +552,7 @@ class VectorDaemon:
     ) -> list[list[float]]:
         """Generate embeddings for file chunks using EmbeddingService."""
         try:
+            generating_embedding_time = time.time()
             embeddings = await self._embedding_service.generate_embeddings_for_chunks(
                 chunks, project_name, file_path
             )
@@ -559,7 +560,9 @@ class VectorDaemon:
             # Update daemon statistics
             self.stats["embeddings_generated"] += len(embeddings)
             self.stats["last_activity"] = time.time()
-
+            logger.debug(
+                f"Generated {len(embeddings)} embeddings for {file_path} in {time.time() - generating_embedding_time:.2f} seconds"
+            )
             return embeddings
 
         except Exception as e:
@@ -576,8 +579,12 @@ class VectorDaemon:
     ) -> None:
         """Store embeddings in vector database."""
         try:
+            store_embeddings_time = time.time()
             await self._vector_storage_service.store_embeddings(
                 embeddings, chunks, project_name, file_path
+            )
+            logger.debug(
+                f"Stored embeddings for {file_path} in {time.time() - store_embeddings_time:.2f} seconds"
             )
         except Exception as e:
             # Update error statistics
@@ -633,11 +640,6 @@ class VectorDaemon:
                 logger.error(f"Project folder does not exist: {folder_path}")
                 return stats
 
-            # Get stored file metadata from vector database
-            stored_metadata = await self._vector_storage_service.get_file_metadata(
-                project_name
-            )
-
             # Discover all relevant files in the project
             project_files = self._gather_project_files(project_root)
 
@@ -650,6 +652,12 @@ class VectorDaemon:
 
             for i in range(0, len(project_files), batch_size):
                 batch = project_files[i : i + batch_size]
+
+                # Get stored file metadata from vector database
+                stored_metadata = await self._vector_storage_service.get_file_metadata(
+                    project_name,
+                    [str(f) for f in batch],
+                )
                 batch_stats = await self._process_file_batch_for_initial_embedding(
                     batch, project_name, stored_metadata
                 )
@@ -712,12 +720,8 @@ class VectorDaemon:
                 # Use epsilon comparison for floating point mtime
                 if abs(current_mtime - stored_mtime) > 0.001:
                     files_to_process.append(file_path)
-                    logger.debug(
-                        f"File {file_path} needs processing (current: {current_mtime}, stored: {stored_mtime})"
-                    )
                 else:
                     batch_stats["skipped"] += 1
-                    logger.debug(f"File {file_path} unchanged, skipping")
 
             except (OSError, FileNotFoundError) as e:
                 logger.warning(f"Failed to get mtime for {file_path}: {e}")
@@ -726,7 +730,7 @@ class VectorDaemon:
         # Process files that need updates in parallel using async gather
         if files_to_process:
             logger.debug(
-                f"Processing {len(files_to_process)} files in parallel "
+                f"Processing {len(files_to_process)}/{len(file_batch)} files in parallel "
                 f"(max concurrent: {self.config.max_concurrent_files})"
             )
 
@@ -737,7 +741,11 @@ class VectorDaemon:
             ]
 
             # Process all files concurrently
+            process_files_time = time.time()
             results = await asyncio.gather(*tasks, return_exceptions=True)
+            logger.debug(
+                f"Embedded {len(files_to_process)}/{len(file_batch)} files in {time.time() - process_files_time:.2f} seconds"
+            )
 
             # Aggregate results and update statistics
             for result in results:

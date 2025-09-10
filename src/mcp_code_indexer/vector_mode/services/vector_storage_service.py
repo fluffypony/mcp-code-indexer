@@ -131,7 +131,6 @@ class VectorStorageService:
         try:
             # List existing namespaces
             existing_namespaces = self.turbopuffer_client.list_namespaces()
-            _write_debug_log(f"Existing namespaces: {existing_namespaces}")
             if namespace not in existing_namespaces:
                 # Namespace doesn't exist and will be created implicitly on first write
                 logger.info(
@@ -320,24 +319,24 @@ class VectorStorageService:
                 # Query all files for the project
                 rows = self.turbopuffer_client.search_vectors(
                     query_vector=dummy_vector,  # Dummy vector since we only want metadata
-                    top_k=1200,  # High limit to get all files
+                    top_k=1200,  # High limit to get all files (warning: it still can limit results)
                     namespace=namespace,
-                    filters={"project_id": project_name},
+                    filters=(("project_id", "Eq", project_name),),
                 )
             else:
                 # Query specific files
-                all_rows = []
-                for file_path in file_paths:
-                    file_rows = self.turbopuffer_client.search_vectors(
-                        query_vector=dummy_vector,
-                        top_k=100,  # Should be enough for chunks from one file
-                        namespace=namespace,
-                        filters={"project_id": project_name, "file_path": file_path},
-                    )
-                    if file_rows:
-                        all_rows.extend(file_rows)
-
-                rows = all_rows if all_rows else None
+                rows = self.turbopuffer_client.search_vectors(
+                    query_vector=dummy_vector,
+                    top_k=1200,
+                    namespace=namespace,
+                    filters=(
+                        "And",
+                        [
+                            ("project_id", "Eq", project_name),
+                            ("file_path", "In", file_paths),
+                        ],
+                    ),
+                )
 
             if not rows:
                 logger.debug(
@@ -367,5 +366,4 @@ class VectorStorageService:
 
         except Exception as e:
             logger.error(f"Failed to get file metadata for {project_name}: {e}")
-            _write_debug_log(f"Failed to get file metadata for {project_name}: {e}")
             return {}

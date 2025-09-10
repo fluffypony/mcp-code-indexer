@@ -58,10 +58,13 @@ class VectorConfig:
             ".coverage",
             ".ruff_cache/*",
             ".mypy_cache/*",
+            ".pytest_cache/*",
+            ".import_linter_cache/*",
             ".code-index/*",
             ".hypothesis/*",
             "poetry.lock",
             "venv/*",
+            "htmlcov/*",
         ]
     )
 

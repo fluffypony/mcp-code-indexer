@@ -65,7 +65,7 @@ class TestMCPServerIntegration:
         assert get_result["description"] == "Test file for integration testing"
         assert get_result["fileHash"] == "abc123"
 
-    async def test_check_codebase_size(self, mcp_server):
+    async def test_check_codebase_size(self, mcp_server: MCPCodeIndexServer):
         """Test checking codebase size."""
         # Add some file descriptions
         project_name = "size-test"

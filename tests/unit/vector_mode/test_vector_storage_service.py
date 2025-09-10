@@ -562,7 +562,7 @@ class TestVectorStorageService:
             query_vector=[0.0] * embedding_dim,  # dummy vector with embedding_dimension
             top_k=1200,
             namespace="mcp_code_test_project",
-            filters={"project_id": project_name},
+            filters=(("project_id", "Eq", project_name),),
         )
 
     async def test_get_file_metadata_specific_files(
@@ -579,20 +579,15 @@ class TestVectorStorageService:
                 for key, value in kwargs.items():
                     setattr(self, key, value)
 
-        # Mock responses for each file path query
-        mock_rows_file1 = [
+        # Mock response for single query with all files
+        all_mock_rows = [
             MockRow("/test/file1.py", "1751984561.0", id="test_project_0_123"),
             MockRow("/test/file1.py", "1751984562.0", id="test_project_1_456"),  # newer
-        ]
-        mock_rows_file2 = [
             MockRow("/test/file2.py", "1751984563.0", id="test_project_2_789"),
         ]
 
-        # Mock search_vectors to return different results for different calls
-        vector_storage_service.turbopuffer_client.search_vectors.side_effect = [
-            mock_rows_file1,
-            mock_rows_file2,
-        ]
+        # Mock search_vectors to return all results in one call
+        vector_storage_service.turbopuffer_client.search_vectors.return_value = all_mock_rows
 
         result = await vector_storage_service.get_file_metadata(
             project_name, file_paths
@@ -604,8 +599,19 @@ class TestVectorStorageService:
         }
         assert result == expected_result
 
-        # Verify correct number of search_vectors calls (one per file)
-        assert vector_storage_service.turbopuffer_client.search_vectors.call_count == 2
+        # Verify single search_vectors call with correct filters
+        vector_storage_service.turbopuffer_client.search_vectors.assert_called_once_with(
+            query_vector=[0.0] * vector_storage_service.embedding_dimension,
+            top_k=1200,
+            namespace="mcp_code_test_project",
+            filters=(
+                "And",
+                [
+                    ("project_id", "Eq", project_name),
+                    ("file_path", "In", file_paths),
+                ],
+            ),
+        )
 
     async def test_get_file_metadata_no_namespace(
         self, vector_storage_service: VectorStorageService
@@ -755,5 +761,5 @@ class TestVectorStorageService:
             query_vector=[0.0] * embedding_dim,
             top_k=1200,
             namespace="mcp_code_test_project",
-            filters={"project_id": project_name},
+            filters=(("project_id", "Eq", project_name),),
         )
