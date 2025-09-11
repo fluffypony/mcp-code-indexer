@@ -168,20 +168,18 @@ class EmbeddingService:
         )
 
     async def generate_embeddings_for_multiple_files(
-        self, 
-        file_chunks: Dict[str, List[CodeChunk]], 
-        project_name: str
+        self, file_chunks: Dict[str, List[CodeChunk]], project_name: str
     ) -> Dict[str, List[List[float]]]:
         """
         Generate embeddings for chunks from multiple files in a single batch operation.
-        
+
         Args:
             file_chunks: Dictionary mapping file paths to their code chunks
             project_name: Name of the project (for logging)
-            
+
         Returns:
             Dictionary mapping file paths to their corresponding embeddings
-            
+
         Raises:
             RuntimeError: If embedding generation fails
         """
@@ -207,16 +205,16 @@ class EmbeddingService:
             # Flatten all chunks into a single list with file boundary tracking
             all_texts = []
             file_boundaries = []
-            
+
             current_idx = 0
             for file_path, chunks in file_chunks.items():
                 if not chunks:
                     continue
-                    
+
                 # Prepare texts for this file
                 file_texts = self._prepare_chunk_texts(chunks)
                 all_texts.extend(file_texts)
-                
+
                 # Track boundaries for this file
                 start_idx = current_idx
                 end_idx = current_idx + len(file_texts)
@@ -227,15 +225,25 @@ class EmbeddingService:
                 logger.debug("No valid chunks found after text preparation")
                 return {}
 
-            # Generate embeddings in batch using async/sync bridge
-            file_embeddings = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.embedding_client.generate_embeddings_batch(
-                    all_texts=all_texts,
-                    file_boundaries=file_boundaries,
-                    input_type="document"  # Code chunks are documents
-                ),
-            )
+            # Check if we need to split into sub-batches due to Voyage API limits
+            if len(all_texts) > self.config.voyage_batch_size_limit:
+                logger.info(
+                    f"Total chunks ({len(all_texts)}) exceeds Voyage batch limit "
+                    f"({self.config.voyage_batch_size_limit}). Splitting into sub-batches."
+                )
+                file_embeddings = await self._generate_embeddings_with_sub_batching(
+                    all_texts, file_boundaries, project_name
+                )
+            else:
+                # Generate embeddings in single batch using async/sync bridge
+                file_embeddings = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.embedding_client.generate_embeddings_batch(
+                        all_texts=all_texts,
+                        file_boundaries=file_boundaries,
+                        input_type="document",  # Code chunks are documents
+                    ),
+                )
 
             # Log batch statistics
             self._log_batch_embedding_stats(file_chunks, file_embeddings)
@@ -246,7 +254,9 @@ class EmbeddingService:
                     "structured_data": {
                         "project_name": project_name,
                         "files_processed": len(file_embeddings),
-                        "total_embeddings": sum(len(embs) for embs in file_embeddings.values()),
+                        "total_embeddings": sum(
+                            len(embs) for embs in file_embeddings.values()
+                        ),
                     }
                 },
             )
@@ -268,10 +278,62 @@ class EmbeddingService:
             )
             raise
 
+    async def _generate_embeddings_with_sub_batching(
+        self,
+        all_texts: List[str],
+        file_boundaries: List[Tuple[str, int, int]],
+        project_name: str,
+    ) -> Dict[str, List[List[float]]]:
+        """
+        Generate embeddings with sub-batching to respect Voyage API limits.
+
+        Args:
+            all_texts: List of all text chunks
+            file_boundaries: File boundary information
+            project_name: Name of the project (for logging)
+
+        Returns:
+            Dictionary mapping file paths to their embeddings
+        """
+        batch_limit = self.config.voyage_batch_size_limit
+        all_embeddings = []
+
+        # Process texts in sub-batches
+        for i in range(0, len(all_texts), batch_limit):
+            sub_batch_texts = all_texts[i : i + batch_limit]
+
+            logger.debug(
+                f"Processing sub-batch {i//batch_limit + 1}: "
+                f"{len(sub_batch_texts)} chunks (offset {i})"
+            )
+
+            # Generate embeddings for this sub-batch
+            sub_batch_embeddings = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda texts=sub_batch_texts: self.embedding_client.generate_embeddings(
+                    texts, input_type="document"
+                ),
+            )
+
+            all_embeddings.extend(sub_batch_embeddings)
+
+        # Now group embeddings by file using original boundaries
+        file_embeddings = {}
+        for file_path, start_idx, end_idx in file_boundaries:
+            file_embeddings[file_path] = all_embeddings[start_idx:end_idx]
+
+        logger.info(
+            f"Sub-batch processing completed for project {project_name}: {len(all_embeddings)} total embeddings "
+            f"across {len(file_embeddings)} files using "
+            f"{(len(all_texts) + batch_limit - 1) // batch_limit} sub-batches"
+        )
+
+        return file_embeddings
+
     def _log_batch_embedding_stats(
-        self, 
-        file_chunks: Dict[str, List[CodeChunk]], 
-        file_embeddings: Dict[str, List[List[float]]]
+        self,
+        file_chunks: Dict[str, List[CodeChunk]],
+        file_embeddings: Dict[str, List[List[float]]],
     ) -> None:
         """Log statistics for batch embedding processing."""
         total_chunks = 0

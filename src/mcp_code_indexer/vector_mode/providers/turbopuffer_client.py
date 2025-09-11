@@ -130,29 +130,28 @@ class TurbopufferClient:
             raise RuntimeError(f"Vector upsert failed: {e}")
 
     def upsert_vectors_batch(
-        self, 
-        all_vectors: List[Dict[str, Any]], 
-        namespace: str, 
-        **kwargs
+        self, all_vectors: List[Dict[str, Any]], namespace: str, **kwargs
     ) -> Dict[str, Any]:
         """
         Store or update vectors from multiple files in a single batch operation.
-        
+
         Args:
             all_vectors: List of all vector dictionaries from multiple files
             namespace: Target namespace for storage
             **kwargs: Additional arguments for vector storage
-            
+
         Returns:
             Dictionary with upsert results
-            
+
         Raises:
             RuntimeError: If batch upsert fails
         """
         if not all_vectors:
             return {"upserted": 0}
 
-        logger.info(f"Batch upserting {len(all_vectors)} vectors to namespace '{namespace}'")
+        logger.info(
+            f"Batch upserting {len(all_vectors)} vectors to namespace '{namespace}'"
+        )
 
         # Validate vector structure
         if not all("id" in vector and "values" in vector for vector in all_vectors):
@@ -164,10 +163,12 @@ class TurbopufferClient:
             total_upserted = 0
 
             for i in range(0, len(all_vectors), max_batch_size):
-                sub_batch = all_vectors[i:i + max_batch_size]
-                
-                logger.debug(f"Processing sub-batch {i//max_batch_size + 1}: {len(sub_batch)} vectors")
-                
+                sub_batch = all_vectors[i : i + max_batch_size]
+
+                logger.debug(
+                    f"Processing sub-batch {i//max_batch_size + 1}: {len(sub_batch)} vectors"
+                )
+
                 # Build columnar data structure for this sub-batch
                 data = {
                     "id": [str(vector["id"]) for vector in sub_batch],
@@ -182,7 +183,9 @@ class TurbopufferClient:
 
                 # Add each metadata attribute as a column
                 for key in all_metadata_keys:
-                    data[key] = [vector.get("metadata", {}).get(key) for vector in sub_batch]
+                    data[key] = [
+                        vector.get("metadata", {}).get(key) for vector in sub_batch
+                    ]
 
                 # Upsert this sub-batch
                 ns = self.client.namespace(namespace)
@@ -190,7 +193,7 @@ class TurbopufferClient:
                     upsert_columns=data,
                     distance_metric="cosine_distance",
                 )
-                
+
                 rows_affected = getattr(response, "rows_affected", len(sub_batch))
                 total_upserted += rows_affected
 
@@ -292,7 +295,6 @@ class TurbopufferClient:
                 f"Namespace deletion completed: '{namespace}' deleted, "
                 f"status: {response.status}, "
             )
-
             return {"deleted": namespace}
 
         except Exception as e:
@@ -374,12 +376,21 @@ class TurbopufferClient:
         """Search vectors with metadata filtering."""
         namespace = self.get_namespace_for_project(project_id)
 
-        # Build metadata filters
-        filters = {"project_id": project_id}
+        # Build metadata filters using tuple format (compatible with TurboPuffer v0.5+ API)
+        filter_conditions = [("project_id", "Eq", project_id)]
+
         if chunk_type:
-            filters["chunk_type"] = chunk_type
+            filter_conditions.append(("chunk_type", "Eq", chunk_type))
         if file_path:
-            filters["file_path"] = file_path
+            filter_conditions.append(("file_path", "Eq", file_path))
+
+        # Use appropriate filter format based on number of conditions
+        if len(filter_conditions) == 1:
+            # Single condition - use simple tuple format
+            filters = filter_conditions[0]
+        else:
+            # Multiple conditions - use And format
+            filters = ("And", filter_conditions)
 
         return self.search_vectors(
             query_vector=query_vector,

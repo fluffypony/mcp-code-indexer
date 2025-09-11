@@ -29,6 +29,7 @@ class VectorConfig:
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
     batch_size: int = 128
     max_tokens_per_chunk: int = 1024
+    voyage_batch_size_limit: int = 1000
 
     # Search Configuration
     similarity_threshold: float = 0.5
@@ -74,6 +75,7 @@ class VectorConfig:
     max_queue_size: int = 1000
     worker_count: int = 3
     max_concurrent_files: int = 5
+    max_concurrent_batches: int = 5
 
     # Security Configuration
     redact_secrets: bool = True
@@ -89,6 +91,7 @@ class VectorConfig:
             embedding_model=os.getenv(
                 "VECTOR_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
             ),
+            voyage_batch_size_limit=int(os.getenv("VOYAGE_BATCH_SIZE_LIMIT", "1000")),
             batch_size=int(os.getenv("VECTOR_BATCH_SIZE", "128")),
             max_tokens_per_chunk=int(os.getenv("VECTOR_MAX_TOKENS", "2048")),
             similarity_threshold=float(os.getenv("VECTOR_SIMILARITY_THRESHOLD", "0.5")),
@@ -103,6 +106,7 @@ class VectorConfig:
             max_queue_size=int(os.getenv("VECTOR_MAX_QUEUE", "1000")),
             worker_count=int(os.getenv("VECTOR_WORKERS", "3")),
             max_concurrent_files=int(os.getenv("VECTOR_MAX_CONCURRENT_FILES", "5")),
+            max_concurrent_batches=int(os.getenv("VECTOR_MAX_CONCURRENT_BATCHES", "5")),
             redact_secrets=os.getenv("VECTOR_REDACT_SECRETS", "true").lower() == "true",
         )
 
@@ -192,6 +196,8 @@ class VectorConfig:
             errors.append("worker_count must be positive")
         if self.max_concurrent_files <= 0 or self.max_concurrent_files > 50:
             errors.append("max_concurrent_files must be between 1 and 50")
+        if self.voyage_batch_size_limit <= 0 or self.voyage_batch_size_limit > 1000:
+            errors.append("voyage_batch_size_limit must be between 1 and 1000")
 
         return errors
 

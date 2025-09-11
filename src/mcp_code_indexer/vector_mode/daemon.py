@@ -67,7 +67,9 @@ class VectorDaemon:
         self.watcher_locks: Dict[str, asyncio.Lock] = {}
 
         # Concurrency control for batch file processing
-        self.file_processing_semaphore = asyncio.Semaphore(config.max_concurrent_files)
+        self.file_processing_semaphore = asyncio.Semaphore(
+            config.max_concurrent_batches
+        )
 
         # Statistics
         self.stats = {
@@ -89,6 +91,14 @@ class VectorDaemon:
         self._turbopuffer_client = create_turbopuffer_client(self.config)
         self._vector_storage_service = VectorStorageService(
             self._turbopuffer_client, embedding_dimension, self.config
+        )
+
+        # Initialize ASTChunker for code chunking
+        self._ast_chunker = ASTChunker(
+            max_chunk_size=1500,
+            min_chunk_size=50,
+            enable_redaction=True,
+            enable_optimization=True,
         )
 
         # Signal handling is delegated to the parent process
@@ -329,17 +339,9 @@ class VectorDaemon:
                     )
                 return
 
-            # Initialize ASTChunker with default settings
-            chunker = ASTChunker(
-                max_chunk_size=1500,
-                min_chunk_size=50,
-                enable_redaction=True,
-                enable_optimization=True,
-            )
-
-            # Read and chunk the file
+            # Read and chunk the file using the shared ASTChunker instance
             try:
-                chunks = chunker.chunk_file(str(change.path))
+                chunks = self._ast_chunker.chunk_file(str(change.path))
                 chunk_count = len(chunks)
 
                 # Only process files that actually produced chunks
@@ -353,7 +355,6 @@ class VectorDaemon:
                 embeddings = await self._generate_embeddings(
                     chunks, project_name, change.path
                 )
-                store_time = time.time()
                 await self._store_embeddings(
                     embeddings, chunks, project_name, change.path
                 )
@@ -646,36 +647,88 @@ class VectorDaemon:
             stats["scanned"] = len(project_files)
             logger.info(f"Found {len(project_files)} files to scan in {project_name}")
 
-            # Process files in batches
+            # Process batches concurrently with controlled concurrency
             batch_size = 50
             processed_count = 0
 
-            for i in range(0, len(project_files), batch_size):
-                batch = project_files[i : i + batch_size]
-
-                # Get stored file metadata from vector database
-                stored_metadata = await self._vector_storage_service.get_file_metadata(
-                    project_name,
-                    [str(f) for f in batch],
-                )
-                batch_stats = await self._process_file_batch_for_initial_embedding(
-                    batch, project_name, stored_metadata
-                )
-
-                # Update stats
-                stats["processed"] += batch_stats["processed"]
-                stats["skipped"] += batch_stats["skipped"]
-                stats["failed"] += batch_stats["failed"]
-
-                processed_count += len(batch)
-                if processed_count % 100 == 0:
-                    logger.info(
-                        f"Initial embedding progress: {processed_count}/{len(project_files)} files processed"
+            # Create batch processing tasks with semaphore control
+            async def process_batch_with_semaphore(
+                batch_files: list[Path], batch_index: int
+            ):
+                """Process a single batch with semaphore control."""
+                async with self.file_processing_semaphore:
+                    # Get stored file metadata from vector database
+                    stored_metadata = (
+                        await self._vector_storage_service.get_file_metadata(
+                            project_name,
+                            [str(f) for f in batch_files],
+                        )
+                    )
+                    return (
+                        await self._process_file_batch_for_initial_embedding(
+                            batch_files, project_name, stored_metadata
+                        ),
+                        batch_index,
                     )
 
+            # Create tasks for all batches
+            batch_tasks = []
+            for i in range(0, len(project_files), batch_size):
+                batch = project_files[i : i + batch_size]
+                batch_index = i // batch_size
+                task = process_batch_with_semaphore(batch, batch_index)
+                batch_tasks.append(task)
+
+            logger.info(
+                f"Processing {len(batch_tasks)} batches concurrently "
+                f"(max concurrent: {self.file_processing_semaphore._value})"
+            )
+
+            # Process all batches concurrently
+            batch_start_time = time.time()
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            total_batch_time = time.time() - batch_start_time
+
+            error_messages = []
+            # Aggregate results from all batches
+            successful_batches = 0
+            for result in batch_results:
+                if isinstance(result, Exception):
+                    logger.error(f"Batch processing failed with exception: {result}")
+                    # Estimate failed files (assuming average batch size)
+                    estimated_failed = min(
+                        batch_size, len(project_files) - processed_count
+                    )
+                    error_messages.append(f"Batch {batch_index} failed: {result}")
+                    stats["failed"] += estimated_failed
+                    processed_count += estimated_failed
+                elif isinstance(result, tuple):
+                    batch_stats, batch_index = result
+                    # Update aggregate stats
+                    stats["processed"] += batch_stats["processed"]
+                    stats["skipped"] += batch_stats["skipped"]
+                    stats["failed"] += batch_stats["failed"]
+                    processed_count += (
+                        batch_stats["processed"]
+                        + batch_stats["skipped"]
+                        + batch_stats["failed"]
+                    )
+                    successful_batches += 1
+                else:
+                    logger.warning(f"Unexpected batch result type: {type(result)}")
+
+            logger.info(
+                f"Concurrent batch processing completed in {total_batch_time:.2f}s: "
+                f"{successful_batches}/{len(batch_tasks)} batches successful"
+            )
+
             # Handle deleted files - files that exist in vector DB but not locally
+            # Get all stored metadata for cleanup (not limited to specific batches)
+            all_stored_metadata = await self._vector_storage_service.get_file_metadata(
+                project_name
+            )
             await self._cleanup_deleted_files(
-                project_name, project_files, stored_metadata, stats
+                project_name, project_files, all_stored_metadata, stats
             )
 
             logger.info(
@@ -712,6 +765,7 @@ class VectorDaemon:
         batch_stats = {"processed": 0, "skipped": 0, "failed": 0}
 
         # Filter files that need processing based on mtime comparison
+        # TODO: remove comparing mtimes
         files_to_process: list[Path] = []
         for file_path in file_batch:
             try:
@@ -740,18 +794,19 @@ class VectorDaemon:
                 # Step 1: Batch chunking for all files
                 logger.debug(f"Step 1: Chunking {len(files_to_process)} files")
                 chunking_start_time = time.time()
-                
+
                 file_chunks = self._ast_chunker.chunk_multiple_files(
                     [str(f) for f in files_to_process]
                 )
-                
+
                 # Filter out files that failed to chunk
                 successful_files = {
-                    file_path: chunks for file_path, chunks in file_chunks.items() 
+                    file_path: chunks
+                    for file_path, chunks in file_chunks.items()
                     if chunks  # Only keep files with successful chunks
                 }
                 failed_chunking_count = len(files_to_process) - len(successful_files)
-                
+
                 logger.debug(
                     f"Chunking completed in {time.time() - chunking_start_time:.2f}s: "
                     f"{len(successful_files)} files successful, {failed_chunking_count} failed"
@@ -759,13 +814,15 @@ class VectorDaemon:
 
                 if successful_files:
                     # Step 2: Batch embedding for all chunks
-                    logger.debug(f"Step 2: Generating embeddings for {len(successful_files)} files")
+                    logger.debug(
+                        f"Step 2: Generating embeddings for {len(successful_files)} files"
+                    )
                     embedding_start_time = time.time()
-                    
+
                     file_embeddings = await self._embedding_service.generate_embeddings_for_multiple_files(
                         successful_files, project_name
                     )
-                    
+
                     logger.debug(
                         f"Embedding completed in {time.time() - embedding_start_time:.2f}s: "
                         f"{len(file_embeddings)} files embedded"
@@ -773,13 +830,15 @@ class VectorDaemon:
 
                     # Step 3: Batch storage for all vectors
                     if file_embeddings:
-                        logger.debug(f"Step 3: Storing vectors for {len(file_embeddings)} files")
+                        logger.debug(
+                            f"Step 3: Storing vectors for {len(file_embeddings)} files"
+                        )
                         storage_start_time = time.time()
-                        
+
                         await self._vector_storage_service.store_embeddings_batch(
                             file_embeddings, successful_files, project_name
                         )
-                        
+
                         logger.debug(
                             f"Storage completed in {time.time() - storage_start_time:.2f}s"
                         )
@@ -787,13 +846,15 @@ class VectorDaemon:
                         # Update success count
                         batch_stats["processed"] = len(file_embeddings)
                     else:
-                        logger.warning("No embeddings generated despite successful chunking")
+                        logger.warning(
+                            "No embeddings generated despite successful chunking"
+                        )
 
                 # Update failure count for chunking failures
                 batch_stats["failed"] += failed_chunking_count
 
                 total_batch_time = time.time() - batch_start_time
-                logger.info(
+                logger.debug(
                     f"Batch processing completed in {total_batch_time:.2f}s: "
                     f"{batch_stats['processed']} processed, {batch_stats['failed']} failed, "
                     f"{batch_stats['skipped']} skipped"
@@ -805,59 +866,6 @@ class VectorDaemon:
                 batch_stats["failed"] += len(files_to_process)
 
         return batch_stats
-
-    async def _process_single_file_with_semaphore(
-        self,
-        file_path: Path,
-        project_name: str,
-    ) -> dict[str, Any]:
-        """
-        Process a single file with semaphore-based concurrency control.
-
-        Args:
-            file_path: Path to the file to process
-            project_name: Name of the project
-
-        Returns:
-            Dictionary with processing result and statistics
-        """
-        async with self.file_processing_semaphore:
-            try:
-                # Create FileChange object for initial processing
-                file_change = FileChange(
-                    path=str(file_path),
-                    change_type=ChangeType.MODIFIED,  # Treat as modified for processing
-                    timestamp=time.time(),
-                )
-
-                # Create ProcessFileChangeTask similar to regular file change processing
-                task_item: ProcessFileChangeTask = {
-                    "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
-                    "project_name": project_name,
-                    "change": file_change,
-                    "timestamp": time.time(),
-                }
-
-                # Process using existing file change task logic
-                await self._process_file_change_task(task_item, "batch-processing")
-
-                return {
-                    "status": "processed",
-                    "file_path": str(file_path),
-                    "error": None,
-                    "chunks_processed": 1,  # Will be updated by caller if needed
-                }
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to process file {file_path} during batch processing: {e}"
-                )
-                return {
-                    "status": "failed",
-                    "file_path": str(file_path),
-                    "error": str(e),
-                    "chunks_processed": 0,
-                }
 
     async def _cleanup_deleted_files(
         self,
