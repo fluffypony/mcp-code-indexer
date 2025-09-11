@@ -6,7 +6,7 @@ high-quality code embeddings using the voyage-code-2 model.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import voyageai
 
 from ..config import VectorConfig, DEFAULT_EMBEDDING_MODEL
@@ -143,6 +143,61 @@ class VoyageClient:
             "estimated_cost_usd": round(estimated_cost, 6),
             "model": self.model,
         }
+
+    def generate_embeddings_batch(
+        self, 
+        all_texts: List[str], 
+        file_boundaries: List[Tuple[str, int, int]], 
+        input_type: str = "document", 
+        **kwargs
+    ) -> Dict[str, List[List[float]]]:
+        """
+        Generate embeddings for texts from multiple files in a single batch call.
+        
+        Args:
+            all_texts: Flattened list of all text chunks from all files
+            file_boundaries: List of (file_path, start_idx, end_idx) tuples indicating 
+                           which embeddings belong to which file
+            input_type: Type of input for embedding generation
+            **kwargs: Additional arguments for embedding generation
+            
+        Returns:
+            Dictionary mapping file paths to their corresponding embeddings
+            
+        Raises:
+            RuntimeError: If embedding generation fails
+        """
+        if not all_texts:
+            return {}
+            
+        if not file_boundaries:
+            raise ValueError("file_boundaries cannot be empty when all_texts is provided")
+
+        logger.info(
+            f"Generating batch embeddings for {len(all_texts)} texts from {len(file_boundaries)} files using {self.model}"
+        )
+
+        try:
+            # Generate embeddings for all texts in a single API call
+            all_embeddings = self.generate_embeddings(
+                all_texts, input_type=input_type, **kwargs
+            )
+
+            # Group embeddings by file using boundaries
+            file_embeddings = {}
+            for file_path, start_idx, end_idx in file_boundaries:
+                file_embeddings[file_path] = all_embeddings[start_idx:end_idx]
+
+            logger.info(
+                f"Successfully generated batch embeddings for {len(file_boundaries)} files "
+                f"({len(all_embeddings)} total embeddings)"
+            )
+            
+            return file_embeddings
+
+        except Exception as e:
+            logger.error(f"Failed to generate batch embeddings: {e}")
+            raise RuntimeError(f"Batch embedding generation failed: {e}")
 
 
 def create_voyage_client(config: VectorConfig) -> VoyageClient:

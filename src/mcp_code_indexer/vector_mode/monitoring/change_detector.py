@@ -11,6 +11,7 @@ from typing import List, Dict, Set, Optional, NamedTuple
 from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
+from ..utils import should_ignore_path
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +128,6 @@ class ChangeDetector:
             return None
 
         # Check if should be ignored
-        from ..utils import should_ignore_path
-
         if should_ignore_path(path, self.project_root, self.ignore_patterns):
             logger.debug(f"Ignoring change to {relative_path} (matches ignore pattern)")
             return None
