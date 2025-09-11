@@ -129,6 +129,88 @@ class TurbopufferClient:
             _write_debug_log(f"Failed to upsert vectors: {e}")
             raise RuntimeError(f"Vector upsert failed: {e}")
 
+    def upsert_vectors_batch(
+        self, 
+        all_vectors: List[Dict[str, Any]], 
+        namespace: str, 
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Store or update vectors from multiple files in a single batch operation.
+        
+        Args:
+            all_vectors: List of all vector dictionaries from multiple files
+            namespace: Target namespace for storage
+            **kwargs: Additional arguments for vector storage
+            
+        Returns:
+            Dictionary with upsert results
+            
+        Raises:
+            RuntimeError: If batch upsert fails
+        """
+        if not all_vectors:
+            return {"upserted": 0}
+
+        logger.info(f"Batch upserting {len(all_vectors)} vectors to namespace '{namespace}'")
+
+        # Validate vector structure
+        if not all("id" in vector and "values" in vector for vector in all_vectors):
+            raise ValueError("Each vector must have 'id' and 'values' fields")
+
+        try:
+            # Process vectors in sub-batches to respect TurboPuffer limits
+            max_batch_size = 1000  # TurboPuffer recommended limit
+            total_upserted = 0
+
+            for i in range(0, len(all_vectors), max_batch_size):
+                sub_batch = all_vectors[i:i + max_batch_size]
+                
+                logger.debug(f"Processing sub-batch {i//max_batch_size + 1}: {len(sub_batch)} vectors")
+                
+                # Build columnar data structure for this sub-batch
+                data = {
+                    "id": [str(vector["id"]) for vector in sub_batch],
+                    "vector": [vector["values"] for vector in sub_batch],
+                }
+
+                # Add metadata attributes as separate columns
+                all_metadata_keys = set()
+                for vector in sub_batch:
+                    metadata = vector.get("metadata", {})
+                    all_metadata_keys.update(metadata.keys())
+
+                # Add each metadata attribute as a column
+                for key in all_metadata_keys:
+                    data[key] = [vector.get("metadata", {}).get(key) for vector in sub_batch]
+
+                # Upsert this sub-batch
+                ns = self.client.namespace(namespace)
+                response = ns.write(
+                    upsert_columns=data,
+                    distance_metric="cosine_distance",
+                )
+                
+                rows_affected = getattr(response, "rows_affected", len(sub_batch))
+                total_upserted += rows_affected
+
+                logger.debug(
+                    f"Sub-batch {i//max_batch_size + 1} upserted: "
+                    f"requested {len(sub_batch)}, affected {rows_affected} rows"
+                )
+
+            logger.info(
+                f"Batch upsert operation completed for namespace '{namespace}'. "
+                f"Requested {len(all_vectors)} vectors, actually affected {total_upserted} rows"
+            )
+
+            return {"upserted": total_upserted}
+
+        except Exception as e:
+            logger.error(f"Failed to batch upsert vectors: {e}")
+            _write_debug_log(f"Failed to batch upsert vectors: {e}")
+            raise RuntimeError(f"Batch vector upsert failed: {e}")
+
     def search_vectors(
         self,
         query_vector: List[float],
