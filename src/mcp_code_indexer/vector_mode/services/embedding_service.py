@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from ..chunking.ast_chunker import CodeChunk
 from ..providers.voyage_client import VoyageClient
@@ -164,5 +164,138 @@ class EmbeddingService:
             f"Batch {batch_num} complete: "
             f"{embedding_count} embeddings generated, "
             f"chunk types: {chunk_types}, "
+            f"redacted: {redacted_count}"
+        )
+
+    async def generate_embeddings_for_multiple_files(
+        self, 
+        file_chunks: Dict[str, List[CodeChunk]], 
+        project_name: str
+    ) -> Dict[str, List[List[float]]]:
+        """
+        Generate embeddings for chunks from multiple files in a single batch operation.
+        
+        Args:
+            file_chunks: Dictionary mapping file paths to their code chunks
+            project_name: Name of the project (for logging)
+            
+        Returns:
+            Dictionary mapping file paths to their corresponding embeddings
+            
+        Raises:
+            RuntimeError: If embedding generation fails
+        """
+        if not file_chunks:
+            logger.debug("No file chunks provided for batch processing")
+            return {}
+
+        total_chunks = sum(len(chunks) for chunks in file_chunks.values())
+        logger.info(
+            f"Generating batch embeddings for {len(file_chunks)} files "
+            f"({total_chunks} total chunks)",
+            extra={
+                "structured_data": {
+                    "project_name": project_name,
+                    "file_count": len(file_chunks),
+                    "chunk_count": total_chunks,
+                    "embedding_model": self.config.embedding_model,
+                }
+            },
+        )
+
+        try:
+            # Flatten all chunks into a single list with file boundary tracking
+            all_texts = []
+            file_boundaries = []
+            
+            current_idx = 0
+            for file_path, chunks in file_chunks.items():
+                if not chunks:
+                    continue
+                    
+                # Prepare texts for this file
+                file_texts = self._prepare_chunk_texts(chunks)
+                all_texts.extend(file_texts)
+                
+                # Track boundaries for this file
+                start_idx = current_idx
+                end_idx = current_idx + len(file_texts)
+                file_boundaries.append((file_path, start_idx, end_idx))
+                current_idx = end_idx
+
+            if not all_texts:
+                logger.debug("No valid chunks found after text preparation")
+                return {}
+
+            # Generate embeddings in batch using async/sync bridge
+            file_embeddings = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.embedding_client.generate_embeddings_batch(
+                    all_texts=all_texts,
+                    file_boundaries=file_boundaries,
+                    input_type="document"  # Code chunks are documents
+                ),
+            )
+
+            # Log batch statistics
+            self._log_batch_embedding_stats(file_chunks, file_embeddings)
+
+            logger.info(
+                f"Successfully generated batch embeddings for {len(file_embeddings)} files",
+                extra={
+                    "structured_data": {
+                        "project_name": project_name,
+                        "files_processed": len(file_embeddings),
+                        "total_embeddings": sum(len(embs) for embs in file_embeddings.values()),
+                    }
+                },
+            )
+
+            return file_embeddings
+
+        except Exception as e:
+            logger.error(
+                f"Failed to generate batch embeddings: {e}",
+                extra={
+                    "structured_data": {
+                        "project_name": project_name,
+                        "file_count": len(file_chunks),
+                        "chunk_count": total_chunks,
+                        "error": str(e),
+                    }
+                },
+                exc_info=True,
+            )
+            raise
+
+    def _log_batch_embedding_stats(
+        self, 
+        file_chunks: Dict[str, List[CodeChunk]], 
+        file_embeddings: Dict[str, List[List[float]]]
+    ) -> None:
+        """Log statistics for batch embedding processing."""
+        total_chunks = 0
+        chunk_types = {}
+        redacted_count = 0
+        languages = set()
+
+        for file_path, chunks in file_chunks.items():
+            total_chunks += len(chunks)
+            for chunk in chunks:
+                chunk_type = chunk.chunk_type.value
+                chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+                if chunk.redacted:
+                    redacted_count += 1
+                languages.add(chunk.language)
+
+        total_embeddings = sum(len(embs) for embs in file_embeddings.values())
+
+        logger.debug(
+            f"Batch embedding complete: "
+            f"{len(file_chunks)} files, "
+            f"{total_chunks} chunks, "
+            f"{total_embeddings} embeddings generated, "
+            f"chunk types: {chunk_types}, "
+            f"languages: {sorted(languages)}, "
             f"redacted: {redacted_count}"
         )
