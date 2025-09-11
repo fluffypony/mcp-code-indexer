@@ -110,6 +110,86 @@ class VectorStorageService:
             logger.error(f"Failed to store embeddings for {file_path}: {e}")
             raise RuntimeError(f"Vector storage failed: {e}")
 
+    async def store_embeddings_batch(
+        self,
+        file_embeddings: Dict[str, List[List[float]]],
+        file_chunks: Dict[str, List[CodeChunk]],
+        project_name: str,
+    ) -> None:
+        """
+        Store embeddings for multiple files in a single batch operation.
+        
+        Args:
+            file_embeddings: Dictionary mapping file paths to their embeddings
+            file_chunks: Dictionary mapping file paths to their code chunks
+            project_name: Name of the project
+            
+        Raises:
+            ValueError: If embeddings and chunks count mismatch for any file
+            RuntimeError: If Turbopuffer operations fail
+        """
+        if not file_embeddings:
+            logger.debug("No embeddings to store in batch")
+            return
+
+        if set(file_embeddings.keys()) != set(file_chunks.keys()):
+            raise ValueError("file_embeddings and file_chunks must have matching keys")
+
+        # Validate embeddings and chunks counts for each file
+        for file_path in file_embeddings.keys():
+            embeddings = file_embeddings[file_path]
+            chunks = file_chunks[file_path]
+            if len(embeddings) != len(chunks):
+                raise ValueError(
+                    f"Embeddings and chunks count mismatch for {file_path}: "
+                    f"{len(embeddings)} embeddings vs {len(chunks)} chunks"
+                )
+
+        total_vectors = sum(len(embs) for embs in file_embeddings.values())
+        logger.info(
+            f"Batch storing {total_vectors} vectors from {len(file_embeddings)} files "
+            f"for project {project_name}"
+        )
+
+        try:
+            # Get namespace name (will be created implicitly by batch upsert)
+            namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
+
+            # Delete existing vectors for all files in a single batch operation
+            files_to_clear = list(file_embeddings.keys())
+            try:
+                total_cleared = await self.batch_delete_vectors_for_files(
+                    project_name, files_to_clear
+                )
+                if total_cleared > 0:
+                    logger.info(f"Cleared {total_cleared} existing vectors from {len(files_to_clear)} files")
+            except Exception as e:
+                logger.warning(f"Failed to batch clear existing vectors: {e}")
+                # Continue with batch upsert even if deletion fails
+
+            # Format all vectors for batch storage
+            all_vectors = []
+            for file_path in file_embeddings.keys():
+                embeddings = file_embeddings[file_path]
+                chunks = file_chunks[file_path]
+                
+                file_vectors = self._format_vectors_for_storage(
+                    embeddings, chunks, project_name, file_path
+                )
+                all_vectors.extend(file_vectors)
+
+            # Perform batch upsert
+            result = self.turbopuffer_client.upsert_vectors_batch(all_vectors, namespace)
+
+            logger.info(
+                f"Batch stored {result['upserted']} vectors from {len(file_embeddings)} files "
+                f"in namespace {namespace}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to batch store embeddings: {e}")
+            raise RuntimeError(f"Batch vector storage failed: {e}")
+
     async def _ensure_namespace_exists(self, project_name: str) -> str | None:
         """
         Ensure the namespace for a project exists.
@@ -245,6 +325,76 @@ class VectorStorageService:
         except Exception as e:
             logger.error(f"Failed to delete vectors for {file_path}: {e}")
             raise RuntimeError(f"Vector deletion failed: {e}")
+
+    async def batch_delete_vectors_for_files(
+        self, project_name: str, file_paths: list[str]
+    ) -> int:
+        """
+        Delete all vectors associated with multiple files in a single batch operation.
+
+        Args:
+            project_name: Name of the project
+            file_paths: List of file paths to delete vectors for
+
+        Returns:
+            Number of vectors deleted
+
+        Raises:
+            RuntimeError: If deletion fails
+        """
+        if not file_paths:
+            return 0
+
+        try:
+            namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
+
+            logger.info(
+                f"Batch deleting vectors for {len(file_paths)} files in namespace {namespace}"
+            )
+
+            # Create dummy vector with correct dimensions for search
+            dummy_vector = [0.0] * self.embedding_dimension
+
+            # Find all vectors for the specified files
+            rows = self.turbopuffer_client.search_vectors(
+                query_vector=dummy_vector,
+                top_k=1200,  # Set high enough to catch all chunks for multiple files
+                namespace=namespace,
+                filters=(
+                    "And",
+                    [
+                        ("project_id", "Eq", project_name),
+                        ("file_path", "In", file_paths),
+                    ],
+                ),
+            )
+
+            if not rows:
+                logger.info(
+                    f"No vectors found for {len(file_paths)} files in namespace {namespace}"
+                )
+                return 0
+
+            # Extract vector IDs to delete
+            ids_to_delete = [row.id for row in rows]
+            logger.info(
+                f"Found {len(ids_to_delete)} vectors to delete for {len(file_paths)} files"
+            )
+
+            # Delete vectors by ID in batch
+            delete_result = self.turbopuffer_client.delete_vectors(ids_to_delete, namespace)
+
+            deleted_count = delete_result["deleted"]
+            logger.info(
+                f"Batch deletion completed: removed {deleted_count} vectors "
+                f"for {len(file_paths)} files from namespace {namespace}"
+            )
+
+            return deleted_count
+
+        except Exception as e:
+            logger.error(f"Failed to batch delete vectors for {len(file_paths)} files: {e}")
+            raise RuntimeError(f"Batch vector deletion failed: {e}")
 
     async def search_similar_chunks(
         self,
