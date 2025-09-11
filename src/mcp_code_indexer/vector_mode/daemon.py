@@ -699,7 +699,7 @@ class VectorDaemon:
         stored_metadata: dict[str, float],
     ) -> dict[str, int]:
         """
-        Process a batch of files for initial embedding.
+        Process a batch of files for initial embedding using true batch processing.
 
         Args:
             file_batch: List of file paths to process
@@ -727,39 +727,82 @@ class VectorDaemon:
                 logger.warning(f"Failed to get mtime for {file_path}: {e}")
                 batch_stats["failed"] += 1
 
-        # Process files that need updates in parallel using async gather
+        # Process files using true batch processing: chunk → embed → store
         if files_to_process:
-            logger.debug(
-                f"Processing {len(files_to_process)}/{len(file_batch)} files in parallel "
-                f"(max concurrent: {self.config.max_concurrent_files})"
+            logger.info(
+                f"Batch processing {len(files_to_process)}/{len(file_batch)} files "
+                f"using true batch processing (chunk → embed → store)"
             )
 
-            # Create tasks for parallel processing
-            tasks = [
-                self._process_single_file_with_semaphore(file_path, project_name)
-                for file_path in files_to_process
-            ]
+            try:
+                batch_start_time = time.time()
 
-            # Process all files concurrently
-            process_files_time = time.time()
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            logger.debug(
-                f"Embedded {len(files_to_process)}/{len(file_batch)} files in {time.time() - process_files_time:.2f} seconds"
-            )
+                # Step 1: Batch chunking for all files
+                logger.debug(f"Step 1: Chunking {len(files_to_process)} files")
+                chunking_start_time = time.time()
+                
+                file_chunks = self._ast_chunker.chunk_multiple_files(
+                    [str(f) for f in files_to_process]
+                )
+                
+                # Filter out files that failed to chunk
+                successful_files = {
+                    file_path: chunks for file_path, chunks in file_chunks.items() 
+                    if chunks  # Only keep files with successful chunks
+                }
+                failed_chunking_count = len(files_to_process) - len(successful_files)
+                
+                logger.debug(
+                    f"Chunking completed in {time.time() - chunking_start_time:.2f}s: "
+                    f"{len(successful_files)} files successful, {failed_chunking_count} failed"
+                )
 
-            # Aggregate results and update statistics
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Task failed with exception: {result}")
-                    batch_stats["failed"] += 1
-                elif isinstance(result, dict):
-                    if result["status"] == "processed":
-                        batch_stats["processed"] += 1
-                    elif result["status"] == "failed":
-                        batch_stats["failed"] += 1
-                else:
-                    logger.warning(f"Unexpected result type: {type(result)}")
-                    batch_stats["failed"] += 1
+                if successful_files:
+                    # Step 2: Batch embedding for all chunks
+                    logger.debug(f"Step 2: Generating embeddings for {len(successful_files)} files")
+                    embedding_start_time = time.time()
+                    
+                    file_embeddings = await self._embedding_service.generate_embeddings_for_multiple_files(
+                        successful_files, project_name
+                    )
+                    
+                    logger.debug(
+                        f"Embedding completed in {time.time() - embedding_start_time:.2f}s: "
+                        f"{len(file_embeddings)} files embedded"
+                    )
+
+                    # Step 3: Batch storage for all vectors
+                    if file_embeddings:
+                        logger.debug(f"Step 3: Storing vectors for {len(file_embeddings)} files")
+                        storage_start_time = time.time()
+                        
+                        await self._vector_storage_service.store_embeddings_batch(
+                            file_embeddings, successful_files, project_name
+                        )
+                        
+                        logger.debug(
+                            f"Storage completed in {time.time() - storage_start_time:.2f}s"
+                        )
+
+                        # Update success count
+                        batch_stats["processed"] = len(file_embeddings)
+                    else:
+                        logger.warning("No embeddings generated despite successful chunking")
+
+                # Update failure count for chunking failures
+                batch_stats["failed"] += failed_chunking_count
+
+                total_batch_time = time.time() - batch_start_time
+                logger.info(
+                    f"Batch processing completed in {total_batch_time:.2f}s: "
+                    f"{batch_stats['processed']} processed, {batch_stats['failed']} failed, "
+                    f"{batch_stats['skipped']} skipped"
+                )
+
+            except Exception as e:
+                logger.error(f"Batch processing failed: {e}", exc_info=True)
+                # Mark all files as failed if batch processing fails
+                batch_stats["failed"] += len(files_to_process)
 
         return batch_stats
 
