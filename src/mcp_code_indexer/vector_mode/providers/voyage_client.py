@@ -9,6 +9,8 @@ import logging
 from typing import List, Dict, Any, Tuple
 import voyageai
 
+from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 from ..config import VectorConfig, DEFAULT_EMBEDDING_MODEL
 from ..const import MODEL_DIMENSIONS
 
@@ -91,6 +93,11 @@ class VoyageClient:
 
         logger.info(f"Generating embeddings for {len(texts)} texts using {self.model}")
 
+        _write_debug_log(
+            f"generating embeddings, estimated cost: {self.count_tokens(texts)}. len(texts)={len(texts)}"
+        )
+        _write_debug_log(f"sample text: {texts[0][:100]}...")
+
         try:
             result = self.client.embed(
                 texts=texts, model=self.model, input_type=input_type, truncation=True
@@ -104,6 +111,7 @@ class VoyageClient:
             return result.embeddings
 
         except Exception as e:
+            _write_debug_log(f"Failed to generate embeddings: {e}")
             logger.error(f"Failed to generate embeddings: {e}")
             raise RuntimeError(f"Embedding generation failed: {e}")
 
@@ -144,23 +152,27 @@ class VoyageClient:
             "model": self.model,
         }
 
+    def count_tokens(self, texts: List[str]) -> int:
+        return self.client.count_tokens(texts, self.model)
+
     def generate_embeddings_batch(
         self,
         all_texts: List[str],
         file_boundaries: List[Tuple[str, int, int]],
         input_type: str = "document",
-        max_tokens_per_batch: int = 120000,
         **kwargs,
     ) -> Dict[str, List[List[float]]]:
         """
-        Generate embeddings for texts from multiple files with automatic token-based batching.
+        Generate embeddings for texts from multiple files in a single batch call.
+
+        Note: Token limits should be handled at the calling level. This method
+        assumes the provided texts fit within API limits.
 
         Args:
             all_texts: Flattened list of all text chunks from all files
             file_boundaries: List of (file_path, start_idx, end_idx) tuples indicating
                            which embeddings belong to which file
             input_type: Type of input for embedding generation
-            max_tokens_per_batch: Maximum tokens allowed per batch (default: 120000)
             **kwargs: Additional arguments for embedding generation
 
         Returns:
@@ -182,25 +194,10 @@ class VoyageClient:
         )
 
         try:
-            # Check if we need to split into sub-batches based on token count
-            cost_estimate = self.estimate_cost(all_texts)
-            total_tokens = cost_estimate["total_tokens"]
-
-            if total_tokens <= max_tokens_per_batch:
-                # Single batch - generate embeddings for all texts at once
-                logger.debug(f"Processing single batch with {total_tokens} tokens")
-                all_embeddings = self.generate_embeddings(
-                    all_texts, input_type=input_type, **kwargs
-                )
-            else:
-                # Multiple batches needed - split based on token count
-                logger.info(
-                    f"Total tokens ({total_tokens}) exceeds limit ({max_tokens_per_batch}). "
-                    f"Splitting into token-based sub-batches."
-                )
-                all_embeddings = self._generate_embeddings_with_token_batching(
-                    all_texts, max_tokens_per_batch, input_type, **kwargs
-                )
+            # Generate embeddings for all texts in a single API call
+            all_embeddings = self.generate_embeddings(
+                all_texts, input_type=input_type, **kwargs
+            )
 
             # Group embeddings by file using boundaries
             file_embeddings = {}
@@ -217,75 +214,6 @@ class VoyageClient:
         except Exception as e:
             logger.error(f"Failed to generate batch embeddings: {e}")
             raise RuntimeError(f"Batch embedding generation failed: {e}")
-
-    def _generate_embeddings_with_token_batching(
-        self,
-        all_texts: List[str],
-        max_tokens_per_batch: int,
-        input_type: str = "document",
-        **kwargs,
-    ) -> List[List[float]]:
-        """
-        Generate embeddings with token-based batching to respect API limits.
-
-        Args:
-            all_texts: List of all text chunks
-            max_tokens_per_batch: Maximum tokens allowed per batch
-            input_type: Type of input for embedding generation
-            **kwargs: Additional arguments for embedding generation
-
-        Returns:
-            List of embeddings for all texts
-        """
-        all_embeddings = []
-        current_batch = []
-        current_tokens = 0
-        batch_count = 0
-
-        for i, text in enumerate(all_texts):
-            # Estimate tokens for this text (rough estimate: 4 chars per token)
-            text_tokens = len(text) // 4
-
-            # If adding this text would exceed the limit, process current batch
-            if current_tokens + text_tokens > max_tokens_per_batch and current_batch:
-                batch_count += 1
-                logger.debug(
-                    f"Processing token-based sub-batch {batch_count}: "
-                    f"{len(current_batch)} texts, ~{current_tokens} tokens"
-                )
-
-                batch_embeddings = self.generate_embeddings(
-                    current_batch, input_type=input_type, **kwargs
-                )
-                all_embeddings.extend(batch_embeddings)
-
-                # Reset for next batch
-                current_batch = []
-                current_tokens = 0
-
-            # Add current text to batch
-            current_batch.append(text)
-            current_tokens += text_tokens
-
-        # Process final batch if any texts remaining
-        if current_batch:
-            batch_count += 1
-            logger.debug(
-                f"Processing final token-based sub-batch {batch_count}: "
-                f"{len(current_batch)} texts, ~{current_tokens} tokens"
-            )
-
-            batch_embeddings = self.generate_embeddings(
-                current_batch, input_type=input_type, **kwargs
-            )
-            all_embeddings.extend(batch_embeddings)
-
-        logger.info(
-            f"Token-based batching completed: {len(all_embeddings)} total embeddings "
-            f"across {batch_count} sub-batches"
-        )
-
-        return all_embeddings
 
 
 def create_voyage_client(config: VectorConfig) -> VoyageClient:

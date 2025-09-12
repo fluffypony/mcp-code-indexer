@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Tuple
 
+from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 from ..chunking.ast_chunker import CodeChunk
 from ..providers.voyage_client import VoyageClient
 from ..config import VectorConfig
@@ -201,49 +203,38 @@ class EmbeddingService:
         )
 
         try:
-            # Flatten all chunks into a single list with file boundary tracking
-            all_texts = []
-            file_boundaries = []
+            # Build batches from the start based on actual token counts and text limits
+            batches = await self._build_token_aware_batches(file_chunks, project_name)
 
-            current_idx = 0
-            for file_path, chunks in file_chunks.items():
-                if not chunks:
-                    continue
-
-                # Prepare texts for this file
-                file_texts = self._prepare_chunk_texts(chunks)
-                all_texts.extend(file_texts)
-
-                # Track boundaries for this file
-                start_idx = current_idx
-                end_idx = current_idx + len(file_texts)
-                file_boundaries.append((file_path, start_idx, end_idx))
-                current_idx = end_idx
-
-            if not all_texts:
+            if not batches:
                 logger.debug("No valid chunks found after text preparation")
                 return {}
 
-            # Check if we need to split into sub-batches due to Voyage API limits
-            if len(all_texts) > self.config.voyage_batch_size_limit:
-                logger.info(
-                    f"Total chunks ({len(all_texts)}) exceeds Voyage batch limit "
-                    f"({self.config.voyage_batch_size_limit}). Splitting into sub-batches."
+            # Process each batch
+            logger.info(
+                f"Processing {len(batches)} token-aware batches for project {project_name}"
+            )
+            all_file_embeddings = {}
+
+            for i, (batch_texts, batch_boundaries) in enumerate(batches):
+                logger.debug(
+                    f"Processing batch {i + 1}/{len(batches)}: {len(batch_texts)} texts"
                 )
-                file_embeddings = await self._generate_embeddings_with_sub_batching(
-                    all_texts, file_boundaries, project_name
-                )
-            else:
-                # Generate embeddings in single batch using async/sync bridge
-                file_embeddings = await asyncio.get_event_loop().run_in_executor(
+
+                # Generate embeddings for this batch
+                batch_file_embeddings = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: self.embedding_client.generate_embeddings_batch(
-                        all_texts=all_texts,
-                        file_boundaries=file_boundaries,
-                        input_type="document",  # Code chunks are documents
-                        max_tokens_per_batch=self.config.voyage_max_tokens_per_batch,
+                    lambda texts=batch_texts, boundaries=batch_boundaries: self.embedding_client.generate_embeddings_batch(
+                        all_texts=texts,
+                        file_boundaries=boundaries,
+                        input_type="document",
                     ),
                 )
+
+                # Merge results
+                all_file_embeddings.update(batch_file_embeddings)
+
+            file_embeddings = all_file_embeddings
 
             # Log batch statistics
             self._log_batch_embedding_stats(file_chunks, file_embeddings)
@@ -278,57 +269,105 @@ class EmbeddingService:
             )
             raise
 
-    async def _generate_embeddings_with_sub_batching(
-        self,
-        all_texts: List[str],
-        file_boundaries: List[Tuple[str, int, int]],
-        project_name: str,
-    ) -> Dict[str, List[List[float]]]:
+    async def _build_token_aware_batches(
+        self, file_chunks: Dict[str, List[CodeChunk]], project_name: str
+    ) -> List[Tuple[List[str], List[Tuple[str, int, int]]]]:
         """
-        Generate embeddings with sub-batching to respect Voyage API limits.
+        Build batches from file chunks respecting both token and text count limits.
 
         Args:
-            all_texts: List of all text chunks
-            file_boundaries: File boundary information
+            file_chunks: Dictionary mapping file paths to their code chunks
             project_name: Name of the project (for logging)
 
         Returns:
-            Dictionary mapping file paths to their embeddings
+            List of tuples: (batch_texts, batch_file_boundaries)
         """
-        batch_limit = self.config.voyage_batch_size_limit
-        all_embeddings = []
+        batches = []  # List of (batch_texts, batch_file_boundaries)
+        current_batch_texts = []
+        current_batch_boundaries = []
+        current_batch_tokens = 0
+        batch_idx = 0
 
-        # Process texts in sub-batches
-        for i in range(0, len(all_texts), batch_limit):
-            sub_batch_texts = all_texts[i : i + batch_limit]
+        for file_path, chunks in file_chunks.items():
+            if not chunks:
+                continue
+
+            # Prepare texts for this file
+            file_texts = self._prepare_chunk_texts(chunks)
+            if not file_texts:
+                continue
+
+            # Count tokens for this file using accurate Voyage API
+            file_tokens = await asyncio.get_event_loop().run_in_executor(
+                None, lambda texts=file_texts: self.embedding_client.count_tokens(texts)
+            )
 
             logger.debug(
-                f"Processing sub-batch {i//batch_limit + 1}: "
-                f"{len(sub_batch_texts)} chunks (offset {i})"
+                f"File {file_path}: {len(file_texts)} texts, {file_tokens} tokens"
+            )
+            _write_debug_log(
+                f"File {file_path}: {len(file_texts)} texts, {file_tokens} tokens"
             )
 
-            # Generate embeddings for this sub-batch
-            sub_batch_embeddings = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda texts=sub_batch_texts: self.embedding_client.generate_embeddings(
-                    texts, input_type="document"
-                ),
+            # If adding this file would exceed token limit OR text count limit, finalize current batch
+            if (
+                current_batch_tokens + file_tokens
+                > self.config.voyage_max_tokens_per_batch
+                or len(current_batch_texts) + len(file_texts)
+                > self.config.voyage_batch_size_limit
+            ) and current_batch_texts:
+
+                # Determine which limit was exceeded for logging
+                token_exceeded = (
+                    current_batch_tokens + file_tokens
+                    > self.config.voyage_max_tokens_per_batch
+                )
+                count_exceeded = (
+                    len(current_batch_texts) + len(file_texts)
+                    > self.config.voyage_batch_size_limit
+                )
+
+                logger.info(
+                    f"Finalizing batch {len(batches) + 1}: {len(current_batch_texts)} texts, "
+                    f"{current_batch_tokens} tokens (limit exceeded: "
+                    f"tokens={token_exceeded}, count={count_exceeded})"
+                )
+                _write_debug_log(
+                    f"BATCH ANALYSIS: current_batch_texts={len(current_batch_texts)}, "
+                    f"file_texts={len(file_texts)}, total={len(current_batch_texts) + len(file_texts)}, "
+                    f"limit={self.config.voyage_batch_size_limit}"
+                )
+
+                batches.append((current_batch_texts, current_batch_boundaries))
+
+                # Start new batch
+                current_batch_texts = []
+                current_batch_boundaries = []
+                current_batch_tokens = 0
+                batch_idx = 0
+
+            # Add this file to current batch
+            start_idx = batch_idx
+            end_idx = batch_idx + len(file_texts)
+            current_batch_texts.extend(file_texts)
+            current_batch_boundaries.append((file_path, start_idx, end_idx))
+            current_batch_tokens += file_tokens
+            batch_idx = end_idx
+
+            _write_debug_log(
+                f"AFTER ADDING: batch now has {len(current_batch_texts)} texts, "
+                f"{current_batch_tokens} tokens"
             )
 
-            all_embeddings.extend(sub_batch_embeddings)
+        # Add final batch if it has content
+        if current_batch_texts:
+            logger.info(
+                f"Finalizing final batch {len(batches) + 1}: {len(current_batch_texts)} texts, "
+                f"{current_batch_tokens} tokens"
+            )
+            batches.append((current_batch_texts, current_batch_boundaries))
 
-        # Now group embeddings by file using original boundaries
-        file_embeddings = {}
-        for file_path, start_idx, end_idx in file_boundaries:
-            file_embeddings[file_path] = all_embeddings[start_idx:end_idx]
-
-        logger.info(
-            f"Sub-batch processing completed for project {project_name}: {len(all_embeddings)} total embeddings "
-            f"across {len(file_embeddings)} files using "
-            f"{(len(all_texts) + batch_limit - 1) // batch_limit} sub-batches"
-        )
-
-        return file_embeddings
+        return batches
 
     def _log_batch_embedding_stats(
         self,

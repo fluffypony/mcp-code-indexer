@@ -62,6 +62,7 @@ class VectorConfig:
             ".mypy_cache/*",
             ".pytest_cache/*",
             ".import_linter_cache/*",
+            "*/tiktoken_cache/*",
             ".code-index/*",
             ".hypothesis/*",
             "poetry.lock",
@@ -93,7 +94,9 @@ class VectorConfig:
                 "VECTOR_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
             ),
             voyage_batch_size_limit=int(os.getenv("VOYAGE_BATCH_SIZE_LIMIT", "1000")),
-            voyage_max_tokens_per_batch=int(os.getenv("VOYAGE_MAX_TOKENS_PER_BATCH", "120000")),
+            voyage_max_tokens_per_batch=int(
+                os.getenv("VOYAGE_MAX_TOKENS_PER_BATCH", "120000")
+            ),
             batch_size=int(os.getenv("VECTOR_BATCH_SIZE", "128")),
             max_tokens_per_chunk=int(os.getenv("VECTOR_MAX_TOKENS", "2048")),
             similarity_threshold=float(os.getenv("VECTOR_SIMILARITY_THRESHOLD", "0.5")),
@@ -200,7 +203,10 @@ class VectorConfig:
             errors.append("max_concurrent_files must be between 1 and 50")
         if self.voyage_batch_size_limit <= 0 or self.voyage_batch_size_limit > 1000:
             errors.append("voyage_batch_size_limit must be between 1 and 1000")
-        if self.voyage_max_tokens_per_batch <= 0 or self.voyage_max_tokens_per_batch > 120000:
+        if (
+            self.voyage_max_tokens_per_batch <= 0
+            or self.voyage_max_tokens_per_batch > 120000
+        ):
             errors.append("voyage_max_tokens_per_batch must be between 1 and 120000")
 
         return errors

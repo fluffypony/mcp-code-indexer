@@ -243,6 +243,7 @@ class TurbopufferClient:
 
         except Exception as e:
             logger.error(f"Vector search failed: {e}")
+            _write_debug_log(f"Vector search failed: {e}, filters value: {filters}")
             raise RuntimeError(f"Vector search failed: {e}")
 
     def delete_vectors(
@@ -391,6 +392,8 @@ class TurbopufferClient:
         else:
             # Multiple conditions - use And format
             filters = ("And", filter_conditions)
+
+        _write_debug_log(f"Search filters: {filters}")
 
         return self.search_vectors(
             query_vector=query_vector,

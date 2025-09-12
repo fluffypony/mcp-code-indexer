@@ -118,12 +118,12 @@ class VectorStorageService:
     ) -> None:
         """
         Store embeddings for multiple files in a single batch operation.
-        
+
         Args:
             file_embeddings: Dictionary mapping file paths to their embeddings
             file_chunks: Dictionary mapping file paths to their code chunks
             project_name: Name of the project
-            
+
         Raises:
             ValueError: If embeddings and chunks count mismatch for any file
             RuntimeError: If Turbopuffer operations fail
@@ -162,7 +162,9 @@ class VectorStorageService:
                     project_name, files_to_clear
                 )
                 if total_cleared > 0:
-                    logger.info(f"Cleared {total_cleared} existing vectors from {len(files_to_clear)} files")
+                    logger.info(
+                        f"Cleared {total_cleared} existing vectors from {len(files_to_clear)} files"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to batch clear existing vectors: {e}")
                 # Continue with batch upsert even if deletion fails
@@ -172,14 +174,16 @@ class VectorStorageService:
             for file_path in file_embeddings.keys():
                 embeddings = file_embeddings[file_path]
                 chunks = file_chunks[file_path]
-                
+
                 file_vectors = self._format_vectors_for_storage(
                     embeddings, chunks, project_name, file_path
                 )
                 all_vectors.extend(file_vectors)
 
             # Perform batch upsert
-            result = self.turbopuffer_client.upsert_vectors_batch(all_vectors, namespace)
+            result = self.turbopuffer_client.upsert_vectors_batch(
+                all_vectors, namespace
+            )
 
             logger.info(
                 f"Batch stored {result['upserted']} vectors from {len(file_embeddings)} files "
@@ -382,7 +386,9 @@ class VectorStorageService:
             )
 
             # Delete vectors by ID in batch
-            delete_result = self.turbopuffer_client.delete_vectors(ids_to_delete, namespace)
+            delete_result = self.turbopuffer_client.delete_vectors(
+                ids_to_delete, namespace
+            )
 
             deleted_count = delete_result["deleted"]
             logger.info(
@@ -393,7 +399,9 @@ class VectorStorageService:
             return deleted_count
 
         except Exception as e:
-            logger.error(f"Failed to batch delete vectors for {len(file_paths)} files: {e}")
+            logger.error(
+                f"Failed to batch delete vectors for {len(file_paths)} files: {e}"
+            )
             raise RuntimeError(f"Batch vector deletion failed: {e}")
 
     async def search_similar_chunks(
@@ -471,7 +479,7 @@ class VectorStorageService:
                     query_vector=dummy_vector,  # Dummy vector since we only want metadata
                     top_k=1200,  # High limit to get all files (warning: it still can limit results)
                     namespace=namespace,
-                    filters=(("project_id", "Eq", project_name),),
+                    filters=("project_id", "Eq", project_name),
                 )
             else:
                 # Query specific files
