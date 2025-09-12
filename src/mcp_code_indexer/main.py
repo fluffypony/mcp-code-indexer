@@ -378,6 +378,7 @@ async def handle_runcommand(args: argparse.Namespace) -> None:
             "search_codebase_overview": server._handle_search_codebase_overview,
             "check_database_health": server._handle_check_database_health,
             "enabled_vector_mode": server._handle_enabled_vector_mode,
+            "find_similar_code": server._handle_find_similar_code,
         }
 
         if tool_name not in tool_handlers:
@@ -1018,41 +1019,49 @@ async def main() -> None:
                 from .vector_mode import is_vector_mode_available, check_api_keys
                 from .vector_mode.config import load_vector_config
                 from .vector_mode.daemon import start_vector_daemon
-                
+
                 # Check if vector mode is available
                 if not is_vector_mode_available():
-                    logger.error("Vector mode dependencies not found. Try reinstalling: pip install --upgrade mcp-code-indexer")
+                    logger.error(
+                        "Vector mode dependencies not found. Try reinstalling: pip install --upgrade mcp-code-indexer"
+                    )
                     sys.exit(1)
-                
+
                 # Check API keys
                 api_keys = check_api_keys()
                 if not all(api_keys.values()):
                     missing = [k for k, v in api_keys.items() if not v]
-                    logger.error(f"Missing API keys for vector mode: {', '.join(missing)}")
+                    logger.error(
+                        f"Missing API keys for vector mode: {', '.join(missing)}"
+                    )
                     sys.exit(1)
-                
+
                 # Load vector configuration
-                vector_config_path = Path(args.vector_config).expanduser() if args.vector_config else None
+                vector_config_path = (
+                    Path(args.vector_config).expanduser()
+                    if args.vector_config
+                    else None
+                )
                 vector_config = load_vector_config(vector_config_path)
-                
+
                 logger.info(
-                    "Vector mode enabled", 
+                    "Vector mode enabled",
                     extra={
                         "structured_data": {
                             "embedding_model": vector_config.embedding_model,
                             "batch_size": vector_config.batch_size,
                             "daemon_enabled": vector_config.daemon_enabled,
                         }
-                    }
+                    },
                 )
-                
+
                 # Start vector daemon in background
                 if vector_config.daemon_enabled:
                     vector_daemon_task = asyncio.create_task(
                         start_vector_daemon(vector_config_path, db_path, cache_dir)
                     )
                     logger.info("Vector daemon started")
-                
+
             except Exception as e:
                 logger.error(f"Failed to initialize vector mode: {e}")
                 sys.exit(1)
@@ -1101,27 +1110,26 @@ async def main() -> None:
         if args.vector and vector_daemon_task:
             # Setup signal handling for graceful shutdown
             shutdown_event = asyncio.Event()
-            
+
             def signal_handler():
                 logger.info("Shutdown signal received")
                 shutdown_event.set()
-            
+
             # Register signal handlers
             loop = asyncio.get_running_loop()
             for sig in [signal.SIGTERM, signal.SIGINT]:
                 loop.add_signal_handler(sig, signal_handler)
-            
+
             # Run server and wait for shutdown signal
             server_task = asyncio.create_task(server.run())
             shutdown_task = asyncio.create_task(shutdown_event.wait())
-            
+
             try:
                 # Wait for either server completion or shutdown signal
                 done, pending = await asyncio.wait(
-                    [server_task, shutdown_task],
-                    return_when=asyncio.FIRST_COMPLETED
+                    [server_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
                 # Cancel remaining tasks
                 for task in pending:
                     task.cancel()
@@ -1129,7 +1137,7 @@ async def main() -> None:
                         await task
                     except asyncio.CancelledError:
                         pass
-                        
+
             except Exception as e:
                 logger.error(f"Error during server execution: {e}")
                 raise
@@ -1145,17 +1153,21 @@ async def main() -> None:
         if vector_daemon_task and not vector_daemon_task.done():
             logger.info("Cancelling vector daemon")
             vector_daemon_task.cancel()
-        
+
         # Wait for vector daemon to finish
         if vector_daemon_task:
             try:
                 await vector_daemon_task
             except asyncio.CancelledError:
                 logger.info("Vector daemon cancelled successfully")
-        
+
         # Clean up any remaining asyncio tasks to prevent hanging
         current_task = asyncio.current_task()
-        tasks = [task for task in asyncio.all_tasks() if not task.done() and task is not current_task]
+        tasks = [
+            task
+            for task in asyncio.all_tasks()
+            if not task.done() and task is not current_task
+        ]
         if tasks:
             logger.info(f"Cancelling {len(tasks)} remaining tasks")
             for task in tasks:
@@ -1164,22 +1176,21 @@ async def main() -> None:
             # Wait for cancellation but don't wait forever
             try:
                 await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True), 
-                    timeout=2.0
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
                 )
             except asyncio.TimeoutError:
                 logger.warning("Some tasks did not cancel within timeout")
-        
+
         # Force close any remaining connections and cleanup resources
         try:
             # Give a moment for final cleanup
             await asyncio.sleep(0.1)
-            
+
             # Shutdown the event loop executor to stop any background threads
             loop = asyncio.get_running_loop()
-            if hasattr(loop, '_default_executor') and loop._default_executor:
+            if hasattr(loop, "_default_executor") and loop._default_executor:
                 loop._default_executor.shutdown(wait=False)
-                
+
         except Exception as e:
             logger.warning(f"Error during final cleanup: {e}")
 
@@ -1203,14 +1214,15 @@ def cli_main() -> None:
         # Force cleanup of any remaining resources to prevent hanging
         import threading
         import time
-        
+
         # Give main threads a moment to finish
         time.sleep(0.1)
-        
+
         # Force exit if daemon threads are preventing shutdown
         active_threads = threading.active_count()
         if active_threads > 1:  # More than just the main thread
             import os
+
             os._exit(0)
 
 

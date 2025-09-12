@@ -268,7 +268,7 @@ interface MCPResponse {
 
 ### Available Tools
 
-All 11 MCP tools are available via HTTP. See the [API Reference](api-reference.md) for complete tool documentation.
+All 13 MCP tools are available via HTTP. See the [API Reference](api-reference.md) for complete tool documentation.
 
 | Tool Name | Purpose |
 |-----------|---------|
@@ -283,6 +283,8 @@ All 11 MCP tools are available via HTTP. See the [API Reference](api-reference.m
 | `update_codebase_overview` | Create project docs |
 | `search_codebase_overview` | Search overviews |
 | `check_database_health` | System monitoring |
+| `enabled_vector_mode` | Configure vector search |
+| `find_similar_code` | Find similar code patterns |
 
 ### Example Tool Calls
 
@@ -397,6 +399,52 @@ curl -X POST -H "Content-Type: application/json" \
     },
     "recommendations": [],
     "last_check": "2024-01-15T14:30:00Z"
+  }
+}
+```
+
+#### Find Similar Code
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+     -H "Authorization: Bearer your-token" \
+     -d '{
+       "jsonrpc": "2.0",
+       "method": "tools/call",
+       "params": {
+         "name": "find_similar_code",
+         "arguments": {
+           "projectName": "my-app",
+           "folderPath": "/home/user/my-app",
+           "code_snippet": "function calculateTotal(items) {\n  return items.reduce((sum, item) => sum + item.price, 0);\n}",
+           "similarity_threshold": 0.7,
+           "max_results": 5
+         }
+       }
+     }' \
+     http://localhost:7557/mcp
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "results": [
+      {
+        "file_path": "src/utils/calculations.ts",
+        "code_section": "const sumPrices = (products) => {\n  return products.reduce((total, product) => total + product.price, 0);\n};",
+        "similarity_score": 0.92,
+        "start_line": 15,
+        "end_line": 17,
+        "context": "Price calculation utilities"
+      }
+    ],
+    "search_input": {
+      "type": "snippet",
+      "content": "function calculateTotal(items) {\n  return items.reduce((sum, item) => sum + item.price, 0);\n}"
+    },
+    "total_results": 1,
+    "similarity_threshold": 0.7
   }
 }
 ```

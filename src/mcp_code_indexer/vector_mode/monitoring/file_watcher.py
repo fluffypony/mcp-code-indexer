@@ -7,7 +7,7 @@ for the vector mode indexing pipeline.
 
 import asyncio
 import logging
-from .utils import _write_debug_log
+
 from pathlib import Path
 from typing import Callable, Optional, List, Dict, Any
 import time
@@ -227,9 +227,6 @@ class FileWatcher(BaseFileWatcher):
         """Handle a file change by notifying all callbacks."""
         for callback in self.change_callbacks:
             try:
-                _write_debug_log(
-                    f"File change detected: {change.path} ({change.change_type.value})"
-                )
                 callback(change)
             except Exception as e:
                 logger.error(f"Change callback failed: {e}")

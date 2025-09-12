@@ -4,10 +4,10 @@
 **Last Updated:** 2025-01-15
 **Verified Against:** src/mcp_code_indexer/server/mcp_server.py
 **Test Sources:** tests/integration/test_mcp_tools.py, tests/unit/test_query_preprocessor.py
-**Implementation:** All 12 tools verified against actual server code
+**Implementation:** All 13 tools verified against actual server code
 ---
 
-Complete reference for all 12 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
+Complete reference for all 13 MCP tools provided by the Code Indexer server. Whether you're building AI agents or integrating MCP tools directly, this guide shows you exactly how to use each tool effectively.
 
 **🎯 New to MCP Code Indexer?** Start with the [Quick Start Guide](../README.md#-quick-start) to set up your server first.
 
@@ -27,6 +27,7 @@ Complete reference for all 12 MCP tools provided by the Code Indexer server. Whe
 | [`search_codebase_overview`](#search_codebase_overview) | Search overviews | `projectName`, `folderPath`, `searchWord` |
 | [`check_database_health`](#check_database_health) | System monitoring | None |
 | [`enabled_vector_mode`](#enabled_vector_mode) | Configure vector search | `projectName`, `folderPath`, `enabled` |
+| [`find_similar_code`](#find_similar_code) | Find similar code patterns | `projectName`, `folderPath`, code/file input |
 
 ⭐ **Start here** for new projects
 📖 **[See Examples →](../examples/)**
@@ -52,6 +53,7 @@ Complete reference for all 12 MCP tools provided by the Code Indexer server. Whe
   - [check_database_health](#check_database_health)
 - [Configuration Management](#configuration-management)
   - [enabled_vector_mode](#enabled_vector_mode)
+  - [find_similar_code](#find_similar_code)
 - [Common Parameters](#common-parameters)
 - [Error Handling](#error-handling)
 
@@ -940,6 +942,159 @@ try {
   console.error("Tool execution failed:", error.message);
 }
 ```
+
+---
+
+### find_similar_code
+
+Find code similar to a given code snippet or file section using vector-based semantic search. This tool uses AI embeddings to understand code context and meaning, providing more intelligent similarity detection than text-based matching.
+
+**⚠️ Vector Mode Required**: This tool only works when vector mode is enabled for the project.
+
+#### Parameters
+
+```typescript
+interface FindSimilarCodeParams {
+  projectName: string;           // The name of the project
+  folderPath: string;            // Absolute path to the project folder on disk
+  
+  // Input source (mutually exclusive)
+  code_snippet?: string;         // Direct code snippet to search for similarities
+  file_path?: string;            // Path to file containing code to analyze
+  line_start?: number;           // Starting line number for file section (1-indexed)
+  line_end?: number;             // Ending line number for file section (1-indexed)
+  
+  // Search configuration (optional)
+  similarity_threshold?: number; // Minimum similarity score (0.0-1.0)
+  max_results?: number;          // Maximum number of results to return
+}
+```
+
+#### Response
+
+```typescript
+interface FindSimilarCodeResponse {
+  results: Array<{
+    file_path: string;           // Path to file containing similar code
+    code_section: string;        // The similar code section found
+    similarity_score: number;    // Similarity score (0.0-1.0, higher is more similar)
+    start_line: number;          // Starting line number of similar section
+    end_line: number;            // Ending line number of similar section
+    context: string;             // Additional context around the match
+  }>;
+  search_input: {
+    type: "snippet" | "file_section";  // Type of input used
+    content: string;             // The code that was searched for
+    source?: string;             // Source file path (if using file_path input)
+  };
+  total_results: number;         // Total number of similar code sections found
+  similarity_threshold: number;  // Similarity threshold used
+}
+```
+
+#### Example Usage
+
+##### Search by Code Snippet
+
+```javascript
+const result = await mcp.callTool("find_similar_code", {
+  projectName: "my-web-app",
+  folderPath: "/home/user/projects/my-web-app",
+  code_snippet: `
+    function validateEmail(email: string): boolean {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(email);
+    }
+  `,
+  similarity_threshold: 0.7,
+  max_results: 5
+});
+
+// Response:
+{
+  "results": [
+    {
+      "file_path": "src/utils/validators.ts",
+      "code_section": "function isValidEmail(emailAddress: string): boolean {\n  const pattern = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n  return pattern.test(emailAddress);\n}",
+      "similarity_score": 0.92,
+      "start_line": 15,
+      "end_line": 18,
+      "context": "// Email validation utilities"
+    },
+    {
+      "file_path": "src/auth/validation.ts", 
+      "code_section": "const validateUserEmail = (email: string) => {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\n};",
+      "similarity_score": 0.85,
+      "start_line": 42,
+      "end_line": 44,
+      "context": "User input validation functions"
+    }
+  ],
+  "search_input": {
+    "type": "snippet",
+    "content": "function validateEmail(email: string): boolean {\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n  return emailRegex.test(email);\n}"
+  },
+  "total_results": 2,
+  "similarity_threshold": 0.7
+}
+```
+
+##### Search by File Section
+
+```javascript
+const result = await mcp.callTool("find_similar_code", {
+  projectName: "large-api",
+  folderPath: "/home/user/projects/large-api",
+  file_path: "src/controllers/userController.ts",
+  line_start: 25,
+  line_end: 35,
+  similarity_threshold: 0.6,
+  max_results: 10
+});
+
+// Response:
+{
+  "results": [
+    {
+      "file_path": "src/controllers/productController.ts",
+      "code_section": "async function createProduct(req: Request, res: Response) {\n  try {\n    const product = await productService.create(req.body);\n    res.status(201).json(product);\n  } catch (error) {\n    res.status(400).json({ error: error.message });\n  }\n}",
+      "similarity_score": 0.78,
+      "start_line": 18,
+      "end_line": 26,
+      "context": "Product CRUD operations"
+    }
+  ],
+  "search_input": {
+    "type": "file_section",
+    "content": "async function createUser(req: Request, res: Response) {\n  try {\n    const user = await userService.create(req.body);\n    res.status(201).json(user);\n  } catch (error) {\n    res.status(400).json({ error: error.message });\n  }\n}",
+    "source": "src/controllers/userController.ts"
+  },
+  "total_results": 1,
+  "similarity_threshold": 0.6
+}
+```
+
+#### 🎯 Use Cases
+
+- **Code Duplication Detection**: Find similar functions or code patterns that could be refactored
+- **Code Reuse Discovery**: Locate existing implementations similar to what you're building
+- **Pattern Analysis**: Understand common patterns and approaches across your codebase
+- **Refactoring Opportunities**: Identify code sections that follow similar patterns
+- **Code Review**: Find similar implementations to ensure consistency
+- **Learning**: Discover how similar problems were solved elsewhere in the codebase
+
+#### ⚠️ Prerequisites
+
+- **Vector Mode Enabled**: Project must have vector mode activated
+- **API Keys Required**: VOYAGE_API_KEY and TURBOPUFFER_API_KEY environment variables
+- **Project Indexed**: The project must be indexed with vector embeddings
+
+#### 💡 Tips for Best Results
+
+- **Meaningful Code Sections**: Use code sections with clear functionality (10-50 lines work well)
+- **Adjust Similarity Threshold**: Start with 0.7, lower to 0.5 for broader matches
+- **Use Representative Code**: Choose code that represents the pattern you're looking for
+- **Consider Context**: Similar functionality may be implemented differently but serve the same purpose
 
 ## Common Parameters
 

@@ -8,12 +8,16 @@ Handles embedding generation, change detection, and vector database synchronizat
 import asyncio
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
+import time
 import time
 
+
+
 from ..database.database import DatabaseManager
-from ..database.models import Project
+from ..database.models import Project, SyncStatus
 from .config import VectorConfig, load_vector_config
 from .monitoring.file_watcher import create_file_watcher, FileWatcher
 from .providers.voyage_client import VoyageClient, create_voyage_client
@@ -23,10 +27,12 @@ from .services.vector_storage_service import VectorStorageService
 
 from .monitoring.change_detector import FileChange, ChangeType
 from .chunking.ast_chunker import ASTChunker, CodeChunk
+from .utils import should_ignore_path
 from .types import (
     ScanProjectTask,
     VectorDaemonTaskType,
     ProcessFileChangeTask,
+    InitialProjectEmbeddingTask,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +70,11 @@ class VectorDaemon:
         self.file_watchers: Dict[str, FileWatcher] = {}
         self.watcher_locks: Dict[str, asyncio.Lock] = {}
 
+        # Concurrency control for batch file processing
+        self.file_processing_semaphore = asyncio.Semaphore(
+            config.max_concurrent_batches
+        )
+
         # Statistics
         self.stats = {
             "start_time": time.time(),
@@ -77,10 +88,21 @@ class VectorDaemon:
         self._voyage_client = create_voyage_client(self.config)
         self._embedding_service = EmbeddingService(self._voyage_client, self.config)
 
+        # Get embedding dimension from VoyageClient
+        embedding_dimension = self._voyage_client.get_embedding_dimension()
+
         # Initialize TurbopufferClient and VectorStorageService for vector storage
         self._turbopuffer_client = create_turbopuffer_client(self.config)
         self._vector_storage_service = VectorStorageService(
-            self._turbopuffer_client, self.config
+            self._turbopuffer_client, embedding_dimension, self.config
+        )
+
+        # Initialize ASTChunker for code chunking
+        self._ast_chunker = ASTChunker(
+            max_chunk_size=1500,
+            min_chunk_size=50,
+            enable_redaction=True,
+            enable_optimization=True,
         )
 
         # Signal handling is delegated to the parent process
@@ -220,7 +242,10 @@ class VectorDaemon:
                     # Use first alias as folder path
                     folder_path = project.aliases[0]
 
-                    # Queue initial indexing task
+                    # Queue initial indexing task based on IndexMeta status
+                    await self._queue_full_project_indexing(project.name, folder_path)
+
+                    # Queue project scan for file watching
                     await self._queue_project_scan(project.name, folder_path)
 
                 # Remove projects from monitoring
@@ -237,6 +262,50 @@ class VectorDaemon:
                 logger.error(f"Error in project monitoring: {e}")
                 self.stats["errors_count"] += 1
                 await asyncio.sleep(5.0)  # Back off on error
+
+    async def _queue_full_project_indexing(
+        self, project_name: str, folder_path: str
+    ) -> None:
+        """
+        Queue full project indexing based on IndexMeta status.
+
+        Retrieves IndexMeta for the project and queues initial embedding task
+        only if sync_status is 'pending'. Updates status from 'failed' or 'paused' to 'pending'.
+        """
+        try:
+            # Get or create IndexMeta for the project
+            index_meta = await self.db_manager.get_or_create_index_meta(project_name)
+
+            # If status is 'failed' or 'paused', change it to 'pending'
+            if index_meta.sync_status in [SyncStatus.FAILED, SyncStatus.PAUSED]:
+                logger.info(
+                    f"Changing sync status from {index_meta.sync_status.value} to pending for {project_name}"
+                )
+                index_meta.sync_status = SyncStatus.PENDING
+                await self.db_manager.update_index_meta(index_meta)
+
+            # Only queue initial embedding if status is 'pending'
+            if index_meta.sync_status == SyncStatus.PENDING:
+                task: InitialProjectEmbeddingTask = {
+                    "type": VectorDaemonTaskType.INITIAL_PROJECT_EMBEDDING,
+                    "project_name": project_name,
+                    "folder_path": folder_path,
+                    "timestamp": time.time(),
+                }
+
+                try:
+                    await self.processing_queue.put(task)
+                    logger.debug(f"Queued initial project embedding: {project_name}")
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"Processing queue full, dropping initial embedding task for {project_name}"
+                    )
+            else:
+                logger.debug(
+                    f"Skipping initial embedding for {project_name}, status: {index_meta.sync_status.value}"
+                )
+        except Exception as e:
+            logger.error(f"Error queuing full project indexing for {project_name}: {e}")
 
     async def _queue_project_scan(self, project_name: str, folder_path: str) -> None:
         """Queue a project for scanning and indexing."""
@@ -283,12 +352,15 @@ class VectorDaemon:
 
     async def _process_task(self, task: dict, worker_id: str) -> None:
         """Process a queued task."""
+        logger.debug(f"Worker {worker_id} processing task: {task}")
         task_type = task.get("type")
 
         if task_type == VectorDaemonTaskType.SCAN_PROJECT:
             await self._process_project_scan(task, worker_id)
         elif task_type == VectorDaemonTaskType.PROCESS_FILE_CHANGE:
             await self._process_file_change_task(task, worker_id)
+        elif task_type == VectorDaemonTaskType.INITIAL_PROJECT_EMBEDDING:
+            await self._process_initial_project_embedding_task(task, worker_id)
         else:
             logger.warning(f"Unknown task type: {task_type}")
 
@@ -321,17 +393,9 @@ class VectorDaemon:
                     )
                 return
 
-            # Initialize ASTChunker with default settings
-            chunker = ASTChunker(
-                max_chunk_size=1500,
-                min_chunk_size=50,
-                enable_redaction=True,
-                enable_optimization=True,
-            )
-
-            # Read and chunk the file
+            # Read and chunk the file using the shared ASTChunker instance
             try:
-                chunks = chunker.chunk_file(str(change.path))
+                chunks = self._ast_chunker.chunk_file(str(change.path))
                 chunk_count = len(chunks)
 
                 # Only process files that actually produced chunks
@@ -340,20 +404,6 @@ class VectorDaemon:
                         f"Worker {worker_id}: No chunks produced for {change.path}"
                     )
                     return
-
-                # Log chunking results (to be replaced with embedding generation later)
-                chunk_types = {}
-                redacted_count = 0
-
-                for chunk in chunks:
-                    chunk_type = chunk.chunk_type.value
-                    chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
-                    if chunk.redacted:
-                        redacted_count += 1
-
-                logger.info(
-                    f"Worker {worker_id}: Chunked {change.path} into {chunk_count} chunks"
-                )
 
                 # Generate and store embeddings for chunks
                 embeddings = await self._generate_embeddings(
@@ -378,6 +428,66 @@ class VectorDaemon:
             logger.error(
                 f"Worker {worker_id}: Error processing file change {change.path}: {e}"
             )
+            self.stats["errors_count"] += 1
+
+    async def _process_initial_project_embedding_task(
+        self, task: InitialProjectEmbeddingTask, worker_id: str
+    ) -> None:
+        """Process an initial project embedding task."""
+        project_name: str = task["project_name"]
+        folder_path: str = task["folder_path"]
+
+        logger.info(
+            f"Worker {worker_id}: Starting initial project embedding for {project_name}"
+        )
+        try:
+            # Update IndexMeta status to in_progress
+            index_meta = await self.db_manager.get_or_create_index_meta(project_name)
+            index_meta.sync_status = SyncStatus.IN_PROGRESS
+            await self.db_manager.update_index_meta(index_meta)
+            # Perform the actual embedding
+            stats = await self._perform_initial_project_embedding(
+                project_name, folder_path
+            )
+
+            # Update IndexMeta status to completed on success
+            index_meta = await self.db_manager.get_or_create_index_meta(project_name)
+            if stats["failed"] > 0:
+                index_meta.sync_status = SyncStatus.FAILED
+                index_meta.error_message = (
+                    f"{stats['failed']} files failed during initial embedding"
+                )
+            else:
+                index_meta.sync_status = SyncStatus.COMPLETED
+                index_meta.error_message = None
+
+            index_meta.last_sync = datetime.utcnow()
+            index_meta.total_files = stats.get("scanned", 0)
+            index_meta.indexed_files = stats.get("processed", 0)
+            await self.db_manager.update_index_meta(index_meta)
+
+            logger.info(
+                f"Worker {worker_id}: Successfully completed initial embedding for {project_name}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Worker {worker_id}: Error processing initial embedding for {project_name}: {e}"
+            )
+
+            # Update IndexMeta status to failed on error
+            try:
+                index_meta = await self.db_manager.get_or_create_index_meta(
+                    project_name
+                )
+                index_meta.sync_status = SyncStatus.FAILED
+                index_meta.error_message = str(e)
+                await self.db_manager.update_index_meta(index_meta)
+            except Exception as meta_error:
+                logger.error(
+                    f"Failed to update IndexMeta after embedding error: {meta_error}"
+                )
+
             self.stats["errors_count"] += 1
 
     async def _process_project_scan(self, task: dict, worker_id: str) -> None:
@@ -539,6 +649,7 @@ class VectorDaemon:
     ) -> list[list[float]]:
         """Generate embeddings for file chunks using EmbeddingService."""
         try:
+            generating_embedding_time = time.time()
             embeddings = await self._embedding_service.generate_embeddings_for_chunks(
                 chunks, project_name, file_path
             )
@@ -546,7 +657,9 @@ class VectorDaemon:
             # Update daemon statistics
             self.stats["embeddings_generated"] += len(embeddings)
             self.stats["last_activity"] = time.time()
-
+            logger.debug(
+                f"Generated {len(embeddings)} embeddings for {file_path} in {time.time() - generating_embedding_time:.2f} seconds"
+            )
             return embeddings
 
         except Exception as e:
@@ -563,13 +676,365 @@ class VectorDaemon:
     ) -> None:
         """Store embeddings in vector database."""
         try:
+            store_embeddings_time = time.time()
             await self._vector_storage_service.store_embeddings(
                 embeddings, chunks, project_name, file_path
+            )
+            logger.debug(
+                f"Stored embeddings for {file_path} in {time.time() - store_embeddings_time:.2f} seconds"
             )
         except Exception as e:
             # Update error statistics
             self.stats["errors_count"] += 1
             raise
+
+    def _gather_project_files(self, project_root: Path) -> list[Path]:
+        """
+        Gather all relevant files in the project by applying ignore patterns.
+
+        Args:
+            project_root: Root path of the project
+
+        Returns:
+            List of file paths that should be processed
+        """
+        project_files = []
+
+        for file_path in project_root.rglob("*"):
+            if file_path.is_file() and not should_ignore_path(
+                file_path, project_root, self.config.ignore_patterns
+            ):
+                project_files.append(file_path)
+
+        return project_files
+
+    async def _perform_initial_project_embedding(
+        self, project_name: str, folder_path: str
+    ) -> dict[str, int]:
+        """
+        Perform initial project embedding for all files, processing only changed files.
+
+        Args:
+            project_name: Name of the project
+            folder_path: Root folder path of the project
+
+        Returns:
+            Dictionary with processing statistics
+        """
+        stats = {
+            "scanned": 0,
+            "processed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "deleted": 0,
+        }
+
+        logger.info(f"Starting initial project embedding for {project_name}")
+
+        try:
+            project_root = Path(folder_path)
+            if not project_root.exists():
+                logger.error(f"Project folder does not exist: {folder_path}")
+                return stats
+
+            # Discover all relevant files in the project
+            project_files = self._gather_project_files(project_root)
+
+            stats["scanned"] = len(project_files)
+            logger.info(f"Found {len(project_files)} files to scan in {project_name}")
+
+            # Process batches concurrently with controlled concurrency
+            batch_size = 50
+            processed_count = 0
+
+            # Create batch processing tasks with semaphore control
+            async def process_batch_with_semaphore(
+                batch_files: list[Path], batch_index: int
+            ):
+                """Process a single batch with semaphore control."""
+                async with self.file_processing_semaphore:
+                    # Get stored file metadata from vector database
+                    stored_metadata = (
+                        await self._vector_storage_service.get_file_metadata(
+                            project_name,
+                            [str(f) for f in batch_files],
+                        )
+                    )
+                    return (
+                        await self._process_file_batch_for_initial_embedding(
+                            batch_files, project_name, stored_metadata
+                        ),
+                        batch_index,
+                    )
+
+            # Create tasks for all batches
+            batch_tasks = []
+            for i in range(0, len(project_files), batch_size):
+                batch = project_files[i : i + batch_size]
+                batch_index = i // batch_size
+                task = process_batch_with_semaphore(batch, batch_index)
+                batch_tasks.append(task)
+
+            logger.info(
+                f"Processing {len(batch_tasks)} batches concurrently "
+                f"(max concurrent: {self.file_processing_semaphore._value})"
+            )
+
+            # Process all batches concurrently
+            batch_start_time = time.time()
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            total_batch_time = time.time() - batch_start_time
+
+            error_messages = []
+            # Aggregate results from all batches
+            successful_batches = 0
+            for result in batch_results:
+                if isinstance(result, Exception):
+                    logger.error(f"Batch processing failed with exception: {result}")
+                    # Estimate failed files (assuming average batch size)
+                    estimated_failed = min(
+                        batch_size, len(project_files) - processed_count
+                    )
+                    error_messages.append(f"Batch {batch_index} failed: {result}")
+                    stats["failed"] += estimated_failed
+                    processed_count += estimated_failed
+                elif isinstance(result, tuple):
+                    batch_stats, batch_index = result
+                    # Update aggregate stats
+                    stats["processed"] += batch_stats["processed"]
+                    stats["skipped"] += batch_stats["skipped"]
+                    stats["failed"] += batch_stats["failed"]
+                    processed_count += (
+                        batch_stats["processed"]
+                        + batch_stats["skipped"]
+                        + batch_stats["failed"]
+                    )
+                    successful_batches += 1
+                else:
+                    logger.warning(f"Unexpected batch result type: {type(result)}")
+
+            logger.info(
+                f"Concurrent batch processing completed in {total_batch_time:.2f}s: "
+                f"{successful_batches}/{len(batch_tasks)} batches successful"
+            )
+
+            # Handle deleted files - files that exist in vector DB but not locally
+            # Get all stored metadata for cleanup (not limited to specific batches)
+            all_stored_metadata = await self._vector_storage_service.get_file_metadata(
+                project_name
+            )
+            await self._cleanup_deleted_files(
+                project_name, project_files, all_stored_metadata, stats
+            )
+
+            logger.info(
+                f"Initial project embedding complete for {project_name}: "
+                f"scanned={stats['scanned']}, processed={stats['processed']}, "
+                f"skipped={stats['skipped']}, failed={stats['failed']}, deleted={stats.get('deleted', 0)}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error during initial project embedding for {project_name}: {e}"
+            )
+            stats["failed"] += 1
+
+        return stats
+
+    async def _process_file_batch_for_initial_embedding(
+        self,
+        file_batch: list[Path],
+        project_name: str,
+        stored_metadata: dict[str, float],
+    ) -> dict[str, int]:
+        """
+        Process a batch of files for initial embedding using true batch processing.
+
+        Args:
+            file_batch: List of file paths to process
+            project_name: Name of the project
+            stored_metadata: Dictionary of file_path -> mtime from vector database
+
+        Returns:
+            Dictionary with batch processing statistics
+        """
+        batch_stats = {"processed": 0, "skipped": 0, "failed": 0}
+
+        # Filter files that need processing based on mtime comparison
+        # TODO: remove comparing mtimes
+        files_to_process: list[Path] = []
+        for file_path in file_batch:
+            try:
+                current_mtime = file_path.stat().st_mtime
+                stored_mtime = stored_metadata.get(str(file_path), 0.0)
+                # Use epsilon comparison for floating point mtime
+                if abs(current_mtime - stored_mtime) > 0.001:
+                    files_to_process.append(file_path)
+                else:
+                    batch_stats["skipped"] += 1
+
+            except (OSError, FileNotFoundError) as e:
+                logger.warning(f"Failed to get mtime for {file_path}: {e}")
+                batch_stats["failed"] += 1
+
+        # Process files using true batch processing: chunk → embed → store
+        if files_to_process:
+            logger.info(
+                f"Batch processing {len(files_to_process)}/{len(file_batch)} files "
+                f"using true batch processing (chunk → embed → store)"
+            )
+
+            try:
+                batch_start_time = time.time()
+
+                # Step 1: Batch chunking for all files
+                logger.debug(f"Step 1: Chunking {len(files_to_process)} files")
+                chunking_start_time = time.time()
+
+                file_chunks = self._ast_chunker.chunk_multiple_files(
+                    [str(f) for f in files_to_process]
+                )
+
+                # Filter out files that failed to chunk
+                successful_files = {
+                    file_path: chunks
+                    for file_path, chunks in file_chunks.items()
+                    if chunks  # Only keep files with successful chunks
+                }
+                failed_chunking_count = len(files_to_process) - len(successful_files)
+
+                logger.debug(
+                    f"Chunking completed in {time.time() - chunking_start_time:.2f}s: "
+                    f"{len(successful_files)} files successful, {failed_chunking_count} failed"
+                )
+
+                if successful_files:
+                    # Step 2: Batch embedding for all chunks
+                    logger.debug(
+                        f"Step 2: Generating embeddings for {len(successful_files)} files"
+                    )
+                    embedding_start_time = time.time()
+
+                    file_embeddings = await self._embedding_service.generate_embeddings_for_multiple_files(
+                        successful_files, project_name
+                    )
+
+                    logger.debug(
+                        f"Embedding completed in {time.time() - embedding_start_time:.2f}s: "
+                        f"{len(file_embeddings)} files embedded"
+                    )
+
+                    # Step 3: Batch storage for all vectors
+                    if file_embeddings:
+                        logger.debug(
+                            f"Step 3: Storing vectors for {len(file_embeddings)} files"
+                        )
+                        storage_start_time = time.time()
+
+                        await self._vector_storage_service.store_embeddings_batch(
+                            file_embeddings, successful_files, project_name
+                        )
+
+                        logger.debug(
+                            f"Storage completed in {time.time() - storage_start_time:.2f}s"
+                        )
+
+                        # Update success count
+                        batch_stats["processed"] = len(file_embeddings)
+                    else:
+                        logger.warning(
+                            "No embeddings generated despite successful chunking"
+                        )
+
+                # Update failure count for chunking failures
+                batch_stats["failed"] += failed_chunking_count
+
+                total_batch_time = time.time() - batch_start_time
+                logger.debug(
+                    f"Batch processing completed in {total_batch_time:.2f}s: "
+                    f"{batch_stats['processed']} processed, {batch_stats['failed']} failed, "
+                    f"{batch_stats['skipped']} skipped"
+                )
+
+            except Exception as e:
+                logger.error(f"Batch processing failed: {e}", exc_info=True)
+                # Mark all files as failed if batch processing fails
+                batch_stats["failed"] += len(files_to_process)
+
+        return batch_stats
+
+    async def _cleanup_deleted_files(
+        self,
+        project_name: str,
+        existing_files: list[Path],
+        stored_metadata: dict[str, float],
+        stats: dict[str, int],
+    ) -> None:
+        """
+        Clean up files that exist in vector database but not locally (deleted files).
+
+        Args:
+            project_name: Name of the project
+            existing_files: List of files that exist locally
+            stored_metadata: Dictionary of file_path -> mtime from vector database
+            stats: Statistics dictionary to update
+        """
+        if not stored_metadata:
+            return
+
+        # Create set of existing file paths for efficient lookup
+        existing_file_paths = {str(file_path) for file_path in existing_files}
+
+        # Find files that exist in vector DB but not locally
+        deleted_files = []
+        for stored_file_path in stored_metadata.keys():
+            if stored_file_path not in existing_file_paths:
+                # Convert string path back to Path object for processing
+                deleted_file_path = Path(stored_file_path)
+                deleted_files.append(deleted_file_path)
+
+        if deleted_files:
+            logger.info(
+                f"Found {len(deleted_files)} deleted files to clean up from vector database"
+            )
+
+            # Initialize deleted count in stats
+            if "deleted" not in stats:
+                stats["deleted"] = 0
+
+            # Process each deleted file
+            for deleted_file_path in deleted_files:
+                try:
+                    # Create FileChange object for deleted file
+                    file_change = FileChange(
+                        path=deleted_file_path,
+                        change_type=ChangeType.DELETED,
+                        timestamp=time.time(),
+                    )
+
+                    # Create ProcessFileChangeTask for deletion
+                    task_item: ProcessFileChangeTask = {
+                        "type": VectorDaemonTaskType.PROCESS_FILE_CHANGE,
+                        "project_name": project_name,
+                        "change": file_change,
+                        "timestamp": time.time(),
+                    }
+
+                    # Process deletion using existing file change task logic
+                    await self._process_file_change_task(
+                        task_item, "initial-processing"
+                    )
+                    stats["deleted"] += 1
+
+                    logger.debug(f"Cleaned up deleted file: {deleted_file_path}")
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to clean up deleted file {deleted_file_path}: {e}"
+                    )
+                    stats["failed"] += 1
+        else:
+            logger.debug("No deleted files found during initial processing")
 
 
 async def start_vector_daemon(

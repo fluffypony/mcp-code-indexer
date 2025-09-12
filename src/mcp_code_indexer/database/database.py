@@ -27,9 +27,11 @@ from mcp_code_indexer.database.exceptions import (
 )
 from mcp_code_indexer.database.models import (
     FileDescription,
+    IndexMeta,
     Project,
     ProjectOverview,
     SearchResult,
+    SyncStatus,
     WordFrequencyResult,
     WordFrequencyTerm,
 )
@@ -742,20 +744,20 @@ class DatabaseManager:
 
     async def set_project_vector_mode(self, project_id: str, enabled: bool) -> None:
         """Set the vector_mode for a specific project."""
-        async with self.get_write_connection_with_retry("set_project_vector_mode") as db:
+        async with self.get_write_connection_with_retry(
+            "set_project_vector_mode"
+        ) as db:
             await db.execute(
                 "UPDATE projects SET vector_mode = ? WHERE id = ?",
                 (int(enabled), project_id),
             )
-            
+
             # Check if the project was actually updated
-            cursor = await db.execute(
-                "SELECT changes()"
-            )
+            cursor = await db.execute("SELECT changes()")
             changes = await cursor.fetchone()
             if changes[0] == 0:
                 raise ValueError(f"Project not found: {project_id}")
-            
+
             await db.commit()
             logger.debug(f"Set vector_mode={enabled} for project: {project_id}")
 
@@ -1338,6 +1340,186 @@ class DatabaseManager:
                 "overview": project_overview,
                 "files": file_descriptions,
             }
+
+    # IndexMeta operations
+    async def create_index_meta(self, index_meta: IndexMeta) -> None:
+        """Create or update index metadata for a project."""
+        async with self.get_write_connection_with_retry("create_index_meta") as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO index_meta (
+                    project_id, total_chunks, indexed_chunks, total_files, indexed_files,
+                    last_sync, sync_status, error_message, queue_depth, processing_rate,
+                    estimated_completion, metadata, created, last_modified
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    index_meta.project_id,
+                    index_meta.total_chunks,
+                    index_meta.indexed_chunks,
+                    index_meta.total_files,
+                    index_meta.indexed_files,
+                    index_meta.last_sync,
+                    index_meta.sync_status.value,
+                    index_meta.error_message,
+                    index_meta.queue_depth,
+                    index_meta.processing_rate,
+                    index_meta.estimated_completion,
+                    json.dumps(index_meta.metadata),
+                    index_meta.created,
+                    index_meta.last_modified,
+                ),
+            )
+            await db.commit()
+            logger.debug(
+                f"Created/updated index metadata for project: {index_meta.project_id}"
+            )
+
+    async def update_index_meta(self, index_meta: IndexMeta) -> None:
+        """Update existing index metadata for a project."""
+        async with self.get_write_connection_with_retry("update_index_meta") as db:
+            await db.execute(
+                """
+                UPDATE index_meta
+                SET total_chunks = ?, indexed_chunks = ?, total_files = ?, indexed_files = ?,
+                    last_sync = ?, sync_status = ?, error_message = ?, queue_depth = ?,
+                    processing_rate = ?, estimated_completion = ?, metadata = ?, last_modified = ?
+                WHERE project_id = ?
+                """,
+                (
+                    index_meta.total_chunks,
+                    index_meta.indexed_chunks,
+                    index_meta.total_files,
+                    index_meta.indexed_files,
+                    index_meta.last_sync,
+                    index_meta.sync_status.value,
+                    index_meta.error_message,
+                    index_meta.queue_depth,
+                    index_meta.processing_rate,
+                    index_meta.estimated_completion,
+                    json.dumps(index_meta.metadata),
+                    index_meta.last_modified,
+                    index_meta.project_id,
+                ),
+            )
+
+            # Check if the project was actually updated
+            cursor = await db.execute("SELECT changes()")
+            changes = await cursor.fetchone()
+            if changes[0] == 0:
+                raise ValueError(
+                    f"Index metadata not found for project: {index_meta.project_id}"
+                )
+
+            await db.commit()
+            logger.debug(f"Updated index metadata for project: {index_meta.project_id}")
+
+    async def get_index_meta(self, project_id: str) -> Optional[IndexMeta]:
+        """Retrieve index metadata for a project."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT * FROM index_meta WHERE project_id = ?", (project_id,)
+            )
+            row = await cursor.fetchone()
+
+            if row:
+                # Convert row to dict for easier field access
+                row_dict = dict(row)
+
+                # Parse JSON metadata field
+                metadata = (
+                    json.loads(row_dict["metadata"]) if row_dict["metadata"] else {}
+                )
+
+                # Parse datetime fields
+                created = (
+                    datetime.fromisoformat(row_dict["created"])
+                    if row_dict["created"]
+                    else datetime.utcnow()
+                )
+                last_modified = (
+                    datetime.fromisoformat(row_dict["last_modified"])
+                    if row_dict["last_modified"]
+                    else datetime.utcnow()
+                )
+                last_sync = (
+                    datetime.fromisoformat(row_dict["last_sync"])
+                    if row_dict["last_sync"]
+                    else None
+                )
+                estimated_completion = (
+                    datetime.fromisoformat(row_dict["estimated_completion"])
+                    if row_dict["estimated_completion"]
+                    else None
+                )
+
+                return IndexMeta(
+                    id=row_dict["id"],
+                    project_id=row_dict["project_id"],
+                    total_chunks=row_dict["total_chunks"],
+                    indexed_chunks=row_dict["indexed_chunks"],
+                    total_files=row_dict["total_files"],
+                    indexed_files=row_dict["indexed_files"],
+                    last_sync=last_sync,
+                    sync_status=row_dict["sync_status"],
+                    error_message=row_dict["error_message"],
+                    queue_depth=row_dict["queue_depth"],
+                    processing_rate=row_dict["processing_rate"],
+                    estimated_completion=estimated_completion,
+                    metadata=metadata,
+                    created=created,
+                    last_modified=last_modified,
+                )
+            return None
+
+    async def get_or_create_index_meta(self, project_id: str, **kwargs) -> IndexMeta:
+        """
+        Get existing index metadata or create new one with default values.
+        
+        Args:
+            project_id: Project identifier
+            **kwargs: Optional fields to override defaults when creating new metadata
+            
+        Returns:
+            IndexMeta object (existing or newly created)
+        """
+        # Try to get existing metadata first
+        existing_meta = await self.get_index_meta(project_id)
+        if existing_meta:
+            return existing_meta
+        
+        # Create new metadata with defaults, allowing kwargs to override
+        default_metadata = {
+            "project_id": project_id,
+            "total_chunks": 0,
+            "indexed_chunks": 0,
+            "total_files": 0,
+            "indexed_files": 0,
+            "last_sync": None,
+            "sync_status": SyncStatus.PENDING,
+            "error_message": None,
+            "queue_depth": 0,
+            "processing_rate": 0.0,
+            "estimated_completion": None,
+            "metadata": {},
+        }
+        
+        # Override defaults with provided kwargs
+        default_metadata.update(kwargs)
+        
+        # Create the IndexMeta object
+        new_meta = IndexMeta(**default_metadata)
+        
+        # Store it in the database
+        await self.create_index_meta(new_meta)
+        
+        # Return the created metadata (fetch it back to get the assigned ID)
+        result = await self.get_index_meta(project_id)
+        if result is None:
+            raise DatabaseError(f"Failed to create index metadata for project: {project_id}")
+        
+        return result
 
     # Cleanup operations
 

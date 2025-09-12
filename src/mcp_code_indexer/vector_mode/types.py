@@ -11,6 +11,7 @@ class VectorDaemonTaskType(Enum):
 
     SCAN_PROJECT = "scan_project"
     PROCESS_FILE_CHANGE = "process_file_change"
+    INITIAL_PROJECT_EMBEDDING = "initial_project_embedding"
 
 
 class BaseTask(TypedDict):
@@ -34,5 +35,12 @@ class ProcessFileChangeTask(BaseTask):
     change: "FileChange"  # Forward reference to avoid circular import
 
 
+class InitialProjectEmbeddingTask(BaseTask):
+    """Task for performing initial project embedding."""
+
+    type: Literal[VectorDaemonTaskType.INITIAL_PROJECT_EMBEDDING]
+    folder_path: str
+
+
 # Union type for all task types
-TaskItem = ScanProjectTask | ProcessFileChangeTask
+TaskItem = ScanProjectTask | ProcessFileChangeTask | InitialProjectEmbeddingTask

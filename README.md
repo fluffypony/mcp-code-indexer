@@ -208,6 +208,7 @@ mcp-code-indexer --vector --http --port 8080
 
 Vector Mode adds powerful new MCP tools:
 - `vector_search` - Semantic code search across projects
+- `find_similar_code` - Find code similar to a given snippet or file section
 - `similarity_search` - Find similar code patterns  
 - `dependency_search` - Discover code relationships
 - `vector_status` - Monitor indexing progress
@@ -268,7 +269,7 @@ mypy src/
 
 ## 🛠️ MCP Tools Available
 
-The server provides **11 powerful MCP tools** for intelligent codebase management. Whether you're an AI agent or human developer, these tools make navigating code effortless.
+The server provides **13 powerful MCP tools** for intelligent codebase management. Whether you're an AI agent or human developer, these tools make navigating code effortless.
 
 ### 🎯 Essential Tools (Start Here)
 | Tool | Purpose | When to Use |
@@ -291,6 +292,7 @@ The server provides **11 powerful MCP tools** for intelligent codebase managemen
 | **`get_word_frequency`** | Technical vocabulary analysis | Domain understanding |
 | **`update_codebase_overview`** | Create project documentation | Architecture documentation |
 | **`search_codebase_overview`** | Search in project overviews | Finding specific topics |
+| **`find_similar_code`** | Find code similar to snippet/section | Code pattern discovery (Vector Mode) |
 
 ### 🏥 System Health
 | Tool | Purpose | For |
@@ -299,7 +301,7 @@ The server provides **11 powerful MCP tools** for intelligent codebase managemen
 
 💡 **Pro Tip**: Always start with `check_codebase_size` to get personalized recommendations for navigating your specific codebase.
 
-**📖 Complete API Documentation**: [View all 11 tools with examples →](docs/api-reference.md)
+**📖 Complete API Documentation**: [View all 13 tools with examples →](docs/api-reference.md)
 
 ## 🔗 Git Hook Integration
 
@@ -363,7 +365,7 @@ Comprehensive documentation organized by user journey and expertise level.
 | Guide | Purpose | Time Investment |
 |-------|---------|-----------------|
 | **[Quick Start](#-quick-start)** | Install and run your first server | 2 minutes |
-| **[API Reference](docs/api-reference.md)** | Master all 12 MCP tools | 15 minutes |
+| **[API Reference](docs/api-reference.md)** | Master all 13 MCP tools | 15 minutes |
 | **[HTTP API Reference](docs/http-api.md)** | REST API for web applications | 10 minutes |
 | **[Q&A Interface](docs/qa-interface.md)** | AI-powered codebase analysis | 8 minutes |
 | **[Git Hook Setup](docs/git-hook-setup.md)** | Automate your workflow | 5 minutes |
@@ -387,7 +389,7 @@ Comprehensive documentation organized by user journey and expertise level.
 ### 📋 Quick References
 - **[Examples & Integrations](examples/)** - Ready-to-use configurations
 - **[Troubleshooting](#🚨-troubleshooting)** - Common issues & solutions
-- **[API Tools Summary](#🛠️-mcp-tools-available)** - All 11 tools at a glance
+- **[API Tools Summary](#🛠️-mcp-tools-available)** - All 13 tools at a glance
 
 **📚 Reading Paths:**
 - **New to MCP Code Indexer?** Quick Start → API Reference → HTTP API → Q&A Interface

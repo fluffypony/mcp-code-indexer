@@ -14,6 +14,9 @@ import uuid
 from typing import List, Dict, Any, Optional
 import turbopuffer
 
+
+from turbopuffer.types import Row
+
 from ..config import VectorConfig
 
 logger = logging.getLogger(__name__)
@@ -28,7 +31,6 @@ class TurbopufferClient:
 
         # Initialize official TurboPuffer client
         self.client = turbopuffer.Turbopuffer(api_key=api_key, region=region)
-        logger.info(f"Initialized TurboPuffer client with region {region}")
 
     def health_check(self) -> bool:
         """Check if Turbopuffer service is healthy."""
@@ -46,6 +48,7 @@ class TurbopufferClient:
         Raises:
             RuntimeError: If API access validation fails with specific error details
         """
+        logger.info("Validating Turbopuffer API access...")
         try:
             self.client.namespaces()
             logger.debug("Turbopuffer API access validated successfully")
@@ -112,12 +115,11 @@ class TurbopufferClient:
                 upsert_columns=data,
                 distance_metric="cosine_distance",  # Default metric TODO: which one to use?
             )
-
             # Log actual results from the response
             rows_affected = getattr(response, "rows_affected", len(vectors))
             logger.info(
-                f"Upsert operation completed: requested {len(vectors)} vectors, "
-                f"actually affected {rows_affected} rows"
+                f"Upsert operation completed: for namespace '{namespace}'. Requested {len(vectors)} vectors, "
+                f"actually affected {rows_affected} rows. Response status: {response.status}, response message: {response.message}"
             )
 
             return {"upserted": rows_affected}
@@ -126,60 +128,116 @@ class TurbopufferClient:
             logger.error(f"Failed to upsert vectors: {e}")
             raise RuntimeError(f"Vector upsert failed: {e}")
 
+    def upsert_vectors_batch(
+        self, all_vectors: List[Dict[str, Any]], namespace: str, **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Store or update vectors from multiple files in a single batch operation.
+
+        Args:
+            all_vectors: List of all vector dictionaries from multiple files
+            namespace: Target namespace for storage
+            **kwargs: Additional arguments for vector storage
+
+        Returns:
+            Dictionary with upsert results
+
+        Raises:
+            RuntimeError: If batch upsert fails
+        """
+        if not all_vectors:
+            return {"upserted": 0}
+
+        logger.info(
+            f"Batch upserting {len(all_vectors)} vectors to namespace '{namespace}'"
+        )
+
+        # Validate vector structure
+        if not all("id" in vector and "values" in vector for vector in all_vectors):
+            raise ValueError("Each vector must have 'id' and 'values' fields")
+
+        try:
+            # Process vectors in sub-batches to respect TurboPuffer limits
+            max_batch_size = 1000  # TurboPuffer recommended limit
+            total_upserted = 0
+
+            for i in range(0, len(all_vectors), max_batch_size):
+                sub_batch = all_vectors[i : i + max_batch_size]
+
+                logger.debug(
+                    f"Processing sub-batch {i//max_batch_size + 1}: {len(sub_batch)} vectors"
+                )
+
+                # Build columnar data structure for this sub-batch
+                data = {
+                    "id": [str(vector["id"]) for vector in sub_batch],
+                    "vector": [vector["values"] for vector in sub_batch],
+                }
+
+                # Add metadata attributes as separate columns
+                all_metadata_keys = set()
+                for vector in sub_batch:
+                    metadata = vector.get("metadata", {})
+                    all_metadata_keys.update(metadata.keys())
+
+                # Add each metadata attribute as a column
+                for key in all_metadata_keys:
+                    data[key] = [
+                        vector.get("metadata", {}).get(key) for vector in sub_batch
+                    ]
+
+                # Upsert this sub-batch
+                ns = self.client.namespace(namespace)
+                response = ns.write(
+                    upsert_columns=data,
+                    distance_metric="cosine_distance",
+                )
+
+                rows_affected = getattr(response, "rows_affected", len(sub_batch))
+                total_upserted += rows_affected
+
+                logger.debug(
+                    f"Sub-batch {i//max_batch_size + 1} upserted: "
+                    f"requested {len(sub_batch)}, affected {rows_affected} rows"
+                )
+
+            logger.info(
+                f"Batch upsert operation completed for namespace '{namespace}'. "
+                f"Requested {len(all_vectors)} vectors, actually affected {total_upserted} rows"
+            )
+
+            return {"upserted": total_upserted}
+
+        except Exception as e:
+            logger.error(f"Failed to batch upsert vectors: {e}")
+            raise RuntimeError(f"Batch vector upsert failed: {e}")
+
     def search_vectors(
         self,
         query_vector: List[float],
         top_k: int = 10,
         namespace: str = "default",
-        filters: Optional[Dict[str, Any]] = None,
+        filters: turbopuffer.types.Filter | turbopuffer.NotGiven = turbopuffer.NotGiven,
         **kwargs,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Row] | None:
         """Search for similar vectors."""
-        logger.debug(f"Searching {top_k} vectors in namespace '{namespace}'")
+        logger.info(f"Searching {top_k} vectors in namespace '{namespace}'")
 
         try:
             ns = self.client.namespace(namespace)
-
-            # Convert filters to proper tuple format for v0.5+
-            query_filters = None
-            if filters:
-                # Convert dict filters to turbopuffer filter format
-                filter_conditions = []
-                for key, value in filters.items():
-                    filter_conditions.append((key, "Eq", value))
-
-                if len(filter_conditions) == 1:
-                    query_filters = filter_conditions[0]
-                else:
-                    query_filters = ("And", tuple(filter_conditions))
-
             results = ns.query(
                 rank_by=("vector", "ANN", query_vector),  # Use tuple format for v0.5+
                 top_k=top_k,
-                filters=query_filters,
-                include_attributes=True,
+                filters=filters,
+                exclude_attributes=["vector"],
             )
-
-            # Convert results to expected format
+            # Return only rows if present, otherwise None
             if hasattr(results, "rows") and results.rows:
-                formatted_results = []
-                for row in results.rows:
-                    formatted_results.append(
-                        {
-                            "id": row.id,
-                            "score": getattr(row, "$dist", 0.0),  # Distance as score
-                            "metadata": {
-                                k: v
-                                for k, v in row.__dict__.items()
-                                if k not in ["id", "vector", "$dist"]
-                            },
-                        }
-                    )
-                logger.debug(f"Found {len(formatted_results)} similar vectors")
-                return formatted_results
+                logger.debug(f"Found {len(results.rows)} similar vectors")
+                return results.rows
             else:
                 logger.debug("Found 0 similar vectors")
-                return []
+                return None
 
         except Exception as e:
             logger.error(f"Vector search failed: {e}")
@@ -223,38 +281,19 @@ class TurbopufferClient:
             logger.error(f"Failed to list namespaces: {e}")
             raise RuntimeError(f"Namespace listing failed: {e}")
 
-    def create_namespace(
-        self, namespace: str, dimension: int, **kwargs
-    ) -> Dict[str, Any]:
-        """Create a new namespace - handled implicitly by Turbopuffer."""
-        logger.info(
-            f"Namespace '{namespace}' will be created automatically on first write "
-            f"(dimension: {dimension})"
-        )
-
-        # Turbopuffer creates namespaces implicitly when data is first written
-        # No explicit creation is needed or supported
-        logger.debug("Turbopuffer creates namespaces implicitly on first data write")
-        return {"name": namespace, "dimension": dimension, "created_implicitly": True}
-
     def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace and all its vectors."""
         logger.warning(f"Deleting namespace '{namespace}' and all its vectors")
-
         try:
             ns = self.client.namespace(namespace)
-
             # Use delete_all method to delete the namespace (v0.5+ API)
             response = ns.delete_all()
 
-            # Log actual results from the response
-            rows_affected = getattr(response, "rows_affected", 0)
             logger.info(
                 f"Namespace deletion completed: '{namespace}' deleted, "
-                f"affected {rows_affected} rows"
+                f"status: {response.status}, "
             )
-
-            return {"deleted": namespace, "rows_affected": rows_affected}
+            return {"deleted": namespace}
 
         except Exception as e:
             logger.error(f"Failed to delete namespace: {e}")
@@ -331,16 +370,25 @@ class TurbopufferClient:
         file_path: Optional[str] = None,
         top_k: int = 10,
         **kwargs,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Row] | None:
         """Search vectors with metadata filtering."""
         namespace = self.get_namespace_for_project(project_id)
 
-        # Build metadata filters
-        filters = {"project_id": project_id}
+        # Build metadata filters using tuple format (compatible with TurboPuffer v0.5+ API)
+        filter_conditions = [("project_id", "Eq", project_id)]
+
         if chunk_type:
-            filters["chunk_type"] = chunk_type
+            filter_conditions.append(("chunk_type", "Eq", chunk_type))
         if file_path:
-            filters["file_path"] = file_path
+            filter_conditions.append(("file_path", "Eq", file_path))
+
+        # Use appropriate filter format based on number of conditions
+        if len(filter_conditions) == 1:
+            # Single condition - use simple tuple format
+            filters = filter_conditions[0]
+        else:
+            # Multiple conditions - use And format
+            filters = ("And", filter_conditions)
 
         return self.search_vectors(
             query_vector=query_vector,
