@@ -7,9 +7,8 @@ handling text preparation, batching, and provider communication.
 
 import asyncio
 import logging
-import time
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Tuple
 
 from ..chunking.ast_chunker import CodeChunk
 from ..providers.voyage_client import VoyageClient
@@ -242,6 +241,7 @@ class EmbeddingService:
                         all_texts=all_texts,
                         file_boundaries=file_boundaries,
                         input_type="document",  # Code chunks are documents
+                        max_tokens_per_batch=self.config.voyage_max_tokens_per_batch,
                     ),
                 )
 

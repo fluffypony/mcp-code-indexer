@@ -284,3 +284,98 @@ class TestEmbeddingService:
         # Service creation should fail
         with pytest.raises(RuntimeError, match="API validation failed"):
             EmbeddingService(mock_voyage_client, config)
+
+    async def test_generate_embeddings_for_multiple_files_success(
+        self, embedding_service, mock_voyage_client, sample_chunks, config
+    ):
+        """Test successful batch embedding generation for multiple files."""
+        project_name = "test_project"
+        file_chunks = {
+            "/test/file1.py": sample_chunks[:1],  # First chunk
+            "/test/file2.py": sample_chunks[1:],  # Second chunk
+        }
+
+        # Mock estimate_cost to return tokens under the limit
+        mock_voyage_client.estimate_cost.return_value = {
+            "total_tokens": 1000,  # Under the 120k limit
+            "total_texts": 2
+        }
+
+        # Mock VoyageClient batch response
+        embedding_dim = config.get_embedding_dimensions()
+        third_dim = embedding_dim // 3
+        mock_voyage_client.generate_embeddings_batch.return_value = {
+            "/test/file1.py": [[0.1, 0.2, 0.3] * third_dim],
+            "/test/file2.py": [[0.4, 0.5, 0.6] * third_dim],
+        }
+
+        file_embeddings = await embedding_service.generate_embeddings_for_multiple_files(
+            file_chunks, project_name
+        )
+
+        # Verify embeddings were returned for all files
+        assert len(file_embeddings) == 2
+        assert "/test/file1.py" in file_embeddings
+        assert "/test/file2.py" in file_embeddings
+        assert len(file_embeddings["/test/file1.py"]) == 1
+        assert len(file_embeddings["/test/file2.py"]) == 1
+
+        # Verify VoyageClient was called correctly
+        mock_voyage_client.generate_embeddings_batch.assert_called_once()
+        call_args = mock_voyage_client.generate_embeddings_batch.call_args
+        assert call_args[1]["input_type"] == "document"
+        assert call_args[1]["max_tokens_per_batch"] == config.voyage_max_tokens_per_batch
+
+    async def test_generate_embeddings_for_multiple_files_empty(
+        self, embedding_service, mock_voyage_client
+    ):
+        """Test handling of empty file chunks dictionary."""
+        project_name = "test_project"
+        file_chunks = {}
+
+        file_embeddings = await embedding_service.generate_embeddings_for_multiple_files(
+            file_chunks, project_name
+        )
+
+        # Should return empty dictionary
+        assert file_embeddings == {}
+        # VoyageClient should not be called
+        mock_voyage_client.generate_embeddings_batch.assert_not_called()
+
+    async def test_generate_embeddings_for_multiple_files_token_limit_exceeded(
+        self, embedding_service, mock_voyage_client, sample_chunks, config
+    ):
+        """Test token-based sub-batching when token limit is exceeded."""
+        project_name = "test_project"
+        file_chunks = {
+            "/test/file1.py": sample_chunks[:1],
+            "/test/file2.py": sample_chunks[1:],
+        }
+
+        # Mock estimate_cost to return tokens over the limit
+        mock_voyage_client.estimate_cost.return_value = {
+            "total_tokens": 150000,  # Over the 120k limit
+            "total_texts": 2
+        }
+
+        # Mock VoyageClient batch response for token-based batching
+        embedding_dim = config.get_embedding_dimensions()
+        third_dim = embedding_dim // 3
+        mock_voyage_client.generate_embeddings_batch.return_value = {
+            "/test/file1.py": [[0.1, 0.2, 0.3] * third_dim],
+            "/test/file2.py": [[0.4, 0.5, 0.6] * third_dim],
+        }
+
+        file_embeddings = await embedding_service.generate_embeddings_for_multiple_files(
+            file_chunks, project_name
+        )
+
+        # Verify embeddings were returned for all files
+        assert len(file_embeddings) == 2
+        assert "/test/file1.py" in file_embeddings
+        assert "/test/file2.py" in file_embeddings
+
+        # Verify VoyageClient batch was called with token limit
+        mock_voyage_client.generate_embeddings_batch.assert_called_once()
+        call_args = mock_voyage_client.generate_embeddings_batch.call_args
+        assert call_args[1]["max_tokens_per_batch"] == config.voyage_max_tokens_per_batch

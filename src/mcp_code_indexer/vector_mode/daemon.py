@@ -10,11 +10,9 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 import time
 import time
-
-from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
 
 from ..database.database import DatabaseManager
 from ..database.models import Project, SyncStatus
@@ -275,9 +273,7 @@ class VectorDaemon:
         try:
             # Get or create IndexMeta for the project
             index_meta = await self.db_manager.get_or_create_index_meta(project_name)
-            _write_debug_log(
-                f"Initial embedding started for {project_name}, current status: {index_meta.sync_status.value}"
-            )
+
             # If status is 'failed' or 'paused', change it to 'pending'
             if index_meta.sync_status in [SyncStatus.FAILED, SyncStatus.PAUSED]:
                 logger.info(
@@ -297,7 +293,6 @@ class VectorDaemon:
 
                 try:
                     await self.processing_queue.put(task)
-                    _write_debug_log(f"Queued initial embedding for {project_name}")
                     logger.debug(f"Queued initial project embedding: {project_name}")
                 except asyncio.QueueFull:
                     logger.warning(
@@ -355,8 +350,8 @@ class VectorDaemon:
 
     async def _process_task(self, task: dict, worker_id: str) -> None:
         """Process a queued task."""
+        logger.debug(f"Worker {worker_id} processing task: {task_type}")
         task_type = task.get("type")
-        _write_debug_log(f"Processing task: {task}")
 
         if task_type == VectorDaemonTaskType.SCAN_PROJECT:
             await self._process_project_scan(task, worker_id)
@@ -470,9 +465,6 @@ class VectorDaemon:
         except Exception as e:
             logger.error(
                 f"Worker {worker_id}: Error processing initial embedding for {project_name}: {e}"
-            )
-            _write_debug_log(
-                f"Error processing initial embedding for {project_name}: {e}"
             )
 
             # Update IndexMeta status to failed on error
