@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Tuple
 
-from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 
 from ..chunking.ast_chunker import CodeChunk
 from ..providers.voyage_client import VoyageClient
@@ -305,9 +305,6 @@ class EmbeddingService:
             logger.debug(
                 f"File {file_path}: {len(file_texts)} texts, {file_tokens} tokens"
             )
-            _write_debug_log(
-                f"File {file_path}: {len(file_texts)} texts, {file_tokens} tokens"
-            )
 
             # If adding this file would exceed token limit OR text count limit, finalize current batch
             if (
@@ -332,11 +329,6 @@ class EmbeddingService:
                     f"{current_batch_tokens} tokens (limit exceeded: "
                     f"tokens={token_exceeded}, count={count_exceeded})"
                 )
-                _write_debug_log(
-                    f"BATCH ANALYSIS: current_batch_texts={len(current_batch_texts)}, "
-                    f"file_texts={len(file_texts)}, total={len(current_batch_texts) + len(file_texts)}, "
-                    f"limit={self.config.voyage_batch_size_limit}"
-                )
 
                 batches.append((current_batch_texts, current_batch_boundaries))
 
@@ -353,11 +345,6 @@ class EmbeddingService:
             current_batch_boundaries.append((file_path, start_idx, end_idx))
             current_batch_tokens += file_tokens
             batch_idx = end_idx
-
-            _write_debug_log(
-                f"AFTER ADDING: batch now has {len(current_batch_texts)} texts, "
-                f"{current_batch_tokens} tokens"
-            )
 
         # Add final batch if it has content
         if current_batch_texts:

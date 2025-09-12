@@ -10,8 +10,6 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
-
 from turbopuffer.types import Row
 
 from ..chunking.ast_chunker import CodeChunk

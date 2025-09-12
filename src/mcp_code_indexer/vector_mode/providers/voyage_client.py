@@ -9,7 +9,7 @@ import logging
 from typing import List, Dict, Any, Tuple
 import voyageai
 
-from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 
 from ..config import VectorConfig, DEFAULT_EMBEDDING_MODEL
 from ..const import MODEL_DIMENSIONS
@@ -93,11 +93,6 @@ class VoyageClient:
 
         logger.info(f"Generating embeddings for {len(texts)} texts using {self.model}")
 
-        _write_debug_log(
-            f"generating embeddings, estimated cost: {self.count_tokens(texts)}. len(texts)={len(texts)}"
-        )
-        _write_debug_log(f"sample text: {texts[0][:100]}...")
-
         try:
             result = self.client.embed(
                 texts=texts, model=self.model, input_type=input_type, truncation=True
@@ -111,7 +106,6 @@ class VoyageClient:
             return result.embeddings
 
         except Exception as e:
-            _write_debug_log(f"Failed to generate embeddings: {e}")
             logger.error(f"Failed to generate embeddings: {e}")
             raise RuntimeError(f"Embedding generation failed: {e}")
 

@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Set
 import time
 import time
 
-from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 
 from ..database.database import DatabaseManager
 from ..database.models import Project, SyncStatus
@@ -275,7 +275,6 @@ class VectorDaemon:
         try:
             # Get or create IndexMeta for the project
             index_meta = await self.db_manager.get_or_create_index_meta(project_name)
-            _write_debug_log(f"Retrieved IndexMeta for {project_name}: {index_meta}")
 
             # If status is 'failed' or 'paused', change it to 'pending'
             if index_meta.sync_status in [SyncStatus.FAILED, SyncStatus.PAUSED]:
@@ -287,7 +286,6 @@ class VectorDaemon:
 
             # Only queue initial embedding if status is 'pending'
             if index_meta.sync_status == SyncStatus.PENDING:
-                _write_debug_log(f"Retrieved IndexMeta for {project_name}: 1")
                 task: InitialProjectEmbeddingTask = {
                     "type": VectorDaemonTaskType.INITIAL_PROJECT_EMBEDDING,
                     "project_name": project_name,
@@ -442,18 +440,15 @@ class VectorDaemon:
         logger.info(
             f"Worker {worker_id}: Starting initial project embedding for {project_name}"
         )
-        _write_debug_log(f"Retrieved IndexMeta for {project_name}: 2")
         try:
             # Update IndexMeta status to in_progress
             index_meta = await self.db_manager.get_or_create_index_meta(project_name)
             index_meta.sync_status = SyncStatus.IN_PROGRESS
             await self.db_manager.update_index_meta(index_meta)
-            _write_debug_log(f"Retrieved IndexMeta for {project_name}: 3")
             # Perform the actual embedding
             stats = await self._perform_initial_project_embedding(
                 project_name, folder_path
             )
-            _write_debug_log(f"Retrieved IndexMeta for {project_name}: 4")
 
             # Update IndexMeta status to completed on success
             index_meta = await self.db_manager.get_or_create_index_meta(project_name)
@@ -465,10 +460,6 @@ class VectorDaemon:
             else:
                 index_meta.sync_status = SyncStatus.COMPLETED
                 index_meta.error_message = None
-
-            _write_debug_log(
-                f"Retrieved IndexMeta for {project_name}: {index_meta.sync_status.value}"
-            )
 
             index_meta.last_sync = datetime.utcnow()
             index_meta.total_files = stats.get("scanned", 0)
@@ -495,9 +486,6 @@ class VectorDaemon:
             except Exception as meta_error:
                 logger.error(
                     f"Failed to update IndexMeta after embedding error: {meta_error}"
-                )
-                _write_debug_log(
-                    f"Retrieved IndexMeta for {project_name}: error: {meta_error}"
                 )
 
             self.stats["errors_count"] += 1
@@ -803,9 +791,6 @@ class VectorDaemon:
             for result in batch_results:
                 if isinstance(result, Exception):
                     logger.error(f"Batch processing failed with exception: {result}")
-                    _write_debug_log(
-                        f"Batch processing failed with exception: {result}"
-                    )
                     # Estimate failed files (assuming average batch size)
                     estimated_failed = min(
                         batch_size, len(project_files) - processed_count
@@ -849,7 +834,6 @@ class VectorDaemon:
             )
 
         except Exception as e:
-            _write_debug_log(f"Error during initial embedding: {e}")
             logger.error(
                 f"Error during initial project embedding for {project_name}: {e}"
             )

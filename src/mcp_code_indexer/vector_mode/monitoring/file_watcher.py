@@ -7,7 +7,7 @@ for the vector mode indexing pipeline.
 
 import asyncio
 import logging
-from .utils import _write_debug_log
+
 from pathlib import Path
 from typing import Callable, Optional, List, Dict, Any
 import time

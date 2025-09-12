@@ -562,7 +562,7 @@ class TestVectorStorageService:
             query_vector=[0.0] * embedding_dim,  # dummy vector with embedding_dimension
             top_k=1200,
             namespace="mcp_code_test_project",
-            filters=(("project_id", "Eq", project_name),),
+            filters=("project_id", "Eq", project_name),
         )
 
     async def test_get_file_metadata_specific_files(
@@ -761,5 +761,5 @@ class TestVectorStorageService:
             query_vector=[0.0] * embedding_dim,
             top_k=1200,
             namespace="mcp_code_test_project",
-            filters=(("project_id", "Eq", project_name),),
+            filters=("project_id", "Eq", project_name),
         )
