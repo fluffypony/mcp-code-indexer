@@ -8,13 +8,16 @@ Handles embedding generation, change detection, and vector database synchronizat
 import asyncio
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import time
 import time
 
+from mcp_code_indexer.vector_mode.monitoring.utils import _write_debug_log
+
 from ..database.database import DatabaseManager
-from ..database.models import Project
+from ..database.models import Project, SyncStatus
 from .config import VectorConfig, load_vector_config
 from .monitoring.file_watcher import create_file_watcher, FileWatcher
 from .providers.voyage_client import VoyageClient, create_voyage_client
@@ -29,6 +32,7 @@ from .types import (
     ScanProjectTask,
     VectorDaemonTaskType,
     ProcessFileChangeTask,
+    InitialProjectEmbeddingTask,
 )
 
 logger = logging.getLogger(__name__)
@@ -238,7 +242,10 @@ class VectorDaemon:
                     # Use first alias as folder path
                     folder_path = project.aliases[0]
 
-                    # Queue initial indexing task
+                    # Queue initial indexing task based on IndexMeta status
+                    await self._queue_full_project_indexing(project.name, folder_path)
+
+                    # Queue project scan for file watching
                     await self._queue_project_scan(project.name, folder_path)
 
                 # Remove projects from monitoring
@@ -255,6 +262,53 @@ class VectorDaemon:
                 logger.error(f"Error in project monitoring: {e}")
                 self.stats["errors_count"] += 1
                 await asyncio.sleep(5.0)  # Back off on error
+
+    async def _queue_full_project_indexing(
+        self, project_name: str, folder_path: str
+    ) -> None:
+        """
+        Queue full project indexing based on IndexMeta status.
+
+        Retrieves IndexMeta for the project and queues initial embedding task
+        only if sync_status is 'pending'. Updates status from 'failed' or 'paused' to 'pending'.
+        """
+        try:
+            # Get or create IndexMeta for the project
+            index_meta = await self.db_manager.get_or_create_index_meta(project_name)
+            _write_debug_log(
+                f"Initial embedding started for {project_name}, current status: {index_meta.sync_status.value}"
+            )
+            # If status is 'failed' or 'paused', change it to 'pending'
+            if index_meta.sync_status in [SyncStatus.FAILED, SyncStatus.PAUSED]:
+                logger.info(
+                    f"Changing sync status from {index_meta.sync_status.value} to pending for {project_name}"
+                )
+                index_meta.sync_status = SyncStatus.PENDING
+                await self.db_manager.update_index_meta(index_meta)
+
+            # Only queue initial embedding if status is 'pending'
+            if index_meta.sync_status == SyncStatus.PENDING:
+                task: InitialProjectEmbeddingTask = {
+                    "type": VectorDaemonTaskType.INITIAL_PROJECT_EMBEDDING,
+                    "project_name": project_name,
+                    "folder_path": folder_path,
+                    "timestamp": time.time(),
+                }
+
+                try:
+                    await self.processing_queue.put(task)
+                    _write_debug_log(f"Queued initial embedding for {project_name}")
+                    logger.debug(f"Queued initial project embedding: {project_name}")
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"Processing queue full, dropping initial embedding task for {project_name}"
+                    )
+            else:
+                logger.debug(
+                    f"Skipping initial embedding for {project_name}, status: {index_meta.sync_status.value}"
+                )
+        except Exception as e:
+            logger.error(f"Error queuing full project indexing for {project_name}: {e}")
 
     async def _queue_project_scan(self, project_name: str, folder_path: str) -> None:
         """Queue a project for scanning and indexing."""
@@ -302,11 +356,14 @@ class VectorDaemon:
     async def _process_task(self, task: dict, worker_id: str) -> None:
         """Process a queued task."""
         task_type = task.get("type")
+        _write_debug_log(f"Processing task: {task}")
 
         if task_type == VectorDaemonTaskType.SCAN_PROJECT:
             await self._process_project_scan(task, worker_id)
         elif task_type == VectorDaemonTaskType.PROCESS_FILE_CHANGE:
             await self._process_file_change_task(task, worker_id)
+        elif task_type == VectorDaemonTaskType.INITIAL_PROJECT_EMBEDDING:
+            await self._process_initial_project_embedding_task(task, worker_id)
         else:
             logger.warning(f"Unknown task type: {task_type}")
 
@@ -376,6 +433,63 @@ class VectorDaemon:
             )
             self.stats["errors_count"] += 1
 
+    async def _process_initial_project_embedding_task(
+        self, task: InitialProjectEmbeddingTask, worker_id: str
+    ) -> None:
+        """Process an initial project embedding task."""
+        project_name: str = task["project_name"]
+        folder_path: str = task["folder_path"]
+
+        logger.info(
+            f"Worker {worker_id}: Starting initial project embedding for {project_name}"
+        )
+
+        try:
+            # Update IndexMeta status to in_progress
+            index_meta = await self.db_manager.get_or_create_index_meta(project_name)
+            index_meta.sync_status = SyncStatus.IN_PROGRESS
+            await self.db_manager.update_index_meta(index_meta)
+
+            # Perform the actual embedding
+            stats = await self._perform_initial_project_embedding(
+                project_name, folder_path
+            )
+
+            # Update IndexMeta status to completed on success
+            index_meta = await self.db_manager.get_or_create_index_meta(project_name)
+            index_meta.sync_status = SyncStatus.COMPLETED
+            index_meta.last_sync = datetime.utcnow()
+            index_meta.total_files = stats.get("scanned", 0)
+            index_meta.indexed_files = stats.get("processed", 0)
+            await self.db_manager.update_index_meta(index_meta)
+
+            logger.info(
+                f"Worker {worker_id}: Successfully completed initial embedding for {project_name}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Worker {worker_id}: Error processing initial embedding for {project_name}: {e}"
+            )
+            _write_debug_log(
+                f"Error processing initial embedding for {project_name}: {e}"
+            )
+
+            # Update IndexMeta status to failed on error
+            try:
+                index_meta = await self.db_manager.get_or_create_index_meta(
+                    project_name
+                )
+                index_meta.sync_status = SyncStatus.FAILED
+                index_meta.error_message = str(e)
+                await self.db_manager.update_index_meta(index_meta)
+            except Exception as meta_error:
+                logger.error(
+                    f"Failed to update IndexMeta after embedding error: {meta_error}"
+                )
+
+            self.stats["errors_count"] += 1
+
     async def _process_project_scan(self, task: dict, worker_id: str) -> None:
         """Process a project scan task."""
         project_name = task["project_name"]
@@ -390,24 +504,6 @@ class VectorDaemon:
 
             # Use project-specific lock to prevent race conditions
             async with self.watcher_locks[project_name]:
-                # Perform initial project embedding before starting file watcher
-                try:
-                    logger.info(
-                        f"Starting initial project embedding for {project_name}"
-                    )
-                    start_time = time.time()
-                    await self._perform_initial_project_embedding(
-                        project_name, folder_path
-                    )
-                    logger.debug(
-                        f"Initial project embedding completed for {project_name} in {time.time() - start_time:.2f} seconds"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Initial project embedding failed for {project_name}: {e}"
-                    )
-                    # Continue with watcher setup even if initial embedding fails
-
                 # Check if file watcher already exists for this project
                 if project_name not in self.file_watchers:
                     logger.info(
