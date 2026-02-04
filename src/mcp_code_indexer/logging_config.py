@@ -34,9 +34,10 @@ def setup_logging(
     Returns:
         Configured root logger
     """
-    # Get root logger
+    # Get root logger - set to DEBUG so all logs reach handlers.
+    # Each handler filters to its own level.
     root_logger = logging.getLogger()
-    root_logger.setLevel(getattr(logging, log_level.upper()))
+    root_logger.setLevel(logging.DEBUG)
 
     # Clear existing handlers
     root_logger.handlers.clear()
@@ -44,8 +45,8 @@ def setup_logging(
     # Console handler (stderr to avoid interfering with MCP stdout)
     console_handler = logging.StreamHandler(sys.stderr)
     # Force console logging to at least WARNING to prevent stderr buffer blocking
-    # when MCP clients don't consume stderr fast enough. File logging still uses
-    # the requested level for detailed diagnostics.
+    # when MCP clients don't consume stderr fast enough. File logging captures
+    # everything (DEBUG+) for detailed diagnostics.
     requested_level = getattr(logging, log_level.upper())
     console_handler.setLevel(max(requested_level, logging.WARNING))
 
