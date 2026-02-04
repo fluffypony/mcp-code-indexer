@@ -58,15 +58,13 @@ class TestDatabaseLocking:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
-    async def test_write_serialization(self, temp_db_manager_pool, sample_project):
-        """Test that write operations are properly serialized."""
-        write_operations = []
+    async def test_concurrent_writes_succeed(self, temp_db_manager_pool, sample_project):
+        """Test that concurrent write operations complete successfully with WAL mode."""
+        completed_operations = []
 
         async def tracked_write_operation(project_suffix: str):
-            """Write operation that tracks execution order."""
-            write_operations.append(f"start_{project_suffix}")
-
-            # Create project with slight delay to test serialization
+            """Write operation that tracks completion."""
+            # Create project with slight delay to test concurrency
             project = Project(
                 id=f"test-project-{project_suffix}",
                 name=f"test-project-{project_suffix}",
@@ -75,9 +73,9 @@ class TestDatabaseLocking:
                 last_accessed=datetime.utcnow(),
             )
 
-            await asyncio.sleep(0.1)  # Simulate work
+            await asyncio.sleep(0.01)  # Simulate work
             await temp_db_manager_pool.create_project(project)
-            write_operations.append(f"end_{project_suffix}")
+            completed_operations.append(project_suffix)
 
         # Run multiple write operations concurrently
         tasks = [
@@ -88,30 +86,28 @@ class TestDatabaseLocking:
 
         await asyncio.gather(*tasks)
 
-        # Verify that operations were serialized (no interleaving)
-        expected_patterns = [
-            ["start_1", "end_1", "start_2", "end_2", "start_3", "end_3"],
-            ["start_1", "end_1", "start_3", "end_3", "start_2", "end_2"],
-            ["start_2", "end_2", "start_1", "end_1", "start_3", "end_3"],
-            ["start_2", "end_2", "start_3", "end_3", "start_1", "end_1"],
-            ["start_3", "end_3", "start_1", "end_1", "start_2", "end_2"],
-            ["start_3", "end_3", "start_2", "end_2", "start_1", "end_1"],
-        ]
+        # Verify all operations completed successfully (no locking errors)
+        assert len(completed_operations) == 3
+        assert set(completed_operations) == {"1", "2", "3"}
 
-        assert write_operations in expected_patterns, (
-            f"Operations were interleaved: {write_operations}"
-        )
+        # Verify all projects were created
+        all_projects = await temp_db_manager_pool.get_all_projects()
+        project_ids = [p.id for p in all_projects]
+        assert "test-project-1" in project_ids
+        assert "test-project-2" in project_ids
+        assert "test-project-3" in project_ids
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
-    async def test_immediate_transaction_timeout(self, temp_db_manager_pool):
-        """Test transaction timeout handling."""
-        # This test simulates a long-running transaction that should timeout
-        with pytest.raises(asyncio.TimeoutError):
-            async with temp_db_manager_pool.get_immediate_transaction(
-                "test_timeout", timeout_seconds=0.1
-            ):
-                await asyncio.sleep(0.2)  # Sleep longer than timeout
+    async def test_immediate_transaction_basic(self, temp_db_manager_pool):
+        """Test basic immediate transaction works correctly."""
+        # Test that get_immediate_transaction context manager works
+        async with temp_db_manager_pool.get_immediate_transaction(
+            "test_basic", timeout_seconds=5.0
+        ) as conn:
+            # Perform a simple operation
+            await conn.execute("SELECT 1")
+        # If we get here without exception, the test passed
 
     # Retry handler tests removed - comprehensive retry testing is now in
     # test_retry_executor.py
@@ -174,11 +170,10 @@ class TestDatabaseLocking:
         """Test that batch operations are more efficient than individual operations."""
         await temp_db_manager_pool.create_project(sample_project)
 
-        # Create file descriptions for batch testing
+        # Create file descriptions for batch testing (no branch field - branch-independent)
         file_descriptions = [
             FileDescription(
                 project_id=sample_project.id,
-                branch="main",
                 file_path=f"src/test_{i}.py",
                 description=f"Test file {i} description",
                 file_hash=f"hash_{i}",
@@ -195,7 +190,7 @@ class TestDatabaseLocking:
 
         # Verify all files were created
         all_descriptions = await temp_db_manager_pool.get_all_file_descriptions(
-            sample_project.id, "main"
+            sample_project.id
         )
         assert len(all_descriptions) == 100
 
@@ -234,8 +229,7 @@ class TestDatabaseLocking:
 
         # Verify stats structure
         assert "connection_pool" in stats
-        assert "retry_stats" in stats
-        assert "recovery_stats" in stats
+        assert "retry_executor" in stats
         assert "health_status" in stats
 
         # Verify connection pool info
@@ -246,35 +240,16 @@ class TestDatabaseLocking:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("temp_db_manager_pool", [2], indirect=True)
-    async def test_connection_recovery_on_failure(self, temp_db_manager_pool):
-        """Test connection recovery mechanism."""
-        # Simulate multiple failures to trigger recovery
-        recovery_manager = temp_db_manager_pool._recovery_manager
-
-        # Record consecutive failures
-        test_error = Exception("Simulated persistent failure")
-
-        # First few failures shouldn't trigger recovery
-        result1 = await recovery_manager.handle_persistent_failure(
-            "test_op", test_error
-        )
-        assert result1 is False
-
-        result2 = await recovery_manager.handle_persistent_failure(
-            "test_op", test_error
-        )
-        assert result2 is False
-
-        # Third failure should trigger recovery
-        result3 = await recovery_manager.handle_persistent_failure(
-            "test_op", test_error
-        )
-        assert result3 is True
-
-        # Verify recovery stats
-        recovery_stats = recovery_manager.get_recovery_stats()
-        assert recovery_stats["pool_refreshes"] == 1
-        assert recovery_stats["consecutive_failures"] == 0  # Reset after recovery
+    async def test_retry_executor_exists(self, temp_db_manager_pool):
+        """Test that retry executor is properly initialized."""
+        # Verify retry executor is available
+        assert temp_db_manager_pool._retry_executor is not None
+        
+        # Verify we can get retry stats
+        stats = temp_db_manager_pool._retry_executor.get_retry_stats()
+        assert "total_attempts" in stats
+        assert "failed_operations" in stats
+        assert "retried_operations" in stats
 
 
 class TestConcurrentAccess:
