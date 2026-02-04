@@ -54,7 +54,7 @@ class DatabaseManager:
         db_path: Path,
         pool_size: int = 3,
         retry_count: int = 5,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         enable_wal_mode: bool = True,
         health_check_interval: float = 30.0,
         retry_min_wait: float = 0.1,
@@ -737,12 +737,18 @@ class DatabaseManager:
             projects = []
             for row in rows:
                 aliases = json.loads(row[2]) if row[2] else []
+                created = row[3]
+                last_accessed = row[4]
+                if isinstance(created, str):
+                    created = datetime.fromisoformat(created)
+                if isinstance(last_accessed, str):
+                    last_accessed = datetime.fromisoformat(last_accessed)
                 project = Project(
                     id=row[0],
                     name=row[1],
                     aliases=aliases,
-                    created=row[3],
-                    last_accessed=row[4],
+                    created=created,
+                    last_accessed=last_accessed,
                     vector_mode=bool(row[5]),
                 )
                 projects.append(project)
@@ -760,12 +766,18 @@ class DatabaseManager:
             projects = []
             for row in rows:
                 aliases = json.loads(row[2]) if row[2] else []
+                created = row[3]
+                last_accessed = row[4]
+                if isinstance(created, str):
+                    created = datetime.fromisoformat(created)
+                if isinstance(last_accessed, str):
+                    last_accessed = datetime.fromisoformat(last_accessed)
                 project = Project(
                     id=row[0],
                     name=row[1],
                     aliases=aliases,
-                    created=row[3],
-                    last_accessed=row[4],
+                    created=created,
+                    last_accessed=last_accessed,
                     vector_mode=bool(row[5]),
                 )
                 projects.append(project)

@@ -28,7 +28,7 @@ class DatabaseFactory:
         global_db_path: Path,
         pool_size: int = 3,
         retry_count: int = 5,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         enable_wal_mode: bool = True,
         health_check_interval: float = 30.0,
         retry_min_wait: float = 0.1,
