@@ -279,9 +279,10 @@ class RetryExecutor:
         Yields:
             Database connection
         """
+        import sys
+
         # Store the context manager so we can properly call __aexit__
-        ctx_manager = None
-        connection = None
+        ctx_manager: Optional[AsyncContextManager[aiosqlite.Connection]] = None
 
         async def acquire_connection() -> aiosqlite.Connection:
             nonlocal ctx_manager
@@ -296,8 +297,14 @@ class RetryExecutor:
 
         try:
             yield connection
-        finally:
-            # Properly call __aexit__ on the context manager to return connection to pool
+        except BaseException:
+            # Pass actual exception info to __aexit__ for proper rollback/cleanup
+            exc_type, exc, tb = sys.exc_info()
+            if ctx_manager is not None:
+                await ctx_manager.__aexit__(exc_type, exc, tb)
+            raise
+        else:
+            # No exception - call __aexit__ with None values
             if ctx_manager is not None:
                 await ctx_manager.__aexit__(None, None, None)
 

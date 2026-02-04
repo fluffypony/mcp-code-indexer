@@ -38,10 +38,19 @@ class VectorStorageService:
         self.turbopuffer_client = turbopuffer_client
         self.embedding_dimension = embedding_dimension
         self.config = config
-
-        # Validate API access immediately during initialization
-        self.turbopuffer_client.validate_api_access()
         self._namespace_cache: Dict[str, bool] = {}  # Cache for namespace existence
+        self._api_validated = False  # Lazy validation flag
+
+    async def _ensure_api_validated(self) -> None:
+        """Validate API access lazily on first use (avoids blocking event loop at init)."""
+        if self._api_validated:
+            return
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, self.turbopuffer_client.validate_api_access
+        )
+        self._api_validated = True
 
     async def store_embeddings(
         self,
@@ -74,6 +83,7 @@ class VectorStorageService:
             )
 
         try:
+            await self._ensure_api_validated()
             loop = asyncio.get_running_loop()
             # Get namespace name (will be created implicitly by upsert_vectors)
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
@@ -160,6 +170,7 @@ class VectorStorageService:
         )
 
         try:
+            await self._ensure_api_validated()
             loop = asyncio.get_running_loop()
             # Get namespace name (will be created implicitly by batch upsert)
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
@@ -326,6 +337,7 @@ class VectorStorageService:
             RuntimeError: If deletion fails
         """
         try:
+            await self._ensure_api_validated()
             loop = asyncio.get_running_loop()
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
@@ -369,6 +381,7 @@ class VectorStorageService:
             return 0
 
         try:
+            await self._ensure_api_validated()
             loop = asyncio.get_running_loop()
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
@@ -455,6 +468,7 @@ class VectorStorageService:
             RuntimeError: If search fails
         """
         try:
+            await self._ensure_api_validated()
             loop = asyncio.get_running_loop()
 
             def do_search() -> list:
@@ -492,6 +506,7 @@ class VectorStorageService:
             RuntimeError: If metadata query fails
         """
         try:
+            await self._ensure_api_validated()
             loop = asyncio.get_running_loop()
             namespace = await self._ensure_namespace_exists(project_name)
 
