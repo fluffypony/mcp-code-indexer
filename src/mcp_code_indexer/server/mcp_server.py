@@ -13,7 +13,7 @@ import random
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable, cast
 
@@ -56,7 +56,7 @@ class MCPCodeIndexServer:
         cache_dir: Optional[Path] = None,
         db_pool_size: int = 3,
         db_retry_count: int = 5,
-        db_timeout: float = 10.0,
+        db_timeout: float = 30.0,
         enable_wal_mode: bool = True,
         health_check_interval: float = 30.0,
         retry_min_wait: float = 0.1,
@@ -882,8 +882,11 @@ class MCPCodeIndexServer:
             all_projects = await db_manager.get_all_projects()
             if all_projects:
                 project = all_projects[0]  # Use the first (and should be only) project
-                # Update last accessed time
-                await db_manager.update_project_access_time(project.id)
+
+                # Update last accessed time only if older than 5 minutes
+                if datetime.utcnow() - project.last_accessed > timedelta(minutes=5):
+                    await db_manager.update_project_access_time(project.id)
+
                 logger.info(
                     f"Using existing local project: {project.name} (ID: {project.id})"
                 )
@@ -1040,8 +1043,9 @@ class MCPCodeIndexServer:
         db_manager: DatabaseManager,
     ) -> None:
         """Update an existing project with new metadata and folder alias."""
-        # Update last accessed time
-        await db_manager.update_project_access_time(project.id)
+        # Update last accessed time only if older than 5 minutes
+        if datetime.utcnow() - project.last_accessed > timedelta(minutes=5):
+            await db_manager.update_project_access_time(project.id)
 
         should_update = False
 

@@ -222,7 +222,7 @@ class DatabaseManager:
                 "PRAGMA cache_size = -64000",  # 64MB cache
                 "PRAGMA temp_store = MEMORY",  # Use memory for temp tables
                 "PRAGMA mmap_size = 268435456",  # 256MB memory mapping
-                "PRAGMA busy_timeout = 10000",  # 10s timeout (reduced from 30s)
+                f"PRAGMA busy_timeout = {int(self.timeout * 1000)}",  # Use configured timeout
                 "PRAGMA optimize",  # Enable query planner optimizations
             ]
         )
@@ -776,9 +776,7 @@ class DatabaseManager:
 
     async def create_file_description(self, file_desc: FileDescription) -> None:
         """Create or update a file description."""
-        async with self.get_write_connection_with_retry(
-            "create_file_description"
-        ) as db:
+        async def operation(db: aiosqlite.Connection) -> None:
             await db.execute(
                 """
                 INSERT INTO file_descriptions
@@ -806,8 +804,12 @@ class DatabaseManager:
                     file_desc.to_be_cleaned,
                 ),
             )
-            await db.commit()
-            logger.debug(f"Saved file description: {file_desc.file_path}")
+
+        await self.execute_transaction_with_retry(
+            operation,
+            "create_file_description"
+        )
+        logger.debug(f"Saved file description: {file_desc.file_path}")
 
     async def get_file_description(
         self, project_id: str, file_path: str
@@ -1018,7 +1020,7 @@ class DatabaseManager:
 
     async def create_project_overview(self, overview: ProjectOverview) -> None:
         """Create or update a project overview."""
-        async with self.get_write_connection() as db:
+        async def operation(db: aiosqlite.Connection) -> None:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO project_overviews
@@ -1033,8 +1035,12 @@ class DatabaseManager:
                     overview.total_tokens,
                 ),
             )
-            await db.commit()
-            logger.debug(f"Created/updated overview for project {overview.project_id}")
+
+        await self.execute_transaction_with_retry(
+            operation,
+            "create_project_overview"
+        )
+        logger.debug(f"Created/updated overview for project {overview.project_id}")
 
     async def get_project_overview(self, project_id: str) -> Optional[ProjectOverview]:
         """Get project overview by ID."""

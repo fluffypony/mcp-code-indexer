@@ -125,9 +125,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--db-timeout",
         type=float,
-        default=float(os.getenv("DB_TIMEOUT", "10.0")),
+        default=float(os.getenv("DB_TIMEOUT", "30.0")),
         help=(
-            "Database transaction timeout in seconds (default: 10.0, env: DB_TIMEOUT)"
+            "Database transaction timeout in seconds (default: 30.0, env: DB_TIMEOUT)"
         ),
     )
 
