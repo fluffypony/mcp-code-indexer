@@ -396,7 +396,7 @@ class DatabaseManager:
     async def get_immediate_transaction(
         self,
         operation_name: str = "immediate_transaction",
-        timeout_seconds: float = 10.0,
+        timeout_seconds: Optional[float] = None,
     ) -> AsyncIterator[aiosqlite.Connection]:
         """
         Get a database connection with BEGIN IMMEDIATE transaction and
@@ -407,8 +407,10 @@ class DatabaseManager:
 
         Args:
             operation_name: Name of the operation for monitoring
-            timeout_seconds: Transaction timeout in seconds
+            timeout_seconds: Transaction timeout in seconds (defaults to
+                self.timeout if None)
         """
+        actual_timeout = timeout_seconds if timeout_seconds is not None else self.timeout
         import time
         acquire_start = time.monotonic()
         async with self.get_write_connection_with_retry(operation_name) as conn:
@@ -420,7 +422,7 @@ class DatabaseManager:
                 # Start immediate transaction with timeout
                 begin_start = time.monotonic()
                 await asyncio.wait_for(
-                    conn.execute("BEGIN IMMEDIATE"), timeout=timeout_seconds
+                    conn.execute("BEGIN IMMEDIATE"), timeout=actual_timeout
                 )
                 begin_time = time.monotonic() - begin_start
                 logger.debug(
@@ -436,14 +438,14 @@ class DatabaseManager:
             except asyncio.TimeoutError:
                 logger.warning(
                     (
-                        f"Transaction timeout after {timeout_seconds}s for "
+                        f"Transaction timeout after {actual_timeout}s for "
                         f"{operation_name}"
                     ),
                     extra={
                         "structured_data": {
                             "transaction_timeout": {
                                 "operation": operation_name,
-                                "timeout_seconds": timeout_seconds,
+                                "timeout_seconds": actual_timeout,
                             }
                         }
                     },
@@ -460,7 +462,7 @@ class DatabaseManager:
         operation_func: Callable[[aiosqlite.Connection], Any],
         operation_name: str = "transaction_operation",
         max_retries: int = 3,
-        timeout_seconds: float = 10.0,
+        timeout_seconds: Optional[float] = None,
     ) -> Any:
         """
         Execute a database operation within a transaction with automatic
@@ -475,7 +477,8 @@ class DatabaseManager:
             operation_name: Name of the operation for logging
             max_retries: Maximum retry attempts (overrides default retry
                 executor config)
-            timeout_seconds: Transaction timeout in seconds
+            timeout_seconds: Transaction timeout in seconds (defaults to
+                self.timeout if None)
 
         Returns:
             Result from operation_func
@@ -489,6 +492,7 @@ class DatabaseManager:
                 my_operation, "insert_data"
             )
         """
+        actual_timeout = timeout_seconds if timeout_seconds is not None else self.timeout
 
         async def execute_transaction() -> Any:
             """Inner function to execute transaction - retried by executor."""
@@ -496,11 +500,11 @@ class DatabaseManager:
             start_time = time.monotonic()
             logger.debug(
                 f"[{operation_name}] Starting transaction "
-                f"(timeout={timeout_seconds}s, pool_size={len(self._connection_pool)})"
+                f"(timeout={actual_timeout}s, pool_size={len(self._connection_pool)})"
             )
             try:
                 async with self.get_immediate_transaction(
-                    operation_name, timeout_seconds
+                    operation_name, actual_timeout
                 ) as conn:
                     lock_acquired_time = time.monotonic()
                     logger.debug(
@@ -523,7 +527,7 @@ class DatabaseManager:
                 if self._metrics_collector:
                     self._metrics_collector.record_operation(
                         operation_name,
-                        timeout_seconds * 1000,  # Convert to ms
+                        actual_timeout * 1000,  # Convert to ms
                         True,
                         len(self._connection_pool),
                     )
@@ -555,7 +559,7 @@ class DatabaseManager:
                 if self._metrics_collector:
                     self._metrics_collector.record_operation(
                         operation_name,
-                        timeout_seconds * 1000,
+                        actual_timeout * 1000,
                         False,
                         len(self._connection_pool),
                     )
@@ -565,7 +569,7 @@ class DatabaseManager:
                 elapsed = time.monotonic() - start_time
                 logger.warning(
                     f"[{operation_name}] Timeout after {elapsed*1000:.1f}ms "
-                    f"waiting for database lock (timeout={timeout_seconds}s)"
+                    f"waiting for database lock (timeout={actual_timeout}s)"
                 )
                 if self._metrics_collector:
                     self._metrics_collector.record_locking_event(
@@ -605,7 +609,7 @@ class DatabaseManager:
             if self._metrics_collector:
                 self._metrics_collector.record_operation(
                     operation_name,
-                    timeout_seconds * 1000,
+                    actual_timeout * 1000,
                     False,
                     len(self._connection_pool),
                 )
@@ -624,7 +628,7 @@ class DatabaseManager:
             if self._metrics_collector:
                 self._metrics_collector.record_operation(
                     operation_name,
-                    timeout_seconds * 1000,
+                    actual_timeout * 1000,
                     False,
                     len(self._connection_pool),
                 )
