@@ -35,7 +35,10 @@ from mcp_code_indexer.database.models import (
     WordFrequencyResult,
     WordFrequencyTerm,
 )
-from mcp_code_indexer.database.retry_executor import create_retry_executor
+from mcp_code_indexer.database.retry_executor import (
+    create_retry_executor,
+    DatabaseLockError,
+)
 from mcp_code_indexer.query_preprocessor import preprocess_search_query
 
 logger = logging.getLogger(__name__)
@@ -490,25 +493,38 @@ class DatabaseManager:
 
                 return result
 
-            except (aiosqlite.OperationalError, asyncio.TimeoutError) as e:
+            except aiosqlite.OperationalError as e:
                 # Record locking event for metrics
-                if self._metrics_collector and "locked" in str(e).lower():
+                error_msg = str(e).lower()
+                if self._metrics_collector and "locked" in error_msg:
                     self._metrics_collector.record_locking_event(operation_name, str(e))
 
-                # Classify the error for better handling
+                # For retryable errors (locked/busy), re-raise the ORIGINAL error
+                # so tenacity can retry. Only classify non-retryable errors.
+                if "locked" in error_msg or "busy" in error_msg:
+                    raise  # Let tenacity retry this
+
+                # Non-retryable OperationalError - classify and raise
                 classified_error = classify_sqlite_error(e, operation_name)
-
-                # Record failed operation metrics for non-retryable errors
-                if not is_retryable_error(classified_error):
-                    if self._metrics_collector:
-                        self._metrics_collector.record_operation(
-                            operation_name,
-                            timeout_seconds * 1000,
-                            False,
-                            len(self._connection_pool),
-                        )
-
+                if self._metrics_collector:
+                    self._metrics_collector.record_operation(
+                        operation_name,
+                        timeout_seconds * 1000,
+                        False,
+                        len(self._connection_pool),
+                    )
                 raise classified_error
+
+            except asyncio.TimeoutError as e:
+                # Timeout on BEGIN IMMEDIATE - this is retryable
+                if self._metrics_collector:
+                    self._metrics_collector.record_locking_event(
+                        operation_name, "timeout waiting for lock"
+                    )
+                # Re-raise as OperationalError so tenacity can retry
+                raise aiosqlite.OperationalError(
+                    f"Timeout waiting for database lock: {e}"
+                ) from e
 
         try:
             # Create a temporary retry executor with custom max_retries if different
@@ -534,8 +550,27 @@ class DatabaseManager:
                     execute_transaction, operation_name
                 )
 
+        except DatabaseLockError as e:
+            # Retries exhausted - record metrics and convert to DatabaseError
+            if self._metrics_collector:
+                self._metrics_collector.record_operation(
+                    operation_name,
+                    timeout_seconds * 1000,
+                    False,
+                    len(self._connection_pool),
+                )
+            # Convert to a proper DatabaseError for consistent error handling
+            raise DatabaseError(
+                f"Database operation failed after retries: {e.message}",
+                error_context={
+                    "operation": operation_name,
+                    "retry_count": e.retry_count,
+                    "retryable": False,  # Retries already exhausted
+                },
+            ) from e
+
         except DatabaseError:
-            # Record failed operation metrics for final failure
+            # Non-retryable DatabaseError from classification
             if self._metrics_collector:
                 self._metrics_collector.record_operation(
                     operation_name,
