@@ -756,7 +756,7 @@ class DatabaseManager:
             cursor = await db.execute("SELECT changes()")
             changes = await cursor.fetchone()
             if changes[0] == 0:
-                raise ValueError(f"Project not found: {project_id}")
+                raise DatabaseError(f"Project not found: {project_id}")
 
             await db.commit()
             logger.debug(f"Set vector_mode={enabled} for project: {project_id}")
@@ -1426,7 +1426,7 @@ class DatabaseManager:
             cursor = await db.execute("SELECT changes()")
             changes = await cursor.fetchone()
             if changes[0] == 0:
-                raise ValueError(
+                raise DatabaseError(
                     f"Index metadata not found for project: {index_meta.project_id}"
                 )
 
