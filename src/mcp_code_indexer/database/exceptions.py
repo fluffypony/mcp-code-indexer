@@ -191,6 +191,7 @@ def classify_sqlite_error(error: Exception, operation_name: str = "") -> Databas
             "database is locked",
             "sqlite_locked",
             "attempt to write a readonly database",
+            "timeout waiting for database lock",
         ]
     ):
         lock_type = (
@@ -297,6 +298,7 @@ def is_retryable_error(error: Exception) -> bool:
         "sqlite_busy",
         "sqlite_locked",
         "cannot start a transaction within a transaction",
+        "timeout waiting for database lock",
     ]
 
     return any(pattern in error_message for pattern in retryable_patterns)

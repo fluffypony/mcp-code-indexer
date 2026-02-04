@@ -51,10 +51,8 @@ class CleanupManager:
         """
         cleanup_timestamp = int(time.time())
 
-        async with self.db_manager.get_write_connection_with_retry(
-            "mark_file_for_cleanup"
-        ) as db:
-            cursor = await db.execute(
+        async def operation(conn: Any) -> bool:
+            cursor = await conn.execute(
                 """
                 UPDATE file_descriptions
                 SET to_be_cleaned = ?
@@ -62,10 +60,12 @@ class CleanupManager:
                 """,
                 (cleanup_timestamp, project_id, file_path),
             )
-            await db.commit()
-
             # Check if any rows were affected
             return cursor.rowcount > 0
+
+        return await self.db_manager.execute_transaction_with_retry(
+            operation, "mark_file_for_cleanup"
+        )
 
     async def mark_files_for_cleanup(
         self, project_id: str, file_paths: List[str]
@@ -117,10 +117,8 @@ class CleanupManager:
         Returns:
             True if file was restored, False if file not found
         """
-        async with self.db_manager.get_write_connection_with_retry(
-            "restore_file_from_cleanup"
-        ) as db:
-            cursor = await db.execute(
+        async def operation(conn: Any) -> bool:
+            cursor = await conn.execute(
                 """
                 UPDATE file_descriptions
                 SET to_be_cleaned = NULL
@@ -128,9 +126,11 @@ class CleanupManager:
                 """,
                 (project_id, file_path),
             )
-            await db.commit()
-
             return cursor.rowcount > 0
+
+        return await self.db_manager.execute_transaction_with_retry(
+            operation, "restore_file_from_cleanup"
+        )
 
     async def get_files_to_be_cleaned(self, project_id: str) -> List[dict]:
         """

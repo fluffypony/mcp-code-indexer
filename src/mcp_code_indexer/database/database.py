@@ -450,11 +450,23 @@ class DatabaseManager:
                         }
                     },
                 )
-                await conn.rollback()
+                # Shield rollback from cancellation to prevent leaked transactions
+                await asyncio.shield(conn.rollback())
                 raise
-            except Exception as e:
-                logger.error(f"Transaction failed for {operation_name}: {e}")
-                await conn.rollback()
+            except BaseException as e:
+                # Catch BaseException to handle asyncio.CancelledError and ensure
+                # proper rollback on task cancellation. Shield the rollback to
+                # prevent cancellation from interrupting cleanup.
+                if isinstance(e, asyncio.CancelledError):
+                    logger.warning(f"Transaction cancelled for {operation_name}")
+                else:
+                    logger.error(f"Transaction failed for {operation_name}: {e}")
+                try:
+                    await asyncio.shield(conn.rollback())
+                except Exception as rollback_error:
+                    logger.error(
+                        f"Rollback failed for {operation_name}: {rollback_error}"
+                    )
                 raise
 
     async def execute_transaction_with_retry(
@@ -638,8 +650,8 @@ class DatabaseManager:
 
     async def create_project(self, project: Project) -> None:
         """Create a new project record."""
-        async with self.get_write_connection_with_retry("create_project") as db:
-            await db.execute(
+        async def operation(conn: aiosqlite.Connection) -> None:
+            await conn.execute(
                 """
                 INSERT INTO projects (id, name, aliases, created, last_accessed)
                 VALUES (?, ?, ?, ?, ?)
@@ -652,8 +664,9 @@ class DatabaseManager:
                     project.last_accessed,
                 ),
             )
-            await db.commit()
-            logger.debug(f"Created project: {project.id}")
+
+        await self.execute_transaction_with_retry(operation, "create_project")
+        logger.debug(f"Created project: {project.id}")
 
     async def get_project(self, project_id: str) -> Optional[Project]:
         """Get project by ID."""
@@ -768,19 +781,20 @@ class DatabaseManager:
 
     async def update_project_access_time(self, project_id: str) -> None:
         """Update the last accessed time for a project."""
-        async with self.get_write_connection_with_retry(
-            "update_project_access_time"
-        ) as db:
-            await db.execute(
+        async def operation(conn: aiosqlite.Connection) -> None:
+            await conn.execute(
                 "UPDATE projects SET last_accessed = ? WHERE id = ?",
                 (datetime.utcnow(), project_id),
             )
-            await db.commit()
+
+        await self.execute_transaction_with_retry(
+            operation, "update_project_access_time"
+        )
 
     async def update_project(self, project: Project) -> None:
         """Update an existing project record."""
-        async with self.get_write_connection_with_retry("update_project") as db:
-            await db.execute(
+        async def operation(conn: aiosqlite.Connection) -> None:
+            await conn.execute(
                 """
                 UPDATE projects
                 SET name = ?, aliases = ?, last_accessed = ?
@@ -793,27 +807,28 @@ class DatabaseManager:
                     project.id,
                 ),
             )
-            await db.commit()
-            logger.debug(f"Updated project: {project.id}")
+
+        await self.execute_transaction_with_retry(operation, "update_project")
+        logger.debug(f"Updated project: {project.id}")
 
     async def set_project_vector_mode(self, project_id: str, enabled: bool) -> None:
         """Set the vector_mode for a specific project."""
-        async with self.get_write_connection_with_retry(
-            "set_project_vector_mode"
-        ) as db:
-            await db.execute(
+        async def operation(conn: aiosqlite.Connection) -> None:
+            await conn.execute(
                 "UPDATE projects SET vector_mode = ? WHERE id = ?",
                 (int(enabled), project_id),
             )
 
             # Check if the project was actually updated
-            cursor = await db.execute("SELECT changes()")
+            cursor = await conn.execute("SELECT changes()")
             changes = await cursor.fetchone()
             if changes[0] == 0:
                 raise DatabaseError(f"Project not found: {project_id}")
 
-            await db.commit()
-            logger.debug(f"Set vector_mode={enabled} for project: {project_id}")
+        await self.execute_transaction_with_retry(
+            operation, "set_project_vector_mode"
+        )
+        logger.debug(f"Set vector_mode={enabled} for project: {project_id}")
 
     async def get_all_projects(self) -> List[Project]:
         """Get all projects in the database."""
@@ -1084,23 +1099,25 @@ class DatabaseManager:
         """Cache token count with TTL."""
         expires = datetime.utcnow() + timedelta(hours=ttl_hours)
 
-        async with self.get_write_connection() as db:
-            await db.execute(
+        async def operation(conn: aiosqlite.Connection) -> None:
+            await conn.execute(
                 """
                 INSERT OR REPLACE INTO token_cache (cache_key, token_count, expires)
                 VALUES (?, ?, ?)
                 """,
                 (cache_key, token_count, expires),
             )
-            await db.commit()
+
+        await self.execute_transaction_with_retry(operation, "cache_token_count")
 
     async def cleanup_expired_cache(self) -> None:
         """Remove expired cache entries."""
-        async with self.get_write_connection() as db:
-            await db.execute(
+        async def operation(conn: aiosqlite.Connection) -> None:
+            await conn.execute(
                 "DELETE FROM token_cache WHERE expires < ?", (datetime.utcnow(),)
             )
-            await db.commit()
+
+        await self.execute_transaction_with_retry(operation, "cleanup_expired_cache")
 
     # Utility operations
 
@@ -1320,9 +1337,9 @@ class DatabaseManager:
         Returns:
             Number of projects removed
         """
-        async with self.get_write_connection() as db:
+        async def operation(conn: aiosqlite.Connection) -> int:
             # Find projects with no descriptions and no overview
-            cursor = await db.execute(
+            cursor = await conn.execute(
                 """
                 SELECT p.id, p.name
                 FROM projects p
@@ -1343,13 +1360,16 @@ class DatabaseManager:
                 project_name = project["name"]
 
                 # Remove from projects table (cascading will handle related data)
-                await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+                await conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
                 removed_count += 1
 
                 logger.info(f"Removed empty project: {project_name} (ID: {project_id})")
 
-            await db.commit()
             return removed_count
+
+        return await self.execute_transaction_with_retry(
+            operation, "cleanup_empty_projects"
+        )
 
     async def get_project_map_data(
         self, project_identifier: str

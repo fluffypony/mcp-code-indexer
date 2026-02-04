@@ -354,6 +354,7 @@ class RetryExecutor:
             "cannot start a transaction within a transaction",
             "sqlite_busy",
             "sqlite_locked",
+            "timeout waiting for database lock",
         ]
 
         return any(msg in error_message for msg in retryable_messages)

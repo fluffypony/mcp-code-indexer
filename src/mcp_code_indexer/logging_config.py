@@ -43,7 +43,11 @@ def setup_logging(
 
     # Console handler (stderr to avoid interfering with MCP stdout)
     console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(getattr(logging, log_level.upper()))
+    # Force console logging to at least WARNING to prevent stderr buffer blocking
+    # when MCP clients don't consume stderr fast enough. File logging still uses
+    # the requested level for detailed diagnostics.
+    requested_level = getattr(logging, log_level.upper())
+    console_handler.setLevel(max(requested_level, logging.WARNING))
 
     # Use structured formatter for all handlers
     structured_formatter = StructuredFormatter()
