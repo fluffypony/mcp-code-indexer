@@ -382,13 +382,19 @@ class TestVectorStorageService:
     async def test_service_initialization_validates_api_access(
         self, mock_turbopuffer_client: TurbopufferClient, vector_config: VectorConfig
     ):
-        """Test that API access is validated during service initialization."""
+        """Test that API access is validated lazily on first operation."""
         # Mock successful validation
         mock_turbopuffer_client.validate_api_access = MagicMock()
 
-        # Create service (should call validate_api_access)
+        # Create service (lazy validation - not called during init)
         embedding_dim = vector_config.get_embedding_dimensions()
         service = VectorStorageService(mock_turbopuffer_client, embedding_dim, vector_config)
+
+        # Validation should not be called yet (lazy initialization)
+        mock_turbopuffer_client.validate_api_access.assert_not_called()
+
+        # Trigger lazy validation by calling _ensure_api_validated
+        await service._ensure_api_validated()
 
         # Verify validation was called
         mock_turbopuffer_client.validate_api_access.assert_called_once()
@@ -396,16 +402,19 @@ class TestVectorStorageService:
     async def test_service_initialization_validation_failure(
         self, mock_turbopuffer_client: TurbopufferClient, vector_config: VectorConfig
     ):
-        """Test that service initialization fails when API validation fails."""
+        """Test that service fails when API validation fails on first operation."""
         # Mock validation failure
         mock_turbopuffer_client.validate_api_access = MagicMock(
             side_effect=RuntimeError("API validation failed")
         )
 
-        # Service creation should fail
+        # Service creation should succeed (lazy validation)
+        embedding_dim = vector_config.get_embedding_dimensions()
+        service = VectorStorageService(mock_turbopuffer_client, embedding_dim, vector_config)
+
+        # Validation failure should happen when first operation triggers validation
         with pytest.raises(RuntimeError, match="API validation failed"):
-            embedding_dim = vector_config.get_embedding_dimensions()
-            VectorStorageService(mock_turbopuffer_client, embedding_dim, vector_config)
+            await service._ensure_api_validated()
 
     async def test_delete_vectors_for_file_success(
         self, vector_storage_service: VectorStorageService
