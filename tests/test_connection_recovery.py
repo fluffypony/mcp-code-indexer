@@ -136,9 +136,18 @@ class TestConnectionRecovery:
         # Close the manager first to corrupt the database file
         await temp_db_manager_pool.close_pool()
 
-        # Corrupt the database file
+        # Corrupt the database file and remove WAL/SHM files
+        # (SQLite WAL mode stores data in -wal file that can recover the DB)
         with open(temp_db, "wb") as f:
             f.write(b"corrupted data")
+
+        # Remove WAL and SHM files to ensure corruption is complete
+        wal_path = Path(str(temp_db) + "-wal")
+        shm_path = Path(str(temp_db) + "-shm")
+        if wal_path.exists():
+            wal_path.unlink()
+        if shm_path.exists():
+            shm_path.unlink()
 
         # Try to reinitialize
         new_db_manager = DatabaseManager(temp_db, pool_size=2)
