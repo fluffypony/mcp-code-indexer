@@ -499,3 +499,13 @@ class FileScanner:
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.find_missing_files, existing_paths)
+
+    async def is_valid_project_directory_async(self) -> bool:
+        """
+        Async version of is_valid_project_directory running in a thread.
+
+        Returns:
+            True if the directory exists and is accessible
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.is_valid_project_directory)

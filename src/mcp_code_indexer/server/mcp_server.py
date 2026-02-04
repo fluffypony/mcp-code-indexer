@@ -1002,7 +1002,7 @@ class MCPCodeIndexServer:
         try:
             # Get files currently in the folder
             scanner = FileScanner(Path(folder_path))
-            if not scanner.is_valid_project_directory():
+            if not await scanner.is_valid_project_directory_async():
                 return False
 
             current_files = await scanner.scan_directory_async()
@@ -1173,11 +1173,13 @@ class MCPCodeIndexServer:
             file_descriptions
         )
 
-        # Get overview tokens if available
+        # Get overview tokens if available (offload to executor to avoid blocking)
         overview = await db_manager.get_project_overview(project_id)
         overview_tokens = 0
         if overview and overview.overview:
-            overview_tokens = self.token_counter.count_tokens(overview.overview)
+            overview_tokens = await loop.run_in_executor(
+                None, self.token_counter.count_tokens, overview.overview
+            )
 
         total_tokens = descriptions_tokens + overview_tokens
         is_large = total_tokens > token_limit
@@ -1245,7 +1247,7 @@ class MCPCodeIndexServer:
         # Scan directory for files
         logger.info(f"Scanning project directory: {folder_path_obj}")
         scanner = FileScanner(folder_path_obj)
-        if not scanner.is_valid_project_directory():
+        if not await scanner.is_valid_project_directory_async():
             logger.error(
                 f"Invalid or inaccessible project directory: {folder_path_obj}"
             )
