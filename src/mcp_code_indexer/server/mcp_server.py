@@ -240,10 +240,10 @@ class MCPCodeIndexServer:
             try:
                 result = json.loads(repaired)
                 if isinstance(result, dict):
-                    logger.info(
+                    logger.debug(
                         f"Successfully repaired JSON. Original: {json_str[:100]}..."
                     )
-                    logger.info(f"Repaired: {repaired[:100]}...")
+                    logger.debug(f"Repaired: {repaired[:100]}...")
                     return result
                 else:
                     raise ValueError(
@@ -793,8 +793,8 @@ class MCPCodeIndexServer:
 
             start_time = time.time()
 
-            logger.info(f"=== MCP Tool Call: {name} ===")
-            logger.info(f"Arguments: {', '.join(arguments.keys())}")
+            logger.debug(f"=== MCP Tool Call: {name} ===")
+            logger.debug(f"Arguments: {', '.join(arguments.keys())}")
 
             # Map tool names to handler methods
             tool_handlers = {
@@ -828,7 +828,7 @@ class MCPCodeIndexServer:
                 result = await wrapped_handler(arguments)
 
                 elapsed_time = time.time() - start_time
-                logger.info(
+                logger.debug(
                     f"MCP Tool '{name}' completed successfully in {elapsed_time:.2f}s"
                 )
 
@@ -887,7 +887,7 @@ class MCPCodeIndexServer:
                 if datetime.utcnow() - project.last_accessed > timedelta(minutes=5):
                     await db_manager.update_project_access_time(project.id)
 
-                logger.info(
+                logger.debug(
                     f"Using existing local project: {project.name} (ID: {project.id})"
                 )
                 return project.id
@@ -904,7 +904,7 @@ class MCPCodeIndexServer:
                     last_accessed=datetime.utcnow(),
                 )
                 await db_manager.create_project(project)
-                logger.info(
+                logger.debug(
                     f"Created new local project: {project_name} (ID: {project_id})"
                 )
                 return project_id
@@ -932,7 +932,7 @@ class MCPCodeIndexServer:
                     last_accessed=datetime.utcnow(),
                 )
                 await db_manager.create_project(project)
-                logger.info(
+                logger.debug(
                     f"Created new global project: {normalized_name} (ID: {project_id})"
                 )
 
@@ -975,7 +975,7 @@ class MCPCodeIndexServer:
                 if score > best_score:
                     best_score = score
                     best_match = project
-                    logger.info(
+                    logger.debug(
                         f"Match for project {project.name} "
                         f"(score: {score}, factors: {match_factors})"
                     )
@@ -983,7 +983,7 @@ class MCPCodeIndexServer:
             # If only name matches, check file similarity for potential matches
             elif score == 1 and "name" in match_factors:
                 if await self._check_file_similarity(project, folder_path):
-                    logger.info(
+                    logger.debug(
                         f"File similarity match for project {project.name} "
                         f"(factor: {match_factors[0]})"
                     )
@@ -1060,7 +1060,7 @@ class MCPCodeIndexServer:
             project_aliases.append(folder_path)
             project.aliases = project_aliases
             should_update = True
-            logger.info(
+            logger.debug(
                 f"Added new folder alias to project {project.name}: {folder_path}"
             )
 
@@ -1098,17 +1098,17 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle update_file_description tool calls."""
-        logger.info(f"Updating file description for: {arguments['filePath']}")
-        logger.info(f"Project: {arguments.get('projectName', 'Unknown')}")
+        logger.debug(f"Updating file description for: {arguments['filePath']}")
+        logger.debug(f"Project: {arguments.get('projectName', 'Unknown')}")
 
         description_length = len(arguments.get("description", ""))
-        logger.info(f"Description length: {description_length} characters")
+        logger.debug(f"Description length: {description_length} characters")
 
         folder_path = arguments["folderPath"]
         db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
 
-        logger.info(f"Resolved project_id: {project_id}")
+        logger.debug(f"Resolved project_id: {project_id}")
 
         file_desc = FileDescription(
             id=None,  # Will be set by database
@@ -1124,7 +1124,7 @@ class MCPCodeIndexServer:
 
         await db_manager.create_file_description(file_desc)
 
-        logger.info(f"Successfully updated description for: {arguments['filePath']}")
+        logger.debug(f"Successfully updated description for: {arguments['filePath']}")
 
         return {
             "success": True,
@@ -1137,17 +1137,17 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle check_codebase_size tool calls."""
-        logger.info(
+        logger.debug(
             f"Checking codebase size for: {arguments.get('projectName', 'Unknown')}"
         )
-        logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
+        logger.debug(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
 
         folder_path = arguments["folderPath"]
         db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
         folder_path_obj = Path(folder_path)
 
-        logger.info(f"Resolved project_id: {project_id}")
+        logger.debug(f"Resolved project_id: {project_id}")
 
         # Run cleanup if needed (respects 30-minute cooldown)
         cleaned_up_count = await self._run_cleanup_if_needed(
@@ -1155,17 +1155,17 @@ class MCPCodeIndexServer:
         )
 
         # Get file descriptions for this project (after cleanup)
-        logger.info("Retrieving file descriptions...")
+        logger.debug("Retrieving file descriptions...")
         file_descriptions = await db_manager.get_all_file_descriptions(
             project_id=project_id
         )
-        logger.info(f"Found {len(file_descriptions)} file descriptions")
+        logger.debug(f"Found {len(file_descriptions)} file descriptions")
 
         # Use provided token limit or fall back to server default
         token_limit = arguments.get("tokenLimit", self.token_limit)
 
         # Calculate total tokens for descriptions (offload to executor to avoid blocking)
-        logger.info("Calculating total token count...")
+        logger.debug("Calculating total token count...")
         loop = asyncio.get_running_loop()
         descriptions_tokens = await loop.run_in_executor(
             None,
@@ -1197,16 +1197,16 @@ class MCPCodeIndexServer:
         else:
             recommendation = "use_search"
 
-        logger.info(
+        logger.debug(
             f"Codebase analysis complete: {total_tokens} tokens total "
             f"({descriptions_tokens} descriptions + {overview_tokens} overview), "
             f"{len(file_descriptions)} files"
         )
-        logger.info(
+        logger.debug(
             f"Size assessment: {'LARGE' if is_large else 'SMALL'} "
             f"(limit: {token_limit})"
         )
-        logger.info(f"Recommendation: {recommendation}")
+        logger.debug(f"Recommendation: {recommendation}")
 
         return {
             "fileDescriptionTokens": descriptions_tokens,
@@ -1223,29 +1223,29 @@ class MCPCodeIndexServer:
         self, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle find_missing_descriptions tool calls."""
-        logger.info(
+        logger.debug(
             f"Finding missing descriptions for: "
             f"{arguments.get('projectName', 'Unknown')}"
         )
-        logger.info(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
+        logger.debug(f"Folder path: {arguments.get('folderPath', 'Unknown')}")
 
         folder_path = arguments["folderPath"]
         db_manager = await self.db_factory.get_database_manager(folder_path)
         project_id = await self._get_or_create_project_id(arguments)
         folder_path_obj = Path(folder_path)
 
-        logger.info(f"Resolved project_id: {project_id}")
+        logger.debug(f"Resolved project_id: {project_id}")
 
         # Get existing file descriptions
-        logger.info("Retrieving existing file descriptions...")
+        logger.debug("Retrieving existing file descriptions...")
         existing_descriptions = await db_manager.get_all_file_descriptions(
             project_id=project_id
         )
         existing_paths = {desc.file_path for desc in existing_descriptions}
-        logger.info(f"Found {len(existing_paths)} existing descriptions")
+        logger.debug(f"Found {len(existing_paths)} existing descriptions")
 
         # Scan directory for files
-        logger.info(f"Scanning project directory: {folder_path_obj}")
+        logger.debug(f"Scanning project directory: {folder_path_obj}")
         scanner = FileScanner(folder_path_obj)
         if not await scanner.is_valid_project_directory_async():
             logger.error(
@@ -1258,25 +1258,25 @@ class MCPCodeIndexServer:
         missing_files = await scanner.find_missing_files_async(existing_paths)
         missing_paths = [scanner.get_relative_path(f) for f in missing_files]
 
-        logger.info(f"Found {len(missing_paths)} files without descriptions")
+        logger.debug(f"Found {len(missing_paths)} files without descriptions")
 
         # Apply randomization if specified
         randomize = arguments.get("randomize", False)
         if randomize:
             random.shuffle(missing_paths)
-            logger.info("Randomized file order for parallel processing")
+            logger.debug("Randomized file order for parallel processing")
 
         # Apply limit if specified
         limit = arguments.get("limit")
         total_missing = len(missing_paths)
         if limit is not None and isinstance(limit, int) and limit > 0:
             missing_paths = missing_paths[:limit]
-            logger.info(f"Applied limit {limit}, returning {len(missing_paths)} files")
+            logger.debug(f"Applied limit {limit}, returning {len(missing_paths)} files")
 
         # Get project stats (offload to executor to avoid blocking)
         loop = asyncio.get_running_loop()
         stats = await loop.run_in_executor(None, scanner.get_project_stats)
-        logger.info(f"Project stats: {stats.get('total_files', 0)} total files")
+        logger.debug(f"Project stats: {stats.get('total_files', 0)} total files")
 
         return {
             "missingFiles": missing_paths,
@@ -1646,7 +1646,7 @@ class MCPCodeIndexServer:
             project_name = arguments["projectName"]
             folder_path = arguments["folderPath"]
 
-            logger.info(
+            logger.debug(
                 "Processing find_similar_code request",
                 extra={
                     "structured_data": {
