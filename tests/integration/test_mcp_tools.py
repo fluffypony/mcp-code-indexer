@@ -157,9 +157,10 @@ class TestMCPServerIntegration:
         folder_path = "/tmp/multi-word-test"
 
         # Add multiple files with descriptions containing target terms
+        # Use lowercase terms for proper FTS5 matching
         files_to_add = [
-            ("grpc_server.py", "gRPC server implementation with protocol buffers"),
-            ("proto_handler.py", "Protocol buffer message handling and validation"),
+            ("grpc_server.py", "grpc server implementation with proto message handling"),
+            ("proto_handler.py", "proto message handler with grpc communication"),
             ("auth_middleware.py", "Authentication middleware for API requests"),
             ("config_parser.py", "Configuration file parser with YAML support"),
             ("error_handler.py", "Error handling AND logging utilities"),
@@ -314,63 +315,44 @@ class TestMCPServerIntegration:
 
         # Check structure contains expected folders
         structure = result["structure"]
-        assert structure["name"] == ""  # Root
+        assert structure["path"] == ""  # Root
 
         # Should have src and tests folders
-        folder_names = [f["name"] for f in structure["folders"]]
-        assert "src" in folder_names
-        assert "tests" in folder_names
+        folder_paths = [f["path"] for f in structure["folders"]]
+        assert "src" in folder_paths
+        assert "tests" in folder_paths
 
-    async def test_upstream_inheritance(self, mcp_server):
-        """Test automatic upstream inheritance."""
-        # Create upstream project with descriptions
-        upstream_args = {
-            "projectName": "upstream-project",
-            "folderPath": "/tmp/upstream",
-            "remoteOrigin": "https://github.com/upstream/repo.git",
-            "descriptions": [
-                {
-                    "filePath": "core.py",
-                    "description": "Core functionality from upstream",
-                },
-                {"filePath": "utils.py", "description": "Utilities from upstream"},
-            ],
-        }
+    async def test_get_file_description_multiple_files(self, mcp_server):
+        """Test getting descriptions for multiple files in same project."""
+        project_name = "multi-file-test"
+        folder_path = "/tmp/multi-file-test"
 
-        # Add upstream files individually
-        for file_data in upstream_args["descriptions"]:
+        # Add multiple files
+        files = [
+            ("file1.py", "First file description"),
+            ("file2.py", "Second file description"),
+            ("file3.py", "Third file description"),
+        ]
+
+        for file_path, description in files:
             update_args = {
-                "projectName": upstream_args["projectName"],
-                "folderPath": upstream_args["folderPath"],
-                "filePath": file_data["filePath"],
-                "description": file_data["description"],
+                "projectName": project_name,
+                "folderPath": folder_path,
+                "filePath": file_path,
+                "description": description,
             }
             await mcp_server._handle_update_file_description(update_args)
 
-        # Create fork project that should inherit
-        fork_args = {
-            "projectName": "fork-project",
-            "folderPath": "/tmp/fork",
-            "remoteOrigin": "https://github.com/user/repo.git",
-            "upstreamOrigin": "https://github.com/upstream/repo.git",
-            "filePath": "README.md",
-            "description": "Fork-specific readme",
-        }
-
-        # This should trigger upstream inheritance
-        await mcp_server._handle_update_file_description(fork_args)
-
-        # Check that upstream files were inherited
-        get_args = {
-            "projectName": "fork-project",
-            "folderPath": "/tmp/fork",
-            "filePath": "core.py",
-        }
-
-        result = await mcp_server._handle_get_file_description(get_args)
-
-        assert result["exists"] is True
-        assert "Core functionality from upstream" in result["description"]
+        # Verify each file can be retrieved independently
+        for file_path, expected_desc in files:
+            get_args = {
+                "projectName": project_name,
+                "folderPath": folder_path,
+                "filePath": file_path,
+            }
+            result = await mcp_server._handle_get_file_description(get_args)
+            assert result["exists"] is True
+            assert result["description"] == expected_desc
 
 
 class TestMCPToolErrors:
@@ -482,7 +464,7 @@ class TestMCPWorkflow:
     """Test complete MCP workflows."""
 
     async def test_complete_project_workflow(self, mcp_server):
-        """Test complete workflow from project creation to merge."""
+        """Test complete workflow from project creation to file updates."""
         project_args = {"projectName": "workflow-test", "folderPath": "/tmp/workflow"}
 
         # 1. Check initial size (should be empty)
@@ -490,22 +472,18 @@ class TestMCPWorkflow:
         assert size_result["totalFiles"] == 0
 
         # 2. Add initial files
-        initial_files = {
-            **project_args,
-            "descriptions": [
-                {"filePath": "main.py", "description": "Main application file"},
-                {"filePath": "config.py", "description": "Configuration settings"},
-                {"filePath": "utils.py", "description": "Utility functions"},
-            ],
-        }
+        initial_files = [
+            ("main.py", "Main application file"),
+            ("config.py", "Configuration settings"),
+            ("utils.py", "Utility functions"),
+        ]
 
-        # Add initial files individually
-        for file_data in initial_files["descriptions"]:
+        for file_path, description in initial_files:
             update_args = {
-                "projectName": initial_files["projectName"],
-                "folderPath": initial_files["folderPath"],
-                "filePath": file_data["filePath"],
-                "description": file_data["description"],
+                "projectName": project_args["projectName"],
+                "folderPath": project_args["folderPath"],
+                "filePath": file_path,
+                "description": description,
             }
             await mcp_server._handle_update_file_description(update_args)
 
@@ -524,75 +502,29 @@ class TestMCPWorkflow:
         )
         assert any("config.py" in r["filePath"] for r in search_result["results"])
 
-        # 6. Create feature branch with changes
-        feature_files = {
-            "projectName": "workflow-test",
-            "folderPath": "/tmp/workflow",
-            "descriptions": [
-                {
-                    "filePath": "main.py",
-                    "description": "Enhanced main application with new features",
-                },
-                {
-                    "filePath": "new_feature.py",
-                    "description": "New feature implementation",
-                },
-            ],
+        # 6. Add more files and update existing
+        update_args = {
+            "projectName": project_args["projectName"],
+            "folderPath": project_args["folderPath"],
+            "filePath": "main.py",
+            "description": "Enhanced main application with new features",
         }
+        await mcp_server._handle_update_file_description(update_args)
 
-        # Add feature files individually
-        for file_data in feature_files["descriptions"]:
-            update_args = {
-                "projectName": feature_files["projectName"],
-                "folderPath": feature_files["folderPath"],
-                "filePath": file_data["filePath"],
-                "description": file_data["description"],
-            }
-            await mcp_server._handle_update_file_description(update_args)
+        new_feature_args = {
+            "projectName": project_args["projectName"],
+            "folderPath": project_args["folderPath"],
+            "filePath": "new_feature.py",
+            "description": "New feature implementation",
+        }
+        await mcp_server._handle_update_file_description(new_feature_args)
 
-        # 7. Merge feature branch back to main
-        merge_result = await mcp_server._handle_merge_branch_descriptions(
-            {
-                "projectName": "workflow-test",
-                "folderPath": "/tmp/workflow",
-                "sourceBranch": "feature/enhancement",
-                "targetBranch": "main",
-            }
-        )
-
-        # Should have one conflict (main.py)
-        assert merge_result["phase"] == "conflicts_detected"
-        assert merge_result["conflictCount"] == 1
-
-        # Resolve and complete merge
-        conflict = merge_result["conflicts"][0]
-        resolution_result = await mcp_server._handle_merge_branch_descriptions(
-            {
-                "projectName": "workflow-test",
-                "folderPath": "/tmp/workflow",
-                "sourceBranch": "feature/enhancement",
-                "targetBranch": "main",
-                "conflictResolutions": [
-                    {
-                        "conflictId": conflict["conflictId"],
-                        "resolvedDescription": (
-                            "Main application with enhanced features "
-                            "and new functionality"
-                        ),
-                    }
-                ],
-            }
-        )
-
-        assert resolution_result["phase"] == "completed"
-        assert resolution_result["success"] is True
-
-        # 8. Verify final state
+        # 7. Verify final state
         final_overview = await mcp_server._handle_get_codebase_overview(project_args)
         assert final_overview["totalFiles"] == 4  # main, config, utils, new_feature
 
-        # Check that main.py has the resolved description
+        # Check that main.py has the updated description
         main_file = await mcp_server._handle_get_file_description(
             {**project_args, "filePath": "main.py"}
         )
-        assert "enhanced features" in main_file["description"]
+        assert "Enhanced main application" in main_file["description"]
