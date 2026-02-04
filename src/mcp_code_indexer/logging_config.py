@@ -81,22 +81,29 @@ def setup_logging(
             root_logger.warning(f"Failed to set up file logging: {e}")
 
     # Configure specific loggers
+    effective_level = getattr(logging, log_level.upper())
 
-    # Quiet down noisy libraries
+    # Quiet down noisy libraries (always WARNING+)
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
     logging.getLogger("tiktoken").setLevel(logging.WARNING)
 
-    # MCP specific loggers
+    # MCP specific loggers - respect the configured log level
     mcp_logger = logging.getLogger("mcp")
-    mcp_logger.setLevel(logging.INFO)
+    mcp_logger.setLevel(effective_level)
 
-    # Database logger
-    db_logger = logging.getLogger("src.database")
-    db_logger.setLevel(logging.INFO)
+    # Database logger - respect the configured log level
+    db_logger = logging.getLogger("mcp_code_indexer.database")
+    db_logger.setLevel(effective_level)
 
-    # Server logger
-    server_logger = logging.getLogger("src.server")
-    server_logger.setLevel(logging.INFO)
+    # Also set the old logger names for backwards compatibility
+    logging.getLogger("src.database").setLevel(effective_level)
+
+    # Server logger - respect the configured log level
+    server_logger = logging.getLogger("mcp_code_indexer.server")
+    server_logger.setLevel(effective_level)
+
+    # Also set the old logger names for backwards compatibility  
+    logging.getLogger("src.server").setLevel(effective_level)
 
     return root_logger
 

@@ -409,14 +409,30 @@ class DatabaseManager:
             operation_name: Name of the operation for monitoring
             timeout_seconds: Transaction timeout in seconds
         """
+        import time
+        acquire_start = time.monotonic()
         async with self.get_write_connection_with_retry(operation_name) as conn:
+            write_lock_time = time.monotonic() - acquire_start
+            logger.debug(
+                f"[{operation_name}] Write lock acquired in {write_lock_time*1000:.1f}ms"
+            )
             try:
                 # Start immediate transaction with timeout
+                begin_start = time.monotonic()
                 await asyncio.wait_for(
                     conn.execute("BEGIN IMMEDIATE"), timeout=timeout_seconds
                 )
+                begin_time = time.monotonic() - begin_start
+                logger.debug(
+                    f"[{operation_name}] BEGIN IMMEDIATE completed in {begin_time*1000:.1f}ms"
+                )
                 yield conn
+                commit_start = time.monotonic()
                 await conn.commit()
+                commit_time = time.monotonic() - commit_start
+                logger.debug(
+                    f"[{operation_name}] COMMIT completed in {commit_time*1000:.1f}ms"
+                )
             except asyncio.TimeoutError:
                 logger.warning(
                     (
@@ -476,13 +492,34 @@ class DatabaseManager:
 
         async def execute_transaction() -> Any:
             """Inner function to execute transaction - retried by executor."""
+            import time
+            start_time = time.monotonic()
+            logger.debug(
+                f"[{operation_name}] Starting transaction "
+                f"(timeout={timeout_seconds}s, pool_size={len(self._connection_pool)})"
+            )
             try:
                 async with self.get_immediate_transaction(
                     operation_name, timeout_seconds
                 ) as conn:
+                    lock_acquired_time = time.monotonic()
+                    logger.debug(
+                        f"[{operation_name}] Lock acquired in "
+                        f"{(lock_acquired_time - start_time)*1000:.1f}ms"
+                    )
                     result = await operation_func(conn)
+                    exec_time = time.monotonic()
+                    logger.debug(
+                        f"[{operation_name}] Operation executed in "
+                        f"{(exec_time - lock_acquired_time)*1000:.1f}ms"
+                    )
 
                 # Record successful operation metrics
+                total_time = time.monotonic() - start_time
+                logger.debug(
+                    f"[{operation_name}] Transaction completed successfully "
+                    f"in {total_time*1000:.1f}ms"
+                )
                 if self._metrics_collector:
                     self._metrics_collector.record_operation(
                         operation_name,
@@ -494,17 +531,26 @@ class DatabaseManager:
                 return result
 
             except aiosqlite.OperationalError as e:
-                # Record locking event for metrics
+                elapsed = time.monotonic() - start_time
                 error_msg = str(e).lower()
+                logger.debug(
+                    f"[{operation_name}] OperationalError after {elapsed*1000:.1f}ms: {e}"
+                )
                 if self._metrics_collector and "locked" in error_msg:
                     self._metrics_collector.record_locking_event(operation_name, str(e))
 
                 # For retryable errors (locked/busy), re-raise the ORIGINAL error
                 # so tenacity can retry. Only classify non-retryable errors.
                 if "locked" in error_msg or "busy" in error_msg:
+                    logger.debug(
+                        f"[{operation_name}] Retryable error, will retry: {e}"
+                    )
                     raise  # Let tenacity retry this
 
                 # Non-retryable OperationalError - classify and raise
+                logger.warning(
+                    f"[{operation_name}] Non-retryable OperationalError: {e}"
+                )
                 classified_error = classify_sqlite_error(e, operation_name)
                 if self._metrics_collector:
                     self._metrics_collector.record_operation(
@@ -516,7 +562,11 @@ class DatabaseManager:
                 raise classified_error
 
             except asyncio.TimeoutError as e:
-                # Timeout on BEGIN IMMEDIATE - this is retryable
+                elapsed = time.monotonic() - start_time
+                logger.warning(
+                    f"[{operation_name}] Timeout after {elapsed*1000:.1f}ms "
+                    f"waiting for database lock (timeout={timeout_seconds}s)"
+                )
                 if self._metrics_collector:
                     self._metrics_collector.record_locking_event(
                         operation_name, "timeout waiting for lock"
