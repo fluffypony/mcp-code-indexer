@@ -6,10 +6,12 @@ while respecting .gitignore patterns and common ignore patterns. It enables
 efficient discovery of files that need description tracking.
 """
 
+import asyncio
 import fnmatch
 import logging
+import os
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Set, Union, Any, cast
+from typing import Dict, Iterator, List, Optional, Set, Union, Any, cast
 
 try:
     from gitignore_parser import parse_gitignore
@@ -150,6 +152,13 @@ class FileScanner:
         self.project_root = Path(project_root).resolve()
         self._gitignore_cache: Dict[str, Any] = {}
         self._load_gitignore_patterns()
+        # Build ignore patterns set for directory pruning
+        self.ignore_patterns = set(DEFAULT_IGNORE_PATTERNS)
+
+    @property
+    def root_path(self) -> Path:
+        """Get the root path for the scanner (alias for project_root)."""
+        return self.project_root
 
     def _load_gitignore_patterns(self) -> None:
         """Load and cache gitignore patterns from the project."""
@@ -228,6 +237,53 @@ class FileScanner:
         """Check if a file has an ignored extension."""
         return file_path.suffix.lower() in IGNORED_EXTENSIONS
 
+    def should_ignore_path(self, path: Path) -> bool:
+        """
+        Check if a path (file or directory) should be ignored based on patterns.
+
+        This is used for directory pruning during walks to skip entire subtrees
+        like node_modules, .git, etc.
+
+        Args:
+            path: Path to check (can be file or directory)
+
+        Returns:
+            True if the path should be ignored
+        """
+        try:
+            rel_path = path.relative_to(self.project_root)
+        except ValueError:
+            rel_path = path
+
+        path_str = str(rel_path)
+        path_name = path.name
+
+        # Check against ignore patterns
+        for pattern in self.ignore_patterns:
+            # Handle directory patterns (ending with /)
+            if pattern.endswith("/"):
+                pattern_no_slash = pattern.rstrip("/")
+                if path_name == pattern_no_slash:
+                    return True
+            # Handle wildcard patterns (starting with *)
+            elif pattern.startswith("*"):
+                if path_str.endswith(pattern[1:]) or path_name.endswith(pattern[1:]):
+                    return True
+            # Handle path patterns (containing / or \)
+            elif "/" in pattern or "\\" in pattern:
+                if pattern in path_str:
+                    return True
+            # Handle simple name patterns
+            else:
+                if pattern in path.parts or path_name == pattern:
+                    return True
+
+        # Also check gitignore
+        if self._is_ignored_by_gitignore(path):
+            return True
+
+        return False
+
     def should_ignore_file(self, file_path: Path) -> bool:
         """
         Determine if a file should be ignored.
@@ -246,12 +302,8 @@ class FileScanner:
         if self._is_ignored_by_extension(file_path):
             return True
 
-        # Check default patterns
-        if self._is_ignored_by_default_patterns(file_path):
-            return True
-
-        # Check gitignore patterns
-        if self._is_ignored_by_gitignore(file_path):
+        # Check path-based patterns
+        if self.should_ignore_path(file_path):
             return True
 
         return False
@@ -286,12 +338,27 @@ class FileScanner:
         logger.info(f"Found {len(files)} trackable files in {self.project_root}")
         return files
 
-    def _walk_directory(self) -> Generator[Path, None, None]:
-        """Walk through all files in the project directory."""
+    def _walk_directory(self) -> Iterator[Path]:
+        """
+        Walk directory using os.walk with directory pruning.
+
+        This skips ignored directories entirely rather than traversing then filtering.
+        Critical for performance - avoids traversing node_modules, .git, etc.
+        """
         try:
-            for item in self.project_root.rglob("*"):
-                if item.is_file():
-                    yield item
+            for dirpath, dirnames, filenames in os.walk(self.project_root):
+                current_dir = Path(dirpath)
+
+                # Prune ignored directories in-place to prevent descending into them
+                # Modifying dirnames in-place is the documented way to prune os.walk
+                dirnames[:] = [
+                    d for d in dirnames
+                    if not self.should_ignore_path(current_dir / d)
+                ]
+
+                for filename in filenames:
+                    yield current_dir / filename
+
         except PermissionError as e:
             logger.warning(f"Permission denied accessing {e.filename}")
         except Exception as e:
@@ -404,3 +471,31 @@ class FileScanner:
             logger.error(f"Error getting project stats: {e}")
 
         return stats
+
+    async def scan_directory_async(
+        self, max_files: Optional[int] = None
+    ) -> List[Path]:
+        """
+        Async version of scan_directory running in a thread.
+
+        Args:
+            max_files: Maximum number of files to return (None for no limit)
+
+        Returns:
+            List of file paths that should be tracked
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.scan_directory, max_files)
+
+    async def find_missing_files_async(self, existing_paths: Set[str]) -> List[Path]:
+        """
+        Async version of find_missing_files running in a thread.
+
+        Args:
+            existing_paths: Set of relative file paths that already have descriptions
+
+        Returns:
+            List of file paths that are missing descriptions
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.find_missing_files, existing_paths)

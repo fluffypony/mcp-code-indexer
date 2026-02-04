@@ -5,6 +5,7 @@ Orchestrates ASTChunker, EmbeddingService, and VectorStorageService to provide
 find_similar_code functionality for both code snippets and file sections.
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -352,11 +353,17 @@ class VectorModeToolsService:
                 elif ext in [".c"]:
                     language = "c"
 
-            chunks = self.ast_chunker.chunk_content(
-                content=code_content,
-                file_path=source_identifier,
-                language=language,
-            )
+            # Run in executor to avoid blocking the event loop (CPU-bound work)
+            loop = asyncio.get_running_loop()
+
+            def do_chunk() -> List[CodeChunk]:
+                return self.ast_chunker.chunk_content(
+                    content=code_content,
+                    file_path=source_identifier,
+                    language=language,
+                )
+
+            chunks = await loop.run_in_executor(None, do_chunk)
 
             logger.debug(
                 f"Generated {len(chunks)} chunks from {source_identifier}",

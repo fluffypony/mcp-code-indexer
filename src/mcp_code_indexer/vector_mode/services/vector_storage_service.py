@@ -6,6 +6,7 @@ vector storage backend, handling namespace management, vector formatting,
 and error handling.
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -73,6 +74,7 @@ class VectorStorageService:
             )
 
         try:
+            loop = asyncio.get_running_loop()
             # Get namespace name (will be created implicitly by upsert_vectors)
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
@@ -81,8 +83,11 @@ class VectorStorageService:
                 f"Clearing existing vectors for file {file_path} before upserting new ones"
             )
             try:
-                delete_result = self.turbopuffer_client.delete_vectors_for_file(
-                    namespace, file_path
+                delete_result = await loop.run_in_executor(
+                    None,
+                    self.turbopuffer_client.delete_vectors_for_file,
+                    namespace,
+                    file_path,
                 )
                 logger.info(
                     f"Cleared {delete_result['deleted']} existing vectors for {file_path}"
@@ -97,7 +102,12 @@ class VectorStorageService:
             )
 
             # Store in Turbopuffer
-            result = self.turbopuffer_client.upsert_vectors(vectors, namespace)
+            result = await loop.run_in_executor(
+                None,
+                self.turbopuffer_client.upsert_vectors,
+                vectors,
+                namespace,
+            )
 
             logger.info(
                 f"Stored {result['upserted']} vectors for {file_path} "
@@ -150,6 +160,7 @@ class VectorStorageService:
         )
 
         try:
+            loop = asyncio.get_running_loop()
             # Get namespace name (will be created implicitly by batch upsert)
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
@@ -179,8 +190,11 @@ class VectorStorageService:
                 all_vectors.extend(file_vectors)
 
             # Perform batch upsert
-            result = self.turbopuffer_client.upsert_vectors_batch(
-                all_vectors, namespace
+            result = await loop.run_in_executor(
+                None,
+                self.turbopuffer_client.upsert_vectors_batch,
+                all_vectors,
+                namespace,
             )
 
             logger.info(
@@ -211,8 +225,11 @@ class VectorStorageService:
             return namespace
 
         try:
+            loop = asyncio.get_running_loop()
             # List existing namespaces
-            existing_namespaces = self.turbopuffer_client.list_namespaces()
+            existing_namespaces = await loop.run_in_executor(
+                None, self.turbopuffer_client.list_namespaces
+            )
             if namespace not in existing_namespaces:
                 # Namespace doesn't exist and will be created implicitly on first write
                 logger.info(
@@ -309,6 +326,7 @@ class VectorStorageService:
             RuntimeError: If deletion fails
         """
         try:
+            loop = asyncio.get_running_loop()
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
             logger.info(
@@ -316,8 +334,11 @@ class VectorStorageService:
             )
 
             # Use the TurbopufferClient method to delete by file_path filter
-            result = self.turbopuffer_client.delete_vectors_for_file(
-                namespace, file_path
+            result = await loop.run_in_executor(
+                None,
+                self.turbopuffer_client.delete_vectors_for_file,
+                namespace,
+                file_path,
             )
 
             logger.info(
@@ -348,6 +369,7 @@ class VectorStorageService:
             return 0
 
         try:
+            loop = asyncio.get_running_loop()
             namespace = self.turbopuffer_client.get_namespace_for_project(project_name)
 
             logger.info(
@@ -358,18 +380,21 @@ class VectorStorageService:
             dummy_vector = [0.0] * self.embedding_dimension
 
             # Find all vectors for the specified files
-            rows = self.turbopuffer_client.search_vectors(
-                query_vector=dummy_vector,
-                top_k=1200,  # Set high enough to catch all chunks for multiple files
-                namespace=namespace,
-                filters=(
-                    "And",
-                    [
-                        ("project_id", "Eq", project_name),
-                        ("file_path", "In", file_paths),
-                    ],
-                ),
-            )
+            def search_for_files() -> list:
+                return self.turbopuffer_client.search_vectors(
+                    query_vector=dummy_vector,
+                    top_k=1200,  # Set high enough to catch all chunks for multiple files
+                    namespace=namespace,
+                    filters=(
+                        "And",
+                        [
+                            ("project_id", "Eq", project_name),
+                            ("file_path", "In", file_paths),
+                        ],
+                    ),
+                )
+
+            rows = await loop.run_in_executor(None, search_for_files)
 
             if not rows:
                 logger.info(
@@ -384,8 +409,11 @@ class VectorStorageService:
             )
 
             # Delete vectors by ID in batch
-            delete_result = self.turbopuffer_client.delete_vectors(
-                ids_to_delete, namespace
+            delete_result = await loop.run_in_executor(
+                None,
+                self.turbopuffer_client.delete_vectors,
+                ids_to_delete,
+                namespace,
             )
 
             deleted_count = delete_result["deleted"]
@@ -427,13 +455,18 @@ class VectorStorageService:
             RuntimeError: If search fails
         """
         try:
-            results = self.turbopuffer_client.search_with_metadata_filter(
-                query_vector=query_embedding,
-                project_id=project_name,
-                chunk_type=chunk_type,
-                file_path=file_path,
-                top_k=top_k,
-            )
+            loop = asyncio.get_running_loop()
+
+            def do_search() -> list:
+                return self.turbopuffer_client.search_with_metadata_filter(
+                    query_vector=query_embedding,
+                    project_id=project_name,
+                    chunk_type=chunk_type,
+                    file_path=file_path,
+                    top_k=top_k,
+                )
+
+            results = await loop.run_in_executor(None, do_search)
 
             logger.debug(f"Found {len(results)} similar chunks in {project_name}")
             return results
@@ -459,6 +492,7 @@ class VectorStorageService:
             RuntimeError: If metadata query fails
         """
         try:
+            loop = asyncio.get_running_loop()
             namespace = await self._ensure_namespace_exists(project_name)
 
             # If namespace doesn't exist, return empty metadata
@@ -473,26 +507,32 @@ class VectorStorageService:
 
             if file_paths is None or len(file_paths) == 0:
                 # Query all files for the project
-                rows = self.turbopuffer_client.search_vectors(
-                    query_vector=dummy_vector,  # Dummy vector since we only want metadata
-                    top_k=1200,  # High limit to get all files (warning: it still can limit results)
-                    namespace=namespace,
-                    filters=("project_id", "Eq", project_name),
-                )
+                def search_all_files() -> list:
+                    return self.turbopuffer_client.search_vectors(
+                        query_vector=dummy_vector,  # Dummy vector since we only want metadata
+                        top_k=1200,  # High limit to get all files (warning: it still can limit results)
+                        namespace=namespace,
+                        filters=("project_id", "Eq", project_name),
+                    )
+
+                rows = await loop.run_in_executor(None, search_all_files)
             else:
                 # Query specific files
-                rows = self.turbopuffer_client.search_vectors(
-                    query_vector=dummy_vector,
-                    top_k=1200,
-                    namespace=namespace,
-                    filters=(
-                        "And",
-                        [
-                            ("project_id", "Eq", project_name),
-                            ("file_path", "In", file_paths),
-                        ],
-                    ),
-                )
+                def search_specific_files() -> list:
+                    return self.turbopuffer_client.search_vectors(
+                        query_vector=dummy_vector,
+                        top_k=1200,
+                        namespace=namespace,
+                        filters=(
+                            "And",
+                            [
+                                ("project_id", "Eq", project_name),
+                                ("file_path", "In", file_paths),
+                            ],
+                        ),
+                    )
+
+                rows = await loop.run_in_executor(None, search_specific_files)
 
             if not rows:
                 logger.debug(

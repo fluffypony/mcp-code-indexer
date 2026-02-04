@@ -61,8 +61,8 @@ python-multipart = ">=0.0.6"
 # Vector mode dependencies (always included)
 voyageai = ">=0.3.0"
 turbopuffer = ">=0.6.0"
-tree-sitter = ">=0.25.0"
-watchdog = ">=6.0.0"
+tree-sitter = ">=0.21.0"
+watchdog = ">=4.0.0"
 pyyaml = ">=6.0"
 
 [tool.poetry.group.dev.dependencies]

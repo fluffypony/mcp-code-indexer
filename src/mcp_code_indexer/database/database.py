@@ -317,12 +317,10 @@ class DatabaseManager:
         self, operation_name: str = "write_operation"
     ) -> AsyncIterator[aiosqlite.Connection]:
         """
-        Get a database connection with write serialization and automatic
-        retry logic.
+        Get a database connection with write serialization.
 
-        This uses the new RetryExecutor to properly handle retry logic
-        without the broken yield-in-retry-loop pattern that caused
-        generator errors.
+        Ensures the write lock is held throughout the duration of the context
+        to prevent race conditions and database locking errors.
 
         Args:
             operation_name: Name of the operation for logging and
@@ -333,43 +331,10 @@ class DatabaseManager:
                 "DatabaseManager not initialized - call initialize() first"
             )
 
-        async def get_write_connection() -> aiosqlite.Connection:
-            """Inner function to get connection - retried by executor."""
-            if self._write_lock is None:
-                raise RuntimeError("Write lock not initialized")
-            async with self._write_lock:
-                async with self.get_connection() as conn:
-                    return conn
-
-        try:
-            # Use retry executor to handle connection acquisition with retries
-            connection = await self._retry_executor.execute_with_retry(
-                get_write_connection, operation_name
-            )
-
-            try:
-                yield connection
-
-                # Success - retry executor handles all failure tracking
-
-            except Exception:
-                # Error handling is managed by the retry executor
-                raise
-
-        except DatabaseError:
-            # Re-raise our custom database errors as-is
-            raise
-        except Exception as e:
-            # Classify and wrap other exceptions
-            classified_error = classify_sqlite_error(e, operation_name)
-            logger.error(
-                (
-                    f"Database operation '{operation_name}' failed: "
-                    f"{classified_error.message}"
-                ),
-                extra={"structured_data": classified_error.to_dict()},
-            )
-            raise classified_error
+        # Acquire lock for exclusive write access - hold it for entire context
+        async with self._write_lock:
+            async with self.get_connection() as conn:
+                yield conn
 
     def get_database_stats(self) -> Dict[str, Any]:
         """
@@ -816,12 +781,19 @@ class DatabaseManager:
         ) as db:
             await db.execute(
                 """
-                INSERT OR REPLACE INTO file_descriptions
+                INSERT INTO file_descriptions
                 (
                     project_id, file_path, description, file_hash, last_modified,
                     version, source_project_id, to_be_cleaned
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, file_path) DO UPDATE SET
+                    description=excluded.description,
+                    file_hash=excluded.file_hash,
+                    last_modified=excluded.last_modified,
+                    version=excluded.version,
+                    source_project_id=excluded.source_project_id,
+                    to_be_cleaned=excluded.to_be_cleaned
                 """,
                 (
                     file_desc.project_id,
@@ -919,12 +891,19 @@ class DatabaseManager:
 
             await conn.executemany(
                 """
-                INSERT OR REPLACE INTO file_descriptions
+                INSERT INTO file_descriptions
                 (
                     project_id, file_path, description, file_hash, last_modified,
                     version, source_project_id, to_be_cleaned
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, file_path) DO UPDATE SET
+                    description=excluded.description,
+                    file_hash=excluded.file_hash,
+                    last_modified=excluded.last_modified,
+                    version=excluded.version,
+                    source_project_id=excluded.source_project_id,
+                    to_be_cleaned=excluded.to_be_cleaned
                 """,
                 data,
             )
@@ -1088,10 +1067,8 @@ class DatabaseManager:
         Returns:
             List of file paths that were marked for cleanup
         """
-        removed_files: List[str] = []
-
-        async def cleanup_operation(conn: aiosqlite.Connection) -> List[str]:
-            # Get all active file descriptions for this project
+        # 1. Get all active file paths (fast DB read)
+        async with self.get_connection() as conn:
             cursor = await conn.execute(
                 (
                     "SELECT file_path FROM file_descriptions WHERE "
@@ -1099,46 +1076,29 @@ class DatabaseManager:
                 ),
                 (project_id,),
             )
-
             rows = await cursor.fetchall()
+            file_paths = [row["file_path"] for row in rows]
 
-            # Check which files no longer exist
-            to_remove = []
-            for row in rows:
-                file_path = row["file_path"]
+        # 2. Check existence on disk (blocking IO - run in executor)
+        def find_removed_files() -> List[str]:
+            missing = []
+            for file_path in file_paths:
                 full_path = project_root / file_path
-
                 if not full_path.exists():
-                    to_remove.append(file_path)
+                    missing.append(file_path)
+            return missing
 
-            # Mark descriptions for cleanup instead of deleting
-            if to_remove:
-                import time
+        loop = asyncio.get_running_loop()
+        to_remove = await loop.run_in_executor(None, find_removed_files)
 
-                cleanup_timestamp = int(time.time())
-                await conn.executemany(
-                    (
-                        "UPDATE file_descriptions SET to_be_cleaned = ? WHERE "
-                        "project_id = ? AND file_path = ?"
-                    ),
-                    [(cleanup_timestamp, project_id, path) for path in to_remove],
-                )
-                logger.info(
-                    (
-                        f"Marked {len(to_remove)} missing files for cleanup "
-                        f"from {project_id}"
-                    )
-                )
+        # 3. Mark for cleanup (fast DB write)
+        if to_remove:
+            await self.cleanup_manager.mark_files_for_cleanup(project_id, to_remove)
+            logger.info(
+                f"Marked {len(to_remove)} missing files for cleanup from {project_id}"
+            )
 
-            return to_remove
-
-        removed_files = await self.execute_transaction_with_retry(
-            cleanup_operation,
-            f"cleanup_missing_files_{project_id}",
-            timeout_seconds=60.0,  # Longer timeout for file system operations
-        )
-
-        return removed_files
+        return to_remove
 
     async def analyze_word_frequency(
         self, project_id: str, limit: int = 200
@@ -1160,7 +1120,7 @@ class DatabaseManager:
         stop_words_path = (
             Path(__file__).parent.parent / "data" / "stop_words_english.txt"
         )
-        stop_words = set()
+        stop_words: set = set()
 
         if stop_words_path.exists():
             with open(stop_words_path, "r", encoding="utf-8") as f:
@@ -1207,8 +1167,8 @@ class DatabaseManager:
         }
         stop_words.update(programming_keywords)
 
+        # Get all descriptions for this project (fast DB read)
         async with self.get_connection() as db:
-            # Get all descriptions for this project
             cursor = await db.execute(
                 (
                     "SELECT description FROM file_descriptions WHERE "
@@ -1216,11 +1176,13 @@ class DatabaseManager:
                 ),
                 (project_id,),
             )
-
             rows = await cursor.fetchall()
+            descriptions = [row["description"] for row in rows]
 
+        # Process word frequency in executor (CPU-bound work)
+        def process_word_frequency() -> WordFrequencyResult:
             # Combine all descriptions
-            all_text = " ".join(row["description"] for row in rows)
+            all_text = " ".join(descriptions)
 
             # Tokenize and filter
             words = re.findall(r"\b[a-zA-Z]{2,}\b", all_text.lower())
@@ -1240,6 +1202,9 @@ class DatabaseManager:
                 total_terms_analyzed=len(filtered_words),
                 total_unique_terms=len(word_counts),
             )
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, process_word_frequency)
 
     async def cleanup_empty_projects(self) -> int:
         """

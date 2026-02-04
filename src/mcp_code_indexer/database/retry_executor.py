@@ -279,8 +279,12 @@ class RetryExecutor:
         Yields:
             Database connection
         """
+        # Store the context manager so we can properly call __aexit__
+        ctx_manager = None
+        connection = None
 
         async def acquire_connection() -> aiosqlite.Connection:
+            nonlocal ctx_manager
             # This function will be retried by execute_with_retry
             # Get the async context manager and enter it
             ctx_manager = connection_factory()
@@ -288,15 +292,14 @@ class RetryExecutor:
             return conn
 
         # Use execute_with_retry to handle the retry logic
-        # We create a connection and store it for the context manager
         connection = await self.execute_with_retry(acquire_connection, operation_name)
 
         try:
             yield connection
         finally:
-            # Close the connection properly
-            if hasattr(connection, "close"):
-                await connection.close()
+            # Properly call __aexit__ on the context manager to return connection to pool
+            if ctx_manager is not None:
+                await ctx_manager.__aexit__(None, None, None)
 
     def _should_retry_exception(self, retry_state: RetryCallState) -> bool:
         """

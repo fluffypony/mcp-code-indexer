@@ -8,11 +8,10 @@ Handles embedding generation, change detection, and vector database synchronizat
 import asyncio
 import logging
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set
-import time
-import time
 
 
 
@@ -394,8 +393,12 @@ class VectorDaemon:
                 return
 
             # Read and chunk the file using the shared ASTChunker instance
+            # Run in executor to avoid blocking the event loop (CPU-bound work)
             try:
-                chunks = self._ast_chunker.chunk_file(str(change.path))
+                loop = asyncio.get_running_loop()
+                chunks = await loop.run_in_executor(
+                    None, self._ast_chunker.chunk_file, str(change.path)
+                )
                 chunk_count = len(chunks)
 
                 # Only process files that actually produced chunks
@@ -888,11 +891,15 @@ class VectorDaemon:
                 batch_start_time = time.time()
 
                 # Step 1: Batch chunking for all files
+                # Run in executor to avoid blocking the event loop (CPU-bound work)
                 logger.debug(f"Step 1: Chunking {len(files_to_process)} files")
                 chunking_start_time = time.time()
 
-                file_chunks = self._ast_chunker.chunk_multiple_files(
-                    [str(f) for f in files_to_process]
+                loop = asyncio.get_running_loop()
+                file_chunks = await loop.run_in_executor(
+                    None,
+                    self._ast_chunker.chunk_multiple_files,
+                    [str(f) for f in files_to_process],
                 )
 
                 # Filter out files that failed to chunk
