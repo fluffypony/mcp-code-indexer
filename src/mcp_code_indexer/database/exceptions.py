@@ -236,7 +236,7 @@ def classify_sqlite_error(error: Exception, operation_name: str = "") -> Databas
         for msg in [
             "no such table",
             "no such column",
-            "table already exists",
+            "already exists",
             "syntax error",
         ]
     ):
