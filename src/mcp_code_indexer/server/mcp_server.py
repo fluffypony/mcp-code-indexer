@@ -1005,7 +1005,7 @@ class MCPCodeIndexServer:
             if not scanner.is_valid_project_directory():
                 return False
 
-            current_files = scanner.scan_directory()
+            current_files = await scanner.scan_directory_async()
             current_basenames = {f.name for f in current_files}
 
             if not current_basenames:
@@ -1164,9 +1164,12 @@ class MCPCodeIndexServer:
         # Use provided token limit or fall back to server default
         token_limit = arguments.get("tokenLimit", self.token_limit)
 
-        # Calculate total tokens for descriptions
+        # Calculate total tokens for descriptions (offload to executor to avoid blocking)
         logger.info("Calculating total token count...")
-        descriptions_tokens = self.token_counter.calculate_codebase_tokens(
+        loop = asyncio.get_running_loop()
+        descriptions_tokens = await loop.run_in_executor(
+            None,
+            self.token_counter.calculate_codebase_tokens,
             file_descriptions
         )
 
@@ -1250,7 +1253,7 @@ class MCPCodeIndexServer:
                 "error": f"Invalid or inaccessible project directory: {folder_path_obj}"
             }
 
-        missing_files = scanner.find_missing_files(existing_paths)
+        missing_files = await scanner.find_missing_files_async(existing_paths)
         missing_paths = [scanner.get_relative_path(f) for f in missing_files]
 
         logger.info(f"Found {len(missing_paths)} files without descriptions")
@@ -1268,8 +1271,9 @@ class MCPCodeIndexServer:
             missing_paths = missing_paths[:limit]
             logger.info(f"Applied limit {limit}, returning {len(missing_paths)} files")
 
-        # Get project stats
-        stats = scanner.get_project_stats()
+        # Get project stats (offload to executor to avoid blocking)
+        loop = asyncio.get_running_loop()
+        stats = await loop.run_in_executor(None, scanner.get_project_stats)
         logger.info(f"Project stats: {stats.get('total_files', 0)} total files")
 
         return {
@@ -1325,8 +1329,13 @@ class MCPCodeIndexServer:
             project_id=project_id
         )
 
-        # Calculate total tokens
-        total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
+        # Calculate total tokens (offload to executor to avoid blocking)
+        loop = asyncio.get_running_loop()
+        total_tokens = await loop.run_in_executor(
+            None,
+            self.token_counter.calculate_codebase_tokens,
+            file_descriptions
+        )
         is_large = self.token_counter.is_large_codebase(total_tokens)
 
         # Always build and return the folder structure - if the AI called this
@@ -1422,7 +1431,12 @@ class MCPCodeIndexServer:
         )
 
         total_files = len(file_descriptions)
-        total_tokens = self.token_counter.calculate_codebase_tokens(file_descriptions)
+        loop = asyncio.get_running_loop()
+        total_tokens = await loop.run_in_executor(
+            None,
+            self.token_counter.calculate_codebase_tokens,
+            file_descriptions
+        )
 
         # Create overview record
         overview = ProjectOverview(
